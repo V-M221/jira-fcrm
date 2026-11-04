@@ -1,0 +1,5 @@
+{
+  "name": "Ozon Bank FCRM Jira Extension Studio",
+  "description": "Конструктор и интерактивный предпросмотр Chrome-расширения с кастомным визуалом Jira (jit.o3.ru, доска FCRM #9349) в дизайн-системе Ozon Банка.",
+  "requestFramePermissions": []
+}
