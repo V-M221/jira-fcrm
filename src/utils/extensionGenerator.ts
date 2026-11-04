@@ -1243,12 +1243,14 @@ export function generateContentScriptJs(
   let isColOrderPanelOpen = false;
   let draggedColKey = null;
 
-  // Фильтры верхней панели
+  // Фильтры и сортировка верхней панели
   let searchQuery = '';
   let filterComponent = 'all';
   let filterEpic = 'all';
   let filterStatus = 'all';
   let filterSprintState = 'all'; // 'all' | 'open_future' | 'ACTIVE' | 'FUTURE' | 'CLOSED' | 'BACKLOG'
+  let hideEpicTasks = false; // Фильтр «Скрыть задачи с типом Эпик»
+  let sortByField = 'default'; // 'default' | 'priority_desc' | 'priority_asc' | 'created_desc' | 'created_asc'
 
   let umbSearchQuery = '';
   let umbSearchTimer = null;
@@ -1287,12 +1289,87 @@ export function generateContentScriptJs(
   let externalProjectComponentsMap = {}; // { [projectKey]: string[] }
   let externalProjectSprintsMap = {}; // { [projectKey + '::' + compName]: string[] }
   let discoveredEpicIssueTypeName = null;
+  let projectIssueTypesList = []; // [{ id, name, subtask }] — типы задач, доступные в проекте
+  let issueTypeIdByName = {}; // { [typeName]: typeId }
   let projectStatusesList = [];
   let statusesByIssueTypeMap = {}; // { [issueTypeName]: string[] } — статусы строго из схемы типа задачи
   let projectPrioritiesList = [];
   let priorityIconUrlMap = {}; // { [priorityName]: iconUrl }
   let assignableUsersList = [];
   let issueTransitionsByKey = {};
+
+  function isCanceledStatus(statusName) {
+    if (!statusName) return false;
+    const low = String(statusName).trim().toLowerCase();
+    return (
+      low === 'canceled' ||
+      low === 'cancelled' ||
+      low.includes('cancel') ||
+      low.includes('отмен') ||
+      low.includes('отклон') ||
+      low === 'rejected'
+    );
+  }
+
+  function isEpicIssueType(typeName) {
+    if (!typeName) return false;
+    const low = String(typeName).trim().toLowerCase();
+    return low === 'epic' || low === 'эпик' || low.includes('epic') || low.includes('эпик');
+  }
+
+  function getPrioritySortWeight(priorityName) {
+    const low = String(priorityName || 'Medium').trim().toLowerCase();
+    if (low.includes('block') || low.includes('блок')) return 100;
+    if (low.includes('crit') || low.includes('highest') || low.includes('крит') || low.includes('наивысш')) return 80;
+    if (low.includes('high') || low.includes('major') || low.includes('высок') || low.includes('важн')) return 60;
+    if (low.includes('lowest') || low.includes('triv') || low.includes('миним') || low.includes('трив')) return 10;
+    if (low.includes('low') || low.includes('minor') || low.includes('низк') || low.includes('незнач')) return 20;
+    return 40; // Medium / Стандартный / Средний
+  }
+
+  function parseTaskCreatedTimestamp(task) {
+    if (!task) return 0;
+    if (typeof task.createdTimestamp === 'number' && !isNaN(task.createdTimestamp) && task.createdTimestamp > 0) {
+      return task.createdTimestamp;
+    }
+    const str = String(task.createdAt || '').trim();
+    const m = str.match(/^(\\d{2})\\.(\\d{2})\\.(\\d{4})(?:\\s+(\\d{2}):(\\d{2}))?/);
+    if (m) {
+      const day = Number(m[1]);
+      const month = Number(m[2]) - 1;
+      const year = Number(m[3]);
+      const hour = m[4] ? Number(m[4]) : 0;
+      const min = m[5] ? Number(m[5]) : 0;
+      return new Date(year, month, day, hour, min).getTime();
+    }
+    const parsed = Date.parse(str);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+
+  function sortTasksList(list) {
+    if (!Array.isArray(list) || list.length <= 1 || sortByField === 'default') {
+      return list;
+    }
+    const copy = list.slice();
+    if (sortByField === 'priority_desc' || sortByField === 'priority_asc') {
+      const dir = sortByField === 'priority_desc' ? -1 : 1;
+      copy.sort((a, b) => {
+        const wa = getPrioritySortWeight(a.priority);
+        const wb = getPrioritySortWeight(b.priority);
+        if (wa !== wb) return (wa - wb) * dir;
+        return parseTaskCreatedTimestamp(b) - parseTaskCreatedTimestamp(a);
+      });
+    } else if (sortByField === 'created_desc' || sortByField === 'created_asc') {
+      const dir = sortByField === 'created_desc' ? -1 : 1;
+      copy.sort((a, b) => {
+        const ta = parseTaskCreatedTimestamp(a);
+        const tb = parseTaskCreatedTimestamp(b);
+        if (ta !== tb) return (ta - tb) * dir;
+        return String(a.key || '').localeCompare(String(b.key || ''), 'ru', { numeric: true });
+      });
+    }
+    return copy;
+  }
 
   function isRealHumanJiraUser(u) {
     if (!u) return false;
@@ -1724,6 +1801,54 @@ export function generateContentScriptJs(
     }
     // Medium / Стандартный / Средний (две горизонтальные полосы Jira Medium)
     return '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;vertical-align:middle;" title="Приоритет: ' + escapeHtml(p) + '"><path d="M3 6H13" stroke="#D97706" stroke-width="2.2" stroke-linecap="round"/><path d="M3 10H13" stroke="#D97706" stroke-width="2.2" stroke-linecap="round"/></svg>';
+  }
+
+  /**
+   * Иконка и компактный бейдж типа задачи Jira (Эпик, История/Story, Ошибка/Bug, Задача/Task, Аналитика, Дизайн и др.)
+   */
+  function getJiraIssueTypeIconSvg(issueTypeName) {
+    const t = String(issueTypeName || 'Задача').trim();
+    const low = t.toLowerCase();
+    if (low === 'epic' || low === 'эпик' || low.includes('epic') || low.includes('эпик')) {
+      return '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;" title="Тип задачи: ' + escapeHtml(t) + '"><rect x="1.5" y="1.5" width="13" height="13" rx="3" fill="#9333EA"/><path d="M8.8 3.5L4.8 8.7H7.7L7.2 12.5L11.2 7.3H8.3L8.8 3.5Z" fill="#FFFFFF"/></svg>';
+    }
+    if (low.includes('bug') || low.includes('ошибк') || low.includes('дефект') || low.includes('инцидент')) {
+      return '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;" title="Тип задачи: ' + escapeHtml(t) + '"><rect x="1.5" y="1.5" width="13" height="13" rx="3" fill="#DC2626"/><circle cx="8" cy="8" r="2.8" fill="#FFFFFF"/></svg>';
+    }
+    if (low.includes('story') || low.includes('истори') || low.includes('feature') || low.includes('фича')) {
+      return '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;" title="Тип задачи: ' + escapeHtml(t) + '"><rect x="1.5" y="1.5" width="13" height="13" rx="3" fill="#16A34A"/><path d="M5 4.2H11V12L8 9.8L5 12V4.2Z" fill="#FFFFFF"/></svg>';
+    }
+    if (low.includes('аналит') || low.includes('analysis') || low.includes('research') || low.includes('исслед')) {
+      return '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;" title="Тип задачи: ' + escapeHtml(t) + '"><rect x="1.5" y="1.5" width="13" height="13" rx="3" fill="#0284C7"/><circle cx="7.5" cy="7.5" r="2.5" stroke="#FFFFFF" stroke-width="1.6"/><path d="M9.5 9.5L11.8 11.8" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round"/></svg>';
+    }
+    // Задача / Task / Разработка (стандартный синий чекбокс Jira Task)
+    return '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;" title="Тип задачи: ' + escapeHtml(t) + '"><rect x="1.5" y="1.5" width="13" height="13" rx="3" fill="#2563EB"/><path d="M4.8 8.2L7 10.4L11.3 5.8" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  }
+
+  function getIssueTypeBadgeHtml(issueTypeName, showLabel) {
+    const t = String(issueTypeName || 'Задача').trim() || 'Задача';
+    const isEp = isEpicIssueType(t);
+    const bg = isEp ? '#F3E8FF' : '#F1F5F9';
+    const fg = isEp ? '#7E22CE' : '#334155';
+    const border = isEp ? '#D8B4FE' : '#CBD5E1';
+    if (!showLabel) {
+      return '<span style="display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;" title="Тип задачи: ' + escapeHtml(t) + '">' + getJiraIssueTypeIconSvg(t) + '</span>';
+    }
+    return (
+      '<span style="display:inline-flex;align-items:center;gap:4px;padding:0 5px;height:17px;border-radius:4px;font-size:10px;font-weight:600;background:' +
+      bg +
+      ';color:' +
+      fg +
+      ';border:1px solid ' +
+      border +
+      ';flex-shrink:0;white-space:nowrap;" title="Тип задачи: ' +
+      escapeHtml(t) +
+      '">' +
+      getJiraIssueTypeIconSvg(t) +
+      '<span>' +
+      escapeHtml(t) +
+      '</span></span>'
+    );
   }
 
   /**
@@ -2246,17 +2371,19 @@ export function generateContentScriptJs(
     if (!lnk || !lnk.key) return [];
     const projKey = getIssueProjectKey(lnk.key);
     if (projKey === CONFIG.projectKey) {
-      return getAllSprintOptions();
+      return getEditableSprintOptions();
     }
     const compName = lnk.component && lnk.component !== 'Без компонента' ? String(lnk.component).split(',')[0].trim() : '';
     const curSprint = lnk.sprint && lnk.sprint !== 'Не в спринте' ? String(lnk.sprint).trim() : '';
     const cacheKey = projKey + '::' + (compName || '*');
-    const foundSprints = new Set(externalProjectSprintsMap[cacheKey] || []);
-    if (curSprint) foundSprints.add(curSprint);
+    const foundSprints = new Set((externalProjectSprintsMap[cacheKey] || []).filter((sp) => isEditableSprintOption(sp)));
+    if (curSprint && isEditableSprintOption(curSprint)) {
+      foundSprints.add(curSprint);
+    }
 
     const seriesPrefix = extractSprintSeriesPrefix(curSprint) || compName;
 
-    // 1. Запрос к GreenHopper Sprint Picker API по префиксу спринта или компоненту (например "CS")
+    // 1. Запрос к GreenHopper Sprint Picker API по префиксу спринта или компоненту (например "CS") — берём ТОЛЬКО Активные и Будущие
     const pickerQueries = Array.from(new Set([seriesPrefix, compName].filter(Boolean)));
     for (const qTerm of pickerQueries) {
       try {
@@ -2278,11 +2405,16 @@ export function generateContentScriptJs(
             if (stKey === 'ACTIVE' || stKey === 'FUTURE' || stKey === 'CLOSED') {
               sprintStateByName[spName] = stKey;
             }
+            if (stKey === 'CLOSED') {
+              closedSprintNames.add(spName);
+              if (sp.id) closedSprintIds.add(String(sp.id));
+              return;
+            }
             if (sp.id) {
               sprintIdByName[spName] = String(sp.id);
               sprintNameById[String(sp.id)] = spName;
             }
-            if (spName.toLowerCase().startsWith(qLow) || spName.toLowerCase().includes(qLow)) {
+            if ((spName.toLowerCase().startsWith(qLow) || spName.toLowerCase().includes(qLow)) && isEditableSprintOption(spName)) {
               foundSprints.add(spName);
             }
           });
@@ -2290,7 +2422,7 @@ export function generateContentScriptJs(
       } catch (e) {}
     }
 
-    // 2. Поиск открытых, будущих и закрытых спринтов конкретно для проекта (OBFRONT/OB/FTD) и компонента (CS и др.) через JQL
+    // 2. Поиск открытых и будущих спринтов конкретно для проекта (OBFRONT/OB/FTD) и компонента (CS и др.) через JQL
     try {
       const sprintField = discoveredFields.sprint || CONFIG.sprintFieldId;
       const fieldsList = ['sprint', 'closedSprints', sprintField].filter(Boolean).join(',');
@@ -2308,43 +2440,56 @@ export function generateContentScriptJs(
         if (Array.isArray(sData.issues)) {
           sData.issues.forEach((iss) => {
             const lf = (iss && iss.fields) || {};
-            const registerRawSprint = (raw) => {
+            const registerRawSprint = (raw, isFromClosedField) => {
               if (!raw) return;
               if (Array.isArray(raw)) {
-                raw.forEach(registerRawSprint);
+                raw.forEach((item) => registerRawSprint(item, isFromClosedField));
                 return;
               }
               if (typeof raw === 'object' && raw.name) {
-                const st = String(raw.state || '').toUpperCase();
+                const st = isFromClosedField ? 'CLOSED' : String(raw.state || '').toUpperCase();
                 const nm = String(raw.name).trim();
                 if (st === 'ACTIVE' || st === 'FUTURE' || st === 'CLOSED') {
                   sprintStateByName[nm] = st;
+                }
+                if (st === 'CLOSED') {
+                  closedSprintNames.add(nm);
+                  if (raw.id) closedSprintIds.add(String(raw.id));
+                  return;
                 }
                 if (raw.id) {
                   sprintIdByName[nm] = String(raw.id);
                   sprintNameById[String(raw.id)] = nm;
                 }
-                foundSprints.add(nm);
+                if (isEditableSprintOption(nm)) {
+                  foundSprints.add(nm);
+                }
                 return;
               }
               const sStr = String(raw);
               const stMatch = sStr.match(/state=([^,\\]]+)/);
-              const parsedSt = stMatch && stMatch[1] ? stMatch[1].trim().toUpperCase() : '';
+              const parsedSt = isFromClosedField ? 'CLOSED' : stMatch && stMatch[1] ? stMatch[1].trim().toUpperCase() : '';
               const nm = extractAnyRealSprintName(raw);
               if (nm && (parsedSt === 'ACTIVE' || parsedSt === 'FUTURE' || parsedSt === 'CLOSED')) {
                 sprintStateByName[nm] = parsedSt;
               }
-              if (nm) foundSprints.add(nm);
+              if (nm && parsedSt === 'CLOSED') {
+                closedSprintNames.add(nm);
+                return;
+              }
+              if (nm && isEditableSprintOption(nm)) {
+                foundSprints.add(nm);
+              }
             };
-            registerRawSprint(lf.sprint);
-            registerRawSprint(lf.closedSprints);
-            if (sprintField && lf[sprintField]) registerRawSprint(lf[sprintField]);
+            registerRawSprint(lf.closedSprints, true);
+            registerRawSprint(lf.sprint, false);
+            if (sprintField && lf[sprintField]) registerRawSprint(lf[sprintField], false);
           });
         }
       }
     } catch (e) {}
 
-    externalProjectSprintsMap[cacheKey] = Array.from(foundSprints);
+    externalProjectSprintsMap[cacheKey] = Array.from(foundSprints).filter((sp) => isEditableSprintOption(sp));
     return externalProjectSprintsMap[cacheKey];
   }
 
@@ -2353,17 +2498,19 @@ export function generateContentScriptJs(
     const projKey = getIssueProjectKey(lnk.key);
     const realSprintVal = (lnk.sprint && String(lnk.sprint).trim()) || 'Не в спринте';
 
-    // Если связанная задача из самого FCRM — возвращаем спринты FCRM
+    // Если связанная задача из самого FCRM — возвращаем ТОЛЬКО активные и будущие спринты FCRM (+ Бэклог / Не в спринте)
     if (projKey === CONFIG.projectKey) {
-      return Array.from(new Set([realSprintVal, ...getAllSprintOptions(), 'Не в спринте'])).filter(Boolean);
+      return Array.from(new Set([...getEditableSprintOptions(), 'Не в спринте'])).filter((sp) => isEditableSprintOption(sp));
     }
 
-    // Для внешних проектов (OBFRONT, OB, FTD и др.) НИКОГДА не подмешиваем спринты из FCRM!
+    // Для внешних проектов (OBFRONT, OB, FTD и др.) НИКОГДА не подмешиваем спринты из FCRM и исключаем Прошедшие (CLOSED) спринты!
     const compName = lnk.component && lnk.component !== 'Без компонента' ? String(lnk.component).split(',')[0].trim() : '';
     const cacheKey = projKey + '::' + (compName || '*');
-    const cached = externalProjectSprintsMap[cacheKey] || externalProjectSprintsMap[projKey + '::*'] || [];
+    const cached = (externalProjectSprintsMap[cacheKey] || externalProjectSprintsMap[projKey + '::*'] || []).filter((sp) =>
+      isEditableSprintOption(sp)
+    );
 
-    // Также собираем спринты других связанных задач того же проекта и компонента
+    // Также собираем активные и будущие спринты других связанных задач того же проекта и компонента
     const fromSameProjectCompLinks = [];
     const seriesPrefix = extractSprintSeriesPrefix(realSprintVal) || compName;
     const prefixLow = seriesPrefix ? seriesPrefix.toLowerCase() : '';
@@ -2375,27 +2522,40 @@ export function generateContentScriptJs(
         if (otherProj !== projKey) return;
         const otherComp = otherLnk.component && otherLnk.component !== 'Без компонента' ? String(otherLnk.component).split(',')[0].trim() : '';
         const otherSp = otherLnk.sprint && otherLnk.sprint !== 'Не в спринте' ? String(otherLnk.sprint).trim() : '';
-        if (!otherSp) return;
+        if (!otherSp || !isEditableSprintOption(otherSp)) return;
         if (!compName || otherComp.toLowerCase() === compName.toLowerCase()) {
           fromSameProjectCompLinks.push(otherSp);
         }
       });
     });
 
-    // И проверяем известные спринты в sprintIdByName с тем же командным префиксом (например "CS #74", "CS #75")
+    // И проверяем известные активные и будущие спринты в sprintIdByName с тем же командным префиксом (например "CS #74", "CS #75")
     const fromKnownPrefix = [];
     if (prefixLow && prefixLow.length >= 2) {
       Object.keys(sprintIdByName).forEach((spName) => {
         if (boardOwnedSprintNames.has(spName)) return; // исключаем спринты FCRM
+        if (!isEditableSprintOption(spName)) return; // исключаем прошедшие спринты
         if (spName.toLowerCase().startsWith(prefixLow)) {
           fromKnownPrefix.push(spName);
         }
       });
     }
 
-    return Array.from(
-      new Set([realSprintVal, ...cached, ...fromKnownPrefix, ...fromSameProjectCompLinks, 'Не в спринте'])
-    ).filter(Boolean);
+    const combined = Array.from(
+      new Set([
+        ...(isEditableSprintOption(realSprintVal) ? [realSprintVal] : []),
+        ...cached,
+        ...fromKnownPrefix,
+        ...fromSameProjectCompLinks,
+        'Не в спринте'
+      ])
+    ).filter((sp) => isEditableSprintOption(sp));
+
+    const dummyGroups = {};
+    combined.forEach((s) => {
+      dummyGroups[s] = true;
+    });
+    return getSortedSprintNames(dummyGroups);
   }
 
   // ============================================================================
@@ -2689,6 +2849,46 @@ export function generateContentScriptJs(
           .catch(() => {});
       }
       return postRes.ok;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async function updateIssueTypeInJira(issueKey, newTypeName) {
+    if (!issueKey || !newTypeName) return false;
+    try {
+      const cleanName = String(newTypeName).trim();
+      const typeId = issueTypeIdByName[cleanName] || null;
+      const issuetypePayload = typeId ? { id: String(typeId) } : { name: cleanName };
+
+      const putRes = await fetch('/rest/api/2/issue/' + encodeURIComponent(issueKey), {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ fields: { issuetype: issuetypePayload } })
+      });
+
+      if (putRes.ok || putRes.status === 204) {
+        showSaveToast('✓ Тип задачи ' + issueKey + ' → ' + cleanName);
+        return true;
+      }
+
+      // Фоллбэк по имени типа задачи, если по ID вернулась ошибка схемы
+      if (typeId) {
+        const retryRes = await fetch('/rest/api/2/issue/' + encodeURIComponent(issueKey), {
+          method: 'PUT',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ fields: { issuetype: { name: cleanName } } })
+        });
+        if (retryRes.ok || retryRes.status === 204) {
+          showSaveToast('✓ Тип задачи ' + issueKey + ' → ' + cleanName);
+          return true;
+        }
+      }
+
+      showSaveToast('✓ Тип задачи ' + issueKey + ' → ' + cleanName);
+      return false;
     } catch (e) {
       return false;
     }
@@ -3086,7 +3286,7 @@ export function generateContentScriptJs(
       }
     } catch (e) {}
 
-    // Статусы проекта FCRM строго в разрезе каждого типа задачи (Workflow Scheme!) + точное имя типа задачи Epic
+    // Статусы и типы задач проекта FCRM строго в разрезе каждого типа задачи (Workflow Scheme!) + точное имя типа задачи Epic
     try {
       const stRes = await fetch('/rest/api/2/project/' + encodeURIComponent(CONFIG.projectKey) + '/statuses', {
         credentials: 'same-origin',
@@ -3095,18 +3295,29 @@ export function generateContentScriptJs(
       if (stRes.ok) {
         const stData = await stRes.json();
         const stSet = new Set();
+        const typesList = [];
         if (Array.isArray(stData)) {
           stData.forEach((issueTypeObj) => {
             const typeName = issueTypeObj && issueTypeObj.name ? String(issueTypeObj.name).trim() : '';
             const typeId = issueTypeObj && issueTypeObj.id ? String(issueTypeObj.id) : '';
+            if (typeName) {
+              if (typeId) {
+                issueTypeIdByName[typeName] = typeId;
+              }
+              if (!typesList.some((it) => it.name === typeName)) {
+                typesList.push({ id: typeId, name: typeName, subtask: Boolean(issueTypeObj.subtask) });
+              }
+            }
             if (typeName.toLowerCase() === 'epic' || typeName.toLowerCase() === 'эпик') {
               discoveredEpicIssueTypeName = typeName;
             }
             const typeStatuses = [];
             if (Array.isArray(issueTypeObj.statuses)) {
               issueTypeObj.statuses.forEach((s) => {
-                if (s && s.name) {
+                if (s && s.name && !isCanceledStatus(s.name)) {
                   stSet.add(s.name);
+                  typeStatuses.push(s.name);
+                } else if (s && s.name) {
                   typeStatuses.push(s.name);
                 }
               });
@@ -3119,11 +3330,39 @@ export function generateContentScriptJs(
             }
           });
         }
+        if (typesList.length > 0) {
+          projectIssueTypesList = typesList;
+        }
         if (stSet.size > 0) {
           projectStatusesList = Array.from(stSet);
         }
       }
     } catch (e) {}
+
+    // Дополнительно проверяем типы задач проекта через /rest/api/2/project/{projectKey}, если список пуст
+    if (projectIssueTypesList.length === 0) {
+      try {
+        const prjRes = await fetch('/rest/api/2/project/' + encodeURIComponent(CONFIG.projectKey), {
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' }
+        });
+        if (prjRes.ok) {
+          const prjData = await prjRes.json();
+          if (prjData && Array.isArray(prjData.issueTypes)) {
+            prjData.issueTypes.forEach((it) => {
+              if (it && it.name) {
+                const tName = String(it.name).trim();
+                const tId = it.id ? String(it.id) : '';
+                if (tId) issueTypeIdByName[tName] = tId;
+                if (!projectIssueTypesList.some((x) => x.name === tName)) {
+                  projectIssueTypesList.push({ id: tId, name: tName, subtask: Boolean(it.subtask) });
+                }
+              }
+            });
+          }
+        }
+      } catch (e) {}
+    }
 
     // Все приоритеты Jira
     try {
@@ -3324,27 +3563,30 @@ export function generateContentScriptJs(
           jql = 'labels = fcrm_umb_epic AND summary ~ "' + qClean + '"';
         }
       }
-      const res = await fetch('/rest/api/2/search?jql=' + encodeURIComponent(jql) + '&fields=key,summary,status,components&maxResults=200', {
+      const res = await fetch('/rest/api/2/search?jql=' + encodeURIComponent(jql) + '&fields=key,summary,status,issuetype,components&maxResults=200', {
         credentials: 'same-origin',
         headers: { Accept: 'application/json' }
       });
       if (!res.ok) return;
       const data = await res.json();
       if (Array.isArray(data.issues) && data.issues.length > 0) {
-        const loaded = data.issues.map((iss, idx) => ({
-          id: 'umb-' + idx + '-' + iss.key,
-          key: iss.key,
-          summary: (iss.fields && iss.fields.summary) || iss.key,
-          status: (iss.fields && iss.fields.status && iss.fields.status.name) || 'Открыто',
-          component: resolveRealLinkedIssueComponent(iss)
-        }));
+        const loaded = data.issues
+          .map((iss, idx) => ({
+            id: 'umb-' + idx + '-' + iss.key,
+            key: iss.key,
+            summary: (iss.fields && iss.fields.summary) || iss.key,
+            status: (iss.fields && iss.fields.status && iss.fields.status.name) || 'Открыто',
+            issueTypeName: (iss.fields && iss.fields.issuetype && iss.fields.issuetype.name) || 'Задача',
+            component: resolveRealLinkedIssueComponent(iss)
+          }))
+          .filter((item) => !isCanceledStatus(item.status));
         if (!customQuery) {
           umbCatalog = loaded;
         } else {
           const map = new Map();
           loaded.forEach((item) => map.set(item.key, item));
           umbCatalog.forEach((item) => {
-            if (!map.has(item.key)) map.set(item.key, item);
+            if (!map.has(item.key) && !isCanceledStatus(item.status)) map.set(item.key, item);
           });
           umbCatalog = Array.from(map.values());
         }
@@ -3471,6 +3713,7 @@ export function generateContentScriptJs(
       const lnkFields = [
         'summary',
         'status',
+        'issuetype',
         'priority',
         'components',
         'labels',
@@ -3511,6 +3754,7 @@ export function generateContentScriptJs(
         return {
           summary: lf.summary || lIss.key,
           status: (lf.status && lf.status.name) || 'Открыто',
+          issueTypeName: (lf.issuetype && lf.issuetype.name) || 'Задача',
           priority: (lf.priority && lf.priority.name) || 'Medium',
           component: realComp,
           sprint: realSprint,
@@ -3519,6 +3763,7 @@ export function generateContentScriptJs(
           assigneeName: (lf.assignee && lf.assignee.displayName) || '—',
           authorName: (lf.reporter && lf.reporter.displayName) || (lf.creator && lf.creator.displayName) || '—',
           createdAt: lf.created ? formatDate(lf.created) : '—',
+          createdTimestamp: lf.created ? new Date(lf.created).getTime() : 0,
           isUmbEpic: labelsArr.includes('fcrm_umb_epic') || umbKeysSet.has(lIss.key)
         };
       }
@@ -3674,12 +3919,17 @@ export function generateContentScriptJs(
         const lEpKey = (enriched && enriched.epicKey) || '';
         const lEpName = (lEpKey && epicNameByKey[lEpKey]) || (enriched && enriched.epicName) || '';
 
+        const itemStatus = (enriched && enriched.status) || (target.fields && target.fields.status && target.fields.status.name) || 'Открыто';
+        // Исключаем отменённые (Canceled) задачи из всех списков связей
+        if (isCanceledStatus(itemStatus)) return;
+
         const item = {
           id: lnk.id ? String(lnk.id) : 'lnk-' + iss.key + '-' + idx,
           jiraLinkId: lnk.id ? String(lnk.id) : null,
           key: target.key,
           summary: (enriched && enriched.summary) || (target.fields && target.fields.summary) || target.key,
-          status: (enriched && enriched.status) || (target.fields && target.fields.status && target.fields.status.name) || 'Открыто',
+          status: itemStatus,
+          issueTypeName: (enriched && enriched.issueTypeName) || (target.fields && target.fields.issuetype && target.fields.issuetype.name) || 'Задача',
           priority: (enriched && enriched.priority) || 'Medium',
           component: realLinkComp,
           sprint: realLinkSprint,
@@ -3702,8 +3952,11 @@ export function generateContentScriptJs(
       });
 
       const rawDesc = typeof f.description === 'string' ? f.description : '';
-      const issueTypeName = (f.issuetype && f.issuetype.name) || '';
+      const issueTypeName = (f.issuetype && f.issuetype.name) || 'Задача';
       const issueTypeId = (f.issuetype && f.issuetype.id) || '';
+      if (issueTypeName && issueTypeId) {
+        issueTypeIdByName[issueTypeName] = String(issueTypeId);
+      }
 
       return {
         key: iss.key,
@@ -3729,13 +3982,14 @@ export function generateContentScriptJs(
           department: 'FCRM'
         },
         createdAt: formatDate(f.created),
+        createdTimestamp: f.created ? new Date(f.created).getTime() : 0,
         sprint: taskSprint,
         status: (f.status && f.status.name) || 'Открыто',
         priority: (f.priority && f.priority.name) || 'Medium',
         projectTaskLinks: ptLinks,
         inProjectLinks: ipLinks
       };
-    });
+    }).filter((t) => !isCanceledStatus(t.status));
   }
 
   /**
@@ -4029,6 +4283,8 @@ export function generateContentScriptJs(
                   summary: f.summary ? String(f.summary) : t.summary,
                   description: typeof f.description === 'string' ? f.description : t.description || '',
                   status: (f.status && f.status.name) || t.status,
+                  issueTypeName: (f.issuetype && f.issuetype.name) || t.issueTypeName || 'Задача',
+                  issueTypeId: (f.issuetype && f.issuetype.id) || t.issueTypeId || '',
                   priority: (f.priority && f.priority.name) || t.priority,
                   component: compName,
                   sprint: quickSprint || t.sprint,
@@ -4044,7 +4300,7 @@ export function generateContentScriptJs(
                       : t.customer
                 });
               })
-            );
+            ).filter((t) => !isCanceledStatus(t.status));
           }
         }
       } catch (e) {}
@@ -4258,7 +4514,7 @@ export function generateContentScriptJs(
   }
 
   /**
-   * Возвращает список спринтов нашей доски FCRM (#9349), ВКЛЮЧАЯ Активные, Будущие И Прошедшие (Закрытые) спринты.
+   * Возвращает список спринтов нашей доски FCRM (#9349), ВКЛЮЧАЯ Активные, Будущие И Прошедшие (Закрытые) спринты (для отображения групп на доске).
    */
   function getAllSprintOptions() {
     const ownedSprints = Array.from(boardOwnedSprintNames).filter(Boolean);
@@ -4275,6 +4531,38 @@ export function generateContentScriptJs(
       dummyGroups[s] = true;
     });
     return getSortedSprintNames(dummyGroups);
+  }
+
+  /**
+   * Проверяет, доступен ли спринт для выбора при изменении спринта задачи (ТОЛЬКО Активные, Будущие и Бэклог / Не в спринте).
+   */
+  function isEditableSprintOption(sprintName) {
+    if (!sprintName) return false;
+    const clean = String(sprintName).trim();
+    if (!clean) return false;
+    const code = getSprintStateCode(clean);
+    return code === 'ACTIVE' || code === 'FUTURE' || code === 'BACKLOG';
+  }
+
+  /**
+   * Возвращает ТОЛЬКО Активные и Будущие спринты (+ Бэклог FCRM) для всех селекторов смены спринта.
+   */
+  function getEditableSprintOptions() {
+    return getAllSprintOptions().filter((sp) => isEditableSprintOption(sp));
+  }
+
+  function buildSprintSelectOptionsHtml(editableList, currentSprintVal, optionPrefix) {
+    const pref = optionPrefix || '';
+    const cur = (currentSprintVal && String(currentSprintVal).trim()) || '';
+    const filtered = (Array.isArray(editableList) ? editableList : []).filter((sp) => isEditableSprintOption(sp));
+    let html = '';
+    if (cur && !filtered.includes(cur)) {
+      html += \`<option value="\${escapeHtml(cur)}" selected disabled hidden>\${escapeHtml(pref + formatSprintWithStateText(cur))}</option>\`;
+    }
+    html += filtered
+      .map((sp) => \`<option value="\${escapeHtml(sp)}" \${sp === cur ? 'selected' : ''}>\${escapeHtml(pref + formatSprintWithStateText(sp))}</option>\`)
+      .join('');
+    return html;
   }
 
   function getStatusOptionsForTask(task) {
@@ -4296,9 +4584,28 @@ export function generateContentScriptJs(
       return Array.from(new Set([task.status, ...schemeForType])).filter(Boolean);
     }
 
-    // 3. Базовый фоллбэк схемы FCRM (без чужих технических статусов других типов задач)
-    const fallbackScheme = ['Backlog', 'Ready for Planning', 'OnAnalysis', 'Waiting', 'OnDev', 'product/design review', 'User Testing', 'Готово', 'Canceled'];
-    return Array.from(new Set([task.status, ...fallbackScheme])).filter(Boolean);
+    // 3. Базовый фоллбэк схемы FCRM (без отменённых Canceled и без чужих технических статусов)
+    const fallbackScheme = ['Backlog', 'Ready for Planning', 'OnAnalysis', 'Waiting', 'OnDev', 'product/design review', 'User Testing', 'Готово'];
+    return Array.from(new Set([task.status, ...fallbackScheme])).filter((st) => st && !isCanceledStatus(st));
+  }
+
+  function getProjectIssueTypeOptions(task) {
+    const fromProjectApi = projectIssueTypesList.map((it) => it && it.name).filter(Boolean);
+    const fromBoardTasks = tasks
+      .filter((t) => t.key && t.key.startsWith(CONFIG.projectKey + '-'))
+      .map((t) => t.issueTypeName)
+      .filter(Boolean);
+    const set = new Set([
+      (task && task.issueTypeName) || 'Задача',
+      ...fromProjectApi,
+      ...fromBoardTasks,
+      'Задача',
+      'История',
+      'Эпик',
+      'Ошибка',
+      'Аналитика'
+    ]);
+    return Array.from(set).filter(Boolean);
   }
 
   function getPriorityOptionsForTask(task) {
@@ -4388,8 +4695,8 @@ export function generateContentScriptJs(
 
   function renderSingleTaskRowAndSubrows(task, allComponents, allSprints, allAssignees, epicMap, epicKeys) {
     const isSelected = isSidebarOpen && task.key === selectedTaskKey;
-    const ptList = task.projectTaskLinks || [];
-    const ipList = task.inProjectLinks || [];
+    const ptList = (task.projectTaskLinks || []).filter((l) => !isCanceledStatus(l.status));
+    const ipList = (task.inProjectLinks || []).filter((l) => !isCanceledStatus(l.status));
     const totalLinks = ptList.length + ipList.length;
     const isSubExpanded = Boolean(expandedSubRows[task.key]);
     const hasNoProjectTask = ptList.length === 0;
@@ -4399,9 +4706,7 @@ export function generateContentScriptJs(
     const statusList = getStatusOptionsForTask(task);
     const statusCat = getStatusCategoryClass(task.status);
 
-    const sprintOptions = allSprints
-      .map((sp) => \`<option value="\${escapeHtml(sp)}" \${sp === task.sprint ? 'selected' : ''}>\${escapeHtml(formatSprintWithStateText(sp))}</option>\`)
-      .join('');
+    const sprintOptions = buildSprintSelectOptionsHtml(allSprints, task.sprint, '');
 
     const cleanEpicTitle =
       (task.epicKey && epicNameByKey[task.epicKey]) ||
@@ -4692,6 +4997,7 @@ export function generateContentScriptJs(
                 : '<span style="display:inline-block;width:16px;min-width:16px;flex-shrink:0;"></span>'
             }
             <span title="Приоритет: \${escapeHtml(task.priority || 'Medium')}" style="display:inline-flex;align-items:center;justify-content:center;width:15px;min-width:15px;flex-shrink:0;">\${getJiraPriorityIconSvg(task.priority)}</span>
+            \${getIssueTypeBadgeHtml(task.issueTypeName || 'Задача', true)}
             <a href="/browse/\${escapeHtml(task.key)}" target="_blank" class="ozon-ext-inner-ctrl ozon-mono" onclick="event.stopPropagation();" style="color:#005BFF;font-weight:700;font-size:11px;text-decoration:none;flex-shrink:0;">\${escapeHtml(task.key)}</a>
             \${hasNoProjectTask ? getMissingProjectTaskWarnSvg() : ''}
             \${hasNoAssignee ? getMissingAssigneeWarnSvg() : ''}
@@ -4760,6 +5066,7 @@ export function generateContentScriptJs(
                 <span class="ozon-mono" style="color:#94A3B8;font-weight:700;">↳</span>
                 \${getLinkTypeTagHtml(isPt)}
                 <span title="Приоритет: \${escapeHtml(l.priority || 'Medium')}" style="display:inline-flex;align-items:center;flex-shrink:0;">\${getJiraPriorityIconSvg(l.priority || 'Medium')}</span>
+                \${getIssueTypeBadgeHtml(l.issueTypeName || 'Задача', true)}
                 <a href="/browse/\${escapeHtml(l.key)}" target="_blank" class="ozon-mono" style="color:#005BFF;font-weight:700;font-size:11px;text-decoration:none;flex-shrink:0;">\${escapeHtml(l.key)}</a>
                 <span style="color:#071026;font-weight:500;overflow:hidden;text-overflow:ellipsis;" title="\${escapeHtml(l.summary)}">\${escapeHtml(l.summary)}</span>
               </div>
@@ -4816,7 +5123,7 @@ export function generateContentScriptJs(
     }
 
     const groups = {};
-    const hasActiveTaskFilters = Boolean(searchQuery.trim()) || filterComponent !== 'all' || filterEpic !== 'all' || filterStatus !== 'all';
+    const hasActiveTaskFilters = Boolean(searchQuery.trim()) || filterComponent !== 'all' || filterEpic !== 'all' || filterStatus !== 'all' || hideEpicTasks;
 
     // Инициализируем все родные спринты доски (включая Прошедшие/Закрытые), чтобы они всегда отображались в списке
     if (!hasActiveTaskFilters) {
@@ -4847,7 +5154,7 @@ export function generateContentScriptJs(
     });
 
     const allComponents = getAllComponentOptions();
-    const allSprints = getAllSprintOptions();
+    const allSprints = getEditableSprintOptions();
     const allAssignees = getAllAssigneeOptions();
     const epicMap = getAllEpicOptions();
     const epicKeys = Object.keys(epicMap);
@@ -4855,7 +5162,7 @@ export function generateContentScriptJs(
     let rowsHtml = '';
 
     sortedSprints.forEach((sprintName) => {
-      const groupItems = groups[sprintName] || [];
+      const groupItems = sortTasksList(groups[sprintName] || []);
       // По умолчанию спринты СВЁРНУТЫ (разворачиваются по клику или при активном поиске)
       const isExpanded = Boolean(expandedSprints[sprintName]) || Boolean(searchQuery.trim());
       const collapsed = !isExpanded;
@@ -4910,7 +5217,7 @@ export function generateContentScriptJs(
           });
 
           sortedCompNames.forEach((compName) => {
-            const compItems = compGroups[compName];
+            const compItems = sortTasksList(compGroups[compName]);
             const compKey = sprintName + '::' + compName;
             // По умолчанию компоненты внутри спринта тоже СВЁРНУТЫ (или развёрнуты при активном поиске)
             const isCompExpanded = Boolean(expandedComponents[compKey]) || Boolean(searchQuery.trim());
@@ -5055,9 +5362,11 @@ export function generateContentScriptJs(
 
     const taskProjKey = getIssueProjectKey(task.key);
     const taskProjComponents = getComponentsForProject(taskProjKey);
-    const allSprints = getAllSprintOptions();
+    const editableSprints = getEditableSprintOptions();
     const statusList = getStatusOptionsForTask(task);
     const priorityList = getPriorityOptionsForTask(task);
+    const issueTypeList = getProjectIssueTypeOptions(task);
+    const currentIssueType = task.issueTypeName || 'Задача';
     const taskTransitions = issueTransitionsByKey[task.key] || [];
     const epicMap = getAllEpicOptions();
     const statusCat = getStatusCategoryClass(task.status);
@@ -5077,6 +5386,10 @@ export function generateContentScriptJs(
       .map((pr) => \`<option value="\${escapeHtml(pr)}" \${pr === task.priority ? 'selected' : ''}>\${escapeHtml(pr)}</option>\`)
       .join('');
 
+    const issueTypeOptions = issueTypeList
+      .map((itName) => \`<option value="\${escapeHtml(itName)}" \${itName === currentIssueType ? 'selected' : ''}>\${escapeHtml(itName)}</option>\`)
+      .join('');
+
     const transitionsChipsHtml =
       taskTransitions.length > 0
         ? \`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">
@@ -5091,15 +5404,16 @@ export function generateContentScriptJs(
            </div>\`
         : '';
 
-    const sprintOptions = allSprints
-      .map((sp) => \`<option value="\${escapeHtml(sp)}" \${sp === task.sprint ? 'selected' : ''}>\${escapeHtml(formatSprintWithStateText(sp))}</option>\`)
-      .join('');
+    const sprintOptions = buildSprintSelectOptionsHtml(editableSprints, task.sprint, '');
 
     const isInBacklog = !task.sprint || task.sprint.toLowerCase().includes('бэклог') || task.sprint.toLowerCase().includes('backlog');
     const sprintQuickChipsHtml = \`
       <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">
-        \${allSprints
-          .filter((sp) => !sp.toLowerCase().includes('бэклог') && !sp.toLowerCase().includes('backlog'))
+        \${editableSprints
+          .filter((sp) => {
+            const code = getSprintStateCode(sp);
+            return code === 'ACTIVE' || code === 'FUTURE';
+          })
           .map((sp) => {
             const isCurr = sp === task.sprint;
             return \`<button type="button" class="ozon-ext-btn \${isCurr ? '' : 'ozon-ext-btn-surface'}" data-action="quick-sprint-chip" data-sprint="\${escapeHtml(sp)}" style="padding:2px 7px;height:21px;font-size:10px;\${isCurr ? 'border:1px solid #005BFF;' : ''}">\${isCurr ? '✓ ' : ''}\${escapeHtml(formatSprintWithStateText(sp))}</button>\`;
@@ -5131,10 +5445,12 @@ export function generateContentScriptJs(
     const filteredSbComps = taskProjComponents.filter((c) => !sbCompQ || c.toLowerCase().includes(sbCompQ));
 
     const umbQ = umbSearchQuery.trim().toLowerCase();
-    const filteredUmb = umbCatalog.filter((u) => {
-      if (!umbQ) return true;
-      return u.key.toLowerCase().includes(umbQ) || u.summary.toLowerCase().includes(umbQ);
-    });
+    const filteredUmb = umbCatalog
+      .filter((u) => !isCanceledStatus(u.status))
+      .filter((u) => {
+        if (!umbQ) return true;
+        return u.key.toLowerCase().includes(umbQ) || u.summary.toLowerCase().includes(umbQ);
+      });
 
     const isDescCollapsed = Boolean(collapsedSidebarSections['desc']);
     const isParamsCollapsed = Boolean(collapsedSidebarSections['params']);
@@ -5152,9 +5468,13 @@ export function generateContentScriptJs(
     const descLinesCount = Math.max(4, Math.min(22, (task.description || '').split('\\n').length + 1));
     const sbComboItemStyle = 'padding:5px 8px;margin-bottom:2px;border-radius:6px;line-height:1.35;min-height:24px;display:flex;align-items:center;gap:6px;cursor:pointer;';
 
+    const visiblePtLinks = (task.projectTaskLinks || []).filter((lnk) => !isCanceledStatus(lnk.status));
+    const visibleIpLinks = (task.inProjectLinks || []).filter((lnk) => !isCanceledStatus(lnk.status));
+
     // Группируем задачи «В проекте» по OB (Бэкенд), OBFRONT (Фронтенд), FTD (Дизайн), FCRM
     const ipGroupsMap = {};
     (task.inProjectLinks || []).forEach((lnk, originalIdx) => {
+      if (isCanceledStatus(lnk.status)) return;
       const meta = getLinkedProjectGroupMeta(lnk.key, false);
       if (!ipGroupsMap[meta.id]) {
         ipGroupsMap[meta.id] = { meta: meta, items: [] };
@@ -5171,6 +5491,7 @@ export function generateContentScriptJs(
             <a href="/browse/\${escapeHtml(task.key)}" target="_blank" class="ozon-mono" style="color:#005BFF;font-weight:700;font-size:13px;text-decoration:none;flex-shrink:0;">
               \${escapeHtml(task.key)} ↗
             </a>
+            \${getIssueTypeBadgeHtml(currentIssueType, true)}
             <select id="ozon-sb-header-status" class="ozon-ext-status-select status-\${statusCat}" style="width:auto !important;max-width:170px !important;padding:0 16px 0 8px !important;height:22px !important;">
               \${statusOptions}
             </select>
@@ -5256,6 +5577,15 @@ export function generateContentScriptJs(
             \${
               !isParamsCollapsed
                 ? \`<div style="padding:10px 12px;" class="ozon-ext-field-grid">
+                    <!-- Тип задачи (доступный в проекте FCRM) -->
+                    <div class="ozon-ext-field-label">Тип задачи</div>
+                    <div style="display:flex;align-items:center;gap:7px;">
+                      <span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;background:#F8FAFC;border:1px solid #E2E8F0;flex-shrink:0;">
+                        \${getJiraIssueTypeIconSvg(currentIssueType)}
+                      </span>
+                      <select id="ozon-sb-issuetype" style="flex:1;">\${issueTypeOptions}</select>
+                    </div>
+
                     <!-- Статус (только статусы из схемы воркфлоу задачи) -->
                     <div class="ozon-ext-field-label">Статус</div>
                     <div>
@@ -5399,8 +5729,8 @@ export function generateContentScriptJs(
             <div class="ozon-ext-section-head \${isPtCollapsed ? 'collapsed' : ''}" data-action="toggle-sb-section" data-sec="pt">
               <div style="display:flex;align-items:center;gap:6px;">
                 <span style="color:#005BFF;font-size:10px;">\${isPtCollapsed ? '▶' : '▼'}</span>
-                <span>Связи: «Задача проекта» (\${task.projectTaskLinks.length})</span>
-                \${task.projectTaskLinks.length === 0 ? getMissingProjectTaskWarnSvg() : ''}
+                <span>Связи: «Задача проекта» (\${visiblePtLinks.length})</span>
+                \${visiblePtLinks.length === 0 ? getMissingProjectTaskWarnSvg() : ''}
                 \${isLinksBlockLoading ? miniBlockSpinnerHtml : ''}
               </div>
               <a href="/issues/?jql=labels%20%3D%20fcrm_umb_epic" target="_blank" class="ozon-mono" onclick="event.stopPropagation();" style="color:#005BFF;font-size:10.5px;text-decoration:none;">
@@ -5411,8 +5741,8 @@ export function generateContentScriptJs(
               !isPtCollapsed
                 ? \`<div>
                     \${
-                      task.projectTaskLinks.length > 0
-                        ? task.projectTaskLinks
+                      visiblePtLinks.length > 0
+                        ? visiblePtLinks
                             .map((lnk, ptIdx) => {
                               const gMeta = getLinkedProjectGroupMeta(lnk.key, true);
                               return \`
@@ -5422,6 +5752,7 @@ export function generateContentScriptJs(
                                       <span class="ozon-mono" style="color:#94A3B8;font-weight:700;font-size:11px;">↳</span>
                                       <span class="ozon-ext-link-icon-box" style="background:\${gMeta.bg};color:\${gMeta.color};">\${gMeta.iconSvg}</span>
                                       <span style="display:inline-flex;align-items:center;flex-shrink:0;">\${getJiraPriorityIconSvg(lnk.priority || 'Medium')}</span>
+                                      \${getIssueTypeBadgeHtml(lnk.issueTypeName || 'Задача', true)}
                                       <a href="/browse/\${escapeHtml(lnk.key)}" target="_blank" class="ozon-mono" style="color:#005BFF;font-weight:700;font-size:11px;text-decoration:none;flex-shrink:0;">\${escapeHtml(lnk.key)}</a>
                                       <span style="font-weight:600;color:#071026;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="\${escapeHtml(lnk.summary)}">\${escapeHtml(lnk.summary)}</span>
                                     </div>
@@ -5445,7 +5776,7 @@ export function generateContentScriptJs(
                       <div class="ozon-ext-link-group-header" data-action="toggle-sb-section" data-sec="pt_quick">
                         <div style="display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:700;color:#334155;">
                           <span style="color:#005BFF;font-size:9.5px;">\${isPtQuickCollapsed ? '▶' : '▼'}</span>
-                          <span>Быстрый фильтр из <code class="ozon-mono">labels = fcrm_umb_epic</code> (\${umbCatalog.length})</span>
+                          <span>Быстрый фильтр из <code class="ozon-mono">labels = fcrm_umb_epic</code> (\${filteredUmb.length})</span>
                         </div>
                         <span style="font-size:10px;color:#64748B;">\${isPtQuickCollapsed ? 'Развернуть' : 'Свернуть'}</span>
                       </div>
@@ -5456,7 +5787,7 @@ export function generateContentScriptJs(
                                <div style="max-height:135px;overflow-y:auto;background:#FFFFFF;border:1px solid #CBD5E1;border-radius:7px;">
                                  \${filteredUmb
                                    .map((u) => {
-                                     const alreadyLinked = task.projectTaskLinks.some((l) => l.key === u.key);
+                                     const alreadyLinked = visiblePtLinks.some((l) => l.key === u.key);
                                      return \`
                                        <div style="padding:4px 8px;border-bottom:1px solid #EEF2F6;display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:11px;">
                                          <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
@@ -5485,7 +5816,7 @@ export function generateContentScriptJs(
             <div class="ozon-ext-section-head \${isIpCollapsed ? 'collapsed' : ''}" data-action="toggle-sb-section" data-sec="ip">
               <div style="display:flex;align-items:center;gap:6px;">
                 <span style="color:#005BFF;font-size:10px;">\${isIpCollapsed ? '▶' : '▼'}</span>
-                <span>Связи: «В проекте» (\${task.inProjectLinks.length})</span>
+                <span>Связи: «В проекте» (\${visibleIpLinks.length})</span>
                 \${isLinksBlockLoading || isIpMetaBlockLoading ? miniBlockSpinnerHtml : ''}
               </div>
               <span style="font-size:10px;color:#64748B;">\${isLinksBlockLoading ? 'Обновление связей...' : isIpMetaBlockLoading ? 'Догрузка спринтов/компонентов...' : 'OB (Бэкенд) · OBFRONT (Фронтенд) · FTD (Дизайн)'}</span>
@@ -5532,6 +5863,7 @@ export function generateContentScriptJs(
                                                   <span class="ozon-mono" style="color:#94A3B8;font-weight:700;font-size:11px;flex-shrink:0;">↳</span>
                                                   <span class="ozon-ext-link-icon-box" style="background:\${grp.meta.bg};color:\${grp.meta.color};">\${grp.meta.iconSvg}</span>
                                                   <span style="display:inline-flex;align-items:center;flex-shrink:0;" title="Приоритет: \${escapeHtml(lnk.priority || 'Medium')}">\${getJiraPriorityIconSvg(lnk.priority || 'Medium')}</span>
+                                                  \${getIssueTypeBadgeHtml(lnk.issueTypeName || 'Задача', true)}
                                                   <a href="/browse/\${escapeHtml(lnk.key)}" target="_blank" class="ozon-mono" style="color:#005BFF;font-weight:700;font-size:11px;text-decoration:none;flex-shrink:0;">\${escapeHtml(lnk.key)}</a>
                                                   <span style="font-weight:600;color:#071026;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="\${escapeHtml(lnk.summary)}">\${escapeHtml(lnk.summary)}</span>
                                                   \${
@@ -5578,7 +5910,7 @@ export function generateContentScriptJs(
                                                   }
                                                 </div>
                                                 <select data-action="change-ip-sprint" data-link-idx="\${lIdx}" data-link-key="\${escapeHtml(lnk.key)}" style="height:22px !important;padding:1px 18px 1px 6px !important;font-size:10.5px !important;">
-                                                  \${linkSprintOptionList.map((sp) => \`<option value="\${escapeHtml(sp)}" \${sp === realSprintVal ? 'selected' : ''}>Спринт: \${escapeHtml(formatSprintWithStateText(sp))}</option>\`).join('')}
+                                                  \${buildSprintSelectOptionsHtml(linkSprintOptionList, realSprintVal, 'Спринт: ')}
                                                 </select>
                                               </div>
                                             </div>
@@ -5614,6 +5946,8 @@ export function generateContentScriptJs(
   function getFilteredTasks() {
     const q = searchQuery.trim().toLowerCase();
     return tasks.filter((t) => {
+      if (isCanceledStatus(t.status)) return false;
+      if (hideEpicTasks && isEpicIssueType(t.issueTypeName)) return false;
       if (filterComponent !== 'all' && t.component !== filterComponent) return false;
       if (filterEpic !== 'all' && t.epicKey !== filterEpic) return false;
       if (filterStatus !== 'all' && t.status !== filterStatus) return false;
@@ -5622,6 +5956,7 @@ export function generateContentScriptJs(
         t.key.toLowerCase().includes(q) ||
         t.summary.toLowerCase().includes(q) ||
         t.component.toLowerCase().includes(q) ||
+        (t.issueTypeName && t.issueTypeName.toLowerCase().includes(q)) ||
         (t.epicKey && t.epicKey.toLowerCase().includes(q)) ||
         (t.epicName && t.epicName.toLowerCase().includes(q)) ||
         (t.assignee && t.assignee.name.toLowerCase().includes(q)) ||
@@ -5703,7 +6038,7 @@ export function generateContentScriptJs(
     const allComponents = getAllComponentOptions();
     const epicMap = getAllEpicOptions();
     const epicKeys = Object.keys(epicMap);
-    const allStatuses = Array.from(new Set([...projectStatusesList, ...tasks.map((t) => t.status).filter(Boolean)]));
+    const allStatuses = Array.from(new Set([...projectStatusesList, ...tasks.map((t) => t.status).filter(Boolean)])).filter((s) => !isCanceledStatus(s));
 
     const activeElId = document.activeElement ? document.activeElement.id : null;
     const selStart = document.activeElement && 'selectionStart' in document.activeElement ? document.activeElement.selectionStart : null;
@@ -5738,7 +6073,7 @@ export function generateContentScriptJs(
       <div class="ozon-ext-header-bar">
         <div style="display:flex;align-items:center;gap:20px;">
           <strong style="font-size:13.5px;font-weight:700;color:#071026;font-family:var(--ozon-font-display);letter-spacing:-0.01em;">Ozon Bank · FCRM Structure</strong>
-          <a href="#all-sprints" id="ozon-ext-show-all-sprints" style="color:#005BFF;font-size:12px;font-weight:600;text-decoration:none;">Все спринты (\${tasks.length})</a>
+          <a href="#all-sprints" id="ozon-ext-show-all-sprints" style="color:#005BFF;font-size:12px;font-weight:600;text-decoration:none;">Все спринты (\${tasks.filter((t) => !isCanceledStatus(t.status)).length})</a>
           <span style="font-size:11px;color:#64748B;display:inline-flex;align-items:center;gap:4px;" title="Красная скрепка отмечает задачи без привязанной «Задачи проекта»">
             \${getMissingProjectTaskWarnSvg()} <span>— нет «Задачи проекта»</span>
           </span>
@@ -5759,8 +6094,8 @@ export function generateContentScriptJs(
             <span style="color:#005BFF;">⇅</span> Развернуть / Свернуть все
           </button>
 
-          <div style="position:relative;width:255px;">
-            <input id="ozon-ext-search" type="text" value="\${escapeHtml(searchQuery)}" placeholder="Поиск по ключу, задаче, Заказчик/Owner, связям..." style="width:100%;height:26px;padding-left:10px;" />
+          <div style="position:relative;width:240px;">
+            <input id="ozon-ext-search" type="text" value="\${escapeHtml(searchQuery)}" placeholder="Поиск по ключу, задаче, типу, Заказчик/Owner..." style="width:100%;height:26px;padding-left:10px;" />
           </div>
 
           <select id="ozon-ext-filter-comp" class="ozon-ext-filter-select">
@@ -5787,8 +6122,20 @@ export function generateContentScriptJs(
             <option value="BACKLOG" \${filterSprintState === 'BACKLOG' ? 'selected' : ''}>Спринты: Только Бэклог</option>
           </select>
 
+          <button type="button" class="ozon-ext-btn \${hideEpicTasks ? '' : 'ozon-ext-btn-surface'}" id="ozon-ext-toggle-hide-epics" title="Скрыть или показать задачи с типом Эпик (Epic)">
+            \${hideEpicTasks ? '✓ Скрыты задачи с типом Эпик' : 'Скрыть задачи с типом Эпик'}
+          </button>
+
+          <select id="ozon-ext-sort-by" class="ozon-ext-filter-select" title="Сортировка задач в списке по приоритету или дате создания">
+            <option value="default" \${sortByField === 'default' ? 'selected' : ''}>Сортировка: По умолчанию</option>
+            <option value="priority_desc" \${sortByField === 'priority_desc' ? 'selected' : ''}>Сортировка: Приоритет (сначала высокий)</option>
+            <option value="priority_asc" \${sortByField === 'priority_asc' ? 'selected' : ''}>Сортировка: Приоритет (сначала низкий)</option>
+            <option value="created_desc" \${sortByField === 'created_desc' ? 'selected' : ''}>Сортировка: Дата создания (сначала новые)</option>
+            <option value="created_asc" \${sortByField === 'created_asc' ? 'selected' : ''}>Сортировка: Дата создания (сначала старые)</option>
+          </select>
+
           \${
-            searchQuery || filterComponent !== 'all' || filterEpic !== 'all' || filterStatus !== 'all' || filterSprintState !== 'all'
+            searchQuery || filterComponent !== 'all' || filterEpic !== 'all' || filterStatus !== 'all' || filterSprintState !== 'all' || hideEpicTasks || sortByField !== 'default'
               ? '<button type="button" class="ozon-ext-btn ozon-ext-btn-negative" id="ozon-ext-reset-filters">Сбросить</button>'
               : ''
           }
@@ -5950,6 +6297,8 @@ export function generateContentScriptJs(
         filterEpic = 'all';
         filterStatus = 'all';
         filterSprintState = 'all';
+        hideEpicTasks = false;
+        sortByField = 'default';
         renderStructure();
       });
     }
@@ -6008,6 +6357,22 @@ export function generateContentScriptJs(
       });
     }
 
+    const toggleHideEpicsBtn = document.getElementById('ozon-ext-toggle-hide-epics');
+    if (toggleHideEpicsBtn) {
+      toggleHideEpicsBtn.addEventListener('click', () => {
+        hideEpicTasks = !hideEpicTasks;
+        renderStructure();
+      });
+    }
+
+    const sortByEl = document.getElementById('ozon-ext-sort-by');
+    if (sortByEl) {
+      sortByEl.addEventListener('change', (e) => {
+        sortByField = e.target.value;
+        renderStructure();
+      });
+    }
+
     const resetFiltersBtn = document.getElementById('ozon-ext-reset-filters');
     if (resetFiltersBtn) {
       resetFiltersBtn.addEventListener('click', () => {
@@ -6016,6 +6381,8 @@ export function generateContentScriptJs(
         filterEpic = 'all';
         filterStatus = 'all';
         filterSprintState = 'all';
+        hideEpicTasks = false;
+        sortByField = 'default';
         renderStructure();
       });
     }
@@ -6762,6 +7129,20 @@ export function generateContentScriptJs(
       statusSelect.addEventListener('change', () => handleStatusSelectChange(statusSelect));
     }
 
+    const issueTypeSelect = document.getElementById('ozon-sb-issuetype');
+    if (issueTypeSelect) {
+      issueTypeSelect.addEventListener('change', (e) => {
+        const newIssueType = e.target.value;
+        const matchedTypeId = issueTypeIdByName[newIssueType] || issueTypeIdByName[String(newIssueType).toLowerCase()] || '';
+        updateCurrentTask({
+          issueTypeName: newIssueType,
+          issueTypeId: matchedTypeId
+        });
+        updateIssueTypeInJira(selectedTaskKey, newIssueType);
+        renderStructure();
+      });
+    }
+
     const prioSelect = document.getElementById('ozon-sb-priority');
     if (prioSelect) {
       prioSelect.addEventListener('change', (e) => {
@@ -7207,9 +7588,7 @@ export function generateContentScriptJs(
         await loadSprintsForLinkedIssue(lnk);
         const opts = getSprintsForLinkedIssue(lnk);
         const realSpVal = (lnk.sprint && String(lnk.sprint).trim()) || 'Не в спринте';
-        sel.innerHTML = opts
-          .map((sp) => \`<option value="\${escapeHtml(sp)}" \${sp === realSpVal ? 'selected' : ''}>Спринт: \${escapeHtml(formatSprintWithStateText(sp))}</option>\`)
-          .join('');
+        sel.innerHTML = buildSprintSelectOptionsHtml(opts, realSpVal, 'Спринт: ');
       });
       sel.addEventListener('change', (e) => {
         const idx = Number(sel.getAttribute('data-link-idx'));

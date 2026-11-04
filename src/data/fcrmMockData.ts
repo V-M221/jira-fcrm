@@ -110,6 +110,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
   {
     key: 'FCRM-4890',
     summary: 'Единое окно верификации бенефициаров ЮЛ при открытии расчётного счёта',
+    issueType: 'История',
     epicKey: 'FCRM-4100',
     epicName: 'Единый кредитный конвейер B2B',
     component: 'KYC-Verify',
@@ -121,7 +122,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
     status: 'in_progress',
     priority: 'Критический',
     projectTaskLinks: [
-      { id: 'pt-101', key: 'PROJ-1210', summary: 'Цифровой онбординг РКО за 5 минут', status: 'В работе' },
+      { id: 'pt-101', key: 'PROJ-1210', summary: 'Цифровой онбординг РКО за 5 минут', status: 'В работе', issueType: 'Эпик' },
     ],
     inProjectLinks: [
       {
@@ -129,6 +130,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
         key: 'FCRM-4891',
         summary: 'Интеграция сервиса распознавания уставов и ЕГРЮЛ',
         status: 'В работе',
+        issueType: 'Задача',
         component: 'KYC-OCR-Service',
         sprint: 'FCRM Sprint 43 (11.11 – 25.11)',
       },
@@ -137,6 +139,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
         key: 'FCRM-4893',
         summary: 'Чек-лист комплаенса в карточке лида FCRM',
         status: 'Открыто',
+        issueType: 'Задача',
         component: 'CRM-Frontend',
         sprint: 'FCRM Sprint 43 (11.11 – 25.11)',
       },
@@ -145,6 +148,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
   {
     key: 'FCRM-4888',
     summary: 'Пакетное изменение лимитов корпоративных карт в профиле холдинга',
+    issueType: 'Задача',
     epicKey: 'FCRM-4120',
     epicName: 'Зарплатный проект и ЭДО Ozon Банк',
     component: 'Corp-Cards',
@@ -156,7 +160,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
     status: 'todo',
     priority: 'Высокий',
     projectTaskLinks: [
-      { id: 'pt-102', key: 'PROJ-1120', summary: 'Корпоративные карты Ozon Business Pro', status: 'В работе' },
+      { id: 'pt-102', key: 'PROJ-1120', summary: 'Корпоративные карты Ozon Business Pro', status: 'В работе', issueType: 'Эпик' },
     ],
     inProjectLinks: [
       {
@@ -164,6 +168,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
         key: 'FCRM-4889',
         summary: 'Асинхронная очередь применения лимитов в процессинге',
         status: 'Открыто',
+        issueType: 'Задача',
         component: 'Card-Processing-GW',
         sprint: 'FCRM Sprint 43 (11.11 – 25.11)',
       },
@@ -172,6 +177,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
   {
     key: 'FCRM-4885',
     summary: 'Дашборд просроченной задолженности селлеров с разбивкой по когортам DPD',
+    issueType: 'Аналитика',
     epicKey: 'FCRM-4100',
     epicName: 'Единый кредитный конвейер B2B',
     component: 'Core-Scoring',
@@ -183,8 +189,8 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
     status: 'review',
     priority: 'Высокий',
     projectTaskLinks: [
-      { id: 'pt-103', key: 'PROJ-1042', summary: 'Запуск экспресс-овердрафта для селлеров Ozon до 30 млн ₽', status: 'В работе' },
-      { id: 'pt-104', key: 'PROJ-1195', summary: 'Раннее предупреждение дефолтов МСБ (Early Warning)', status: 'Открыто' },
+      { id: 'pt-103', key: 'PROJ-1042', summary: 'Запуск экспресс-овердрафта для селлеров Ozon до 30 млн ₽', status: 'В работе', issueType: 'Эпик' },
+      { id: 'pt-104', key: 'PROJ-1195', summary: 'Раннее предупреждение дефолтов МСБ (Early Warning)', status: 'Открыто', issueType: 'Эпик' },
     ],
     inProjectLinks: [
       {
@@ -192,6 +198,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
         key: 'FCRM-4886',
         summary: 'Витрина ClickHouse для расчёта DPD 1+, 7+, 30+',
         status: 'Готово',
+        issueType: 'Задача',
         component: 'DWH-ClickHouse',
         sprint: 'FCRM Sprint 42 (28.10 – 11.11)',
       },
@@ -200,6 +207,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
         key: 'RISK-402',
         summary: 'Калибровка порогов стоп-факторов скоринга',
         status: 'Ревью',
+        issueType: 'Аналитика',
         component: 'Core-Scoring',
         sprint: 'FCRM Sprint 43 (11.11 – 25.11)',
       },
@@ -208,6 +216,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
   {
     key: 'FCRM-4881',
     summary: 'Автоматическое формирование справки об открытых счетах с ЭЦП банка из окна тикета',
+    issueType: 'Задача',
     epicKey: 'FCRM-4055',
     epicName: 'Омниканальный контакт-центр Банка',
     component: 'CRM-DocGen',
@@ -219,7 +228,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
     status: 'in_progress',
     priority: 'Средний',
     projectTaskLinks: [
-      { id: 'pt-105', key: 'PROJ-980', summary: 'Премиальная линия поддержки Ozon Банк Бизнес', status: 'В работе' },
+      { id: 'pt-105', key: 'PROJ-980', summary: 'Премиальная линия поддержки Ozon Банк Бизнес', status: 'В работе', issueType: 'Эпик' },
     ],
     inProjectLinks: [
       {
@@ -227,6 +236,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
         key: 'FCRM-4882',
         summary: 'Шаблон PDF со штампом УКЭП Озон Банка',
         status: 'Готово',
+        issueType: 'Задача',
         component: 'Sign-Crypto-UI',
         sprint: 'FCRM Sprint 43 (11.11 – 25.11)',
       },
@@ -235,6 +245,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
   {
     key: 'FCRM-4879',
     summary: 'Уведомление комплаенс-офицера при совпадении реквизитов контрагента с перечнем Росфинмониторинга',
+    issueType: 'Ошибка',
     epicKey: 'FCRM-3990',
     epicName: 'Антифрод и Финмониторинг FCRM',
     component: 'AntiFraud-UI',
@@ -246,7 +257,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
     status: 'testing',
     priority: 'Критический',
     projectTaskLinks: [
-      { id: 'pt-106', key: 'PROJ-895', summary: 'Автоматизация реабилитации клиентов по 115-ФЗ', status: 'Тестирование' },
+      { id: 'pt-106', key: 'PROJ-895', summary: 'Автоматизация реабилитации клиентов по 115-ФЗ', status: 'Тестирование', issueType: 'Эпик' },
     ],
     inProjectLinks: [
       {
@@ -254,6 +265,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
         key: 'FCRM-4880',
         summary: 'Вебсокет-алерт блокировки проводки в реальном времени',
         status: 'Тестирование',
+        issueType: 'Задача',
         component: 'AntiFraud-UI',
         sprint: 'FCRM Sprint 43 (11.11 – 25.11)',
       },
@@ -262,6 +274,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
         key: 'SEC-3401',
         summary: 'Журналирование действий оператора комплаенса в SIEM',
         status: 'Готово',
+        issueType: 'Задача',
         component: 'Security-Audit',
         sprint: 'FCRM Sprint 42 (28.10 – 11.11)',
       },
@@ -270,6 +283,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
   {
     key: 'FCRM-4875',
     summary: 'Калькулятор индивидуальной ставки эквайринга с учётом оборота на маркетплейсе Ozon',
+    issueType: 'Эпик',
     epicKey: 'FCRM-4012',
     epicName: 'Торговый эквайринг и B2B СБП',
     component: 'Tariff-Engine',
@@ -281,7 +295,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
     status: 'todo',
     priority: 'Высокий',
     projectTaskLinks: [
-      { id: 'pt-107', key: 'PROJ-1005', summary: 'Снижение времени подключения B2B-эквайринга до 4 часов', status: 'В работе' },
+      { id: 'pt-107', key: 'PROJ-1005', summary: 'Снижение времени подключения B2B-эквайринга до 4 часов', status: 'В работе', issueType: 'Эпик' },
     ],
     inProjectLinks: [
       {
@@ -289,6 +303,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
         key: 'FCRM-4876',
         summary: 'Интеграция API аналитики оборота селлера seller-metrics-v2',
         status: 'Открыто',
+        issueType: 'Задача',
         component: 'API-Gateway',
         sprint: 'FCRM Sprint 43 (11.11 – 25.11)',
       },
@@ -658,6 +673,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
   {
     key: 'FCRM-4901',
     summary: 'Поддержка мультивалютных контрактов в юанях (CNY) и дирхамах (AED) в модуле ВЭД',
+    issueType: 'История',
     epicKey: 'FCRM-4150',
     epicName: 'Валютный контроль и ВЭД Контур',
     component: 'API-Gateway',
@@ -669,7 +685,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
     status: 'todo',
     priority: 'Средний',
     projectTaskLinks: [
-      { id: 'pt-113', key: 'PROJ-1155', summary: 'Цифровой ВЭД-ассистент для импортёров Ozon Global', status: 'Открыто' },
+      { id: 'pt-113', key: 'PROJ-1155', summary: 'Цифровой ВЭД-ассистент для импортёров Ozon Global', status: 'Открыто', issueType: 'Эпик' },
     ],
     inProjectLinks: [
       {
@@ -677,6 +693,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
         key: 'FCRM-4902',
         summary: 'Справочник кросс-курсов ЦБ для азиатских валют',
         status: 'Открыто',
+        issueType: 'Задача',
         component: 'FX-Rates-Core',
         sprint: 'Бэклог FCRM (Планирование Q4)',
       },
@@ -685,6 +702,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
   {
     key: 'FCRM-4904',
     summary: 'Реестр банковских гарантий 44-ФЗ / 223-ФЗ с контролем сроков действия в FCRM',
+    issueType: 'Эпик',
     epicKey: 'FCRM-4100',
     epicName: 'Единый кредитный конвейер B2B',
     component: 'Guarantees-Core',
@@ -696,7 +714,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
     status: 'todo',
     priority: 'Высокий',
     projectTaskLinks: [
-      { id: 'pt-114', key: 'PROJ-1230', summary: 'Цифровые банковские гарантии для госзакупок', status: 'Открыто' },
+      { id: 'pt-114', key: 'PROJ-1230', summary: 'Цифровые банковские гарантии для госзакупок', status: 'Открыто', issueType: 'Эпик' },
     ],
     inProjectLinks: [
       {
@@ -704,6 +722,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
         key: 'FCRM-4905',
         summary: 'Шлюз обмена с ЕИС Закупки',
         status: 'Открыто',
+        issueType: 'Задача',
         component: 'EIS-Adapter',
         sprint: 'Бэклог FCRM (Планирование Q4)',
       },
@@ -712,6 +731,7 @@ export const INITIAL_FCRM_TASKS: FcrmTask[] = [
         key: 'FCRM-4906',
         summary: 'Печатная форма проекта гарантии в FCRM',
         status: 'Открыто',
+        issueType: 'Задача',
         component: 'CRM-DocGen',
         sprint: 'Бэклог FCRM (Планирование Q4)',
       },

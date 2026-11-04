@@ -1,10 +1,13 @@
-export type IssueStatus = 'todo' | 'in_progress' | 'review' | 'testing' | 'done';
+export type IssueStatus = 'todo' | 'in_progress' | 'review' | 'testing' | 'done' | 'canceled';
+
+export type ProjectIssueType = 'Задача' | 'История' | 'Эпик' | 'Ошибка' | 'Аналитика';
 
 export interface LinkedIssueItem {
   id: string;
   key: string;
   summary: string;
-  status: 'Открыто' | 'В работе' | 'Ревью' | 'Тестирование' | 'Готово';
+  status: 'Открыто' | 'В работе' | 'Ревью' | 'Тестирование' | 'Готово' | 'Отменено';
+  issueType?: ProjectIssueType | string;
   component?: string;
   sprint?: string;
   url?: string;
@@ -14,6 +17,7 @@ export interface FcrmTask {
   key: string;
   summary: string; // 1. Название задачи
   description?: string; // Описание задачи
+  issueType?: ProjectIssueType | string; // Тип задачи в проекте
   epicKey: string;
   epicName: string; // 2. Эпик
   component: string; // 3. Компонент

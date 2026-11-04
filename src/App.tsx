@@ -28,6 +28,7 @@ import {
   ExtensionConfig,
   IssueStatus,
   LinkedIssueItem,
+  ProjectIssueType,
 } from './types/jira';
 import {
   INITIAL_FCRM_TASKS,
@@ -54,6 +55,89 @@ const DEFAULT_COMPONENT_OPTIONS = [
   'CRM-DocGen',
   'AntiFraud-UI',
 ];
+
+const PROJECT_ISSUE_TYPES: ProjectIssueType[] = [
+  'Задача',
+  'История',
+  'Эпик',
+  'Ошибка',
+  'Аналитика',
+];
+
+function isCanceledStatusValue(status?: string): boolean {
+  if (!status) return false;
+  const s = status.trim().toLowerCase();
+  return (
+    s === 'canceled' ||
+    s === 'cancelled' ||
+    s === 'отменено' ||
+    s === 'отменён' ||
+    s === 'отменена' ||
+    s === 'отклонено' ||
+    s.includes('cancel') ||
+    s.includes('отмен')
+  );
+}
+
+function isEpicIssueTypeValue(issueType?: string): boolean {
+  if (!issueType) return false;
+  const t = issueType.trim().toLowerCase();
+  return t === 'эпик' || t === 'epic' || t.includes('эпик') || t.includes('epic');
+}
+
+function getPriorityWeight(priority?: string): number {
+  const p = (priority || '').toLowerCase();
+  if (p.includes('критич') || p.includes('blocker') || p.includes('critical')) return 50;
+  if (p.includes('высок') || p.includes('high') || p.includes('major')) return 40;
+  if (p.includes('средн') || p.includes('стандарт') || p.includes('medium')) return 30;
+  if (p.includes('низк') || p.includes('low') || p.includes('minor')) return 20;
+  return 30;
+}
+
+function parseCreatedAtTimestamp(createdAt?: string): number {
+  if (!createdAt) return 0;
+  const m = createdAt.trim().match(/^(\d{2})\.(\d{2})\.(\d{4})(?:\s+(\d{2}):(\d{2}))?/);
+  if (m) {
+    return new Date(
+      Number(m[3]),
+      Number(m[2]) - 1,
+      Number(m[1]),
+      Number(m[4] || 0),
+      Number(m[5] || 0)
+    ).getTime();
+  }
+  const parsed = Date.parse(createdAt);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function renderIssueTypeBadge(issueType?: string) {
+  const label = issueType || 'Задача';
+  const low = label.toLowerCase();
+  let badgeStyle = 'bg-[#E5F0FF] text-[#005BFF] border-[#BFDBFE]';
+  let symbol = '✓';
+  if (low.includes('эпик') || low.includes('epic')) {
+    badgeStyle = 'bg-[#F3E8FF] text-[#7E22CE] border-[#E9D5FF]';
+    symbol = '⚡';
+  } else if (low.includes('истор') || low.includes('story')) {
+    badgeStyle = 'bg-[#DCFCE7] text-[#15803D] border-[#BBF7D0]';
+    symbol = '⚑';
+  } else if (low.includes('ошиб') || low.includes('баг') || low.includes('bug')) {
+    badgeStyle = 'bg-[#FEE2E2] text-[#DC2626] border-[#FECACA]';
+    symbol = '●';
+  } else if (low.includes('аналит')) {
+    badgeStyle = 'bg-[#FEF3C7] text-[#D97706] border-[#FDE68A]';
+    symbol = '◆';
+  }
+  return (
+    <span
+      title={`Тип задачи: ${label}`}
+      className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[4px] text-[10px] font-bold border shrink-0 leading-tight ${badgeStyle}`}
+    >
+      <span>{symbol}</span>
+      <span>{label}</span>
+    </span>
+  );
+}
 
 type ColumnId =
   | 'task'
@@ -144,13 +228,17 @@ export default function App() {
     };
   }, []);
 
-  // Filter controls
+  // Filter & Sort controls
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSprintFilter, setSelectedSprintFilter] = useState<string>('all');
   const [selectedComponent, setSelectedComponent] = useState<string>('all');
   const [selectedEpic, setSelectedEpic] = useState<string>('all');
   const [selectedCustomer, setSelectedCustomer] = useState<string>('all');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('all');
+  const [hideEpicTasks, setHideEpicTasks] = useState<boolean>(false);
+  const [sortBy, setSortBy] = useState<
+    'default' | 'priority_desc' | 'priority_asc' | 'created_desc' | 'created_asc'
+  >('default');
 
   // Structure Sprint Accordion collapse state & loading simulation per spec
   const [collapsedSprints, setCollapsedSprints] = useState<Record<string, boolean>>({});
@@ -256,11 +344,12 @@ export default function App() {
   const uniqueSprints = useMemo(
     () =>
       Array.from(
-        new Set(
-          tasks
+        new Set([
+          ...tasks
             .filter((t) => t.key.startsWith(`${config.projectKey}-`))
-            .map((t) => t.sprint)
-        )
+            .map((t) => t.sprint),
+          'FCRM Sprint 44 (25.11 – 09.12)',
+        ])
       ),
     [tasks, config.projectKey]
   );
@@ -281,6 +370,12 @@ export default function App() {
       return 'Активный';
     },
     []
+  );
+
+  // Везде где можно менять спринт — отображаем ТОЛЬКО Активные и Будущие спринты (+ Бэклог)
+  const editableSprints = useMemo(
+    () => uniqueSprints.filter((sp) => getSprintStatusLabel(sp) !== 'Прошедший'),
+    [uniqueSprints, getSprintStatusLabel]
   );
 
   const formatSprintWithStatus = useCallback(
@@ -318,16 +413,18 @@ export default function App() {
     [tasks]
   );
 
-  // Filtered JQL `labels = fcrm_umb_epic` options for quick selection
+  // Filtered JQL `labels = fcrm_umb_epic` options for quick selection (без отменённых Canceled)
   const filteredUmbEpicOptions = useMemo(() => {
     const q = umbSearchQuery.trim().toLowerCase();
-    if (!q) return umbEpicCatalog;
-    return umbEpicCatalog.filter(
-      (item) =>
-        item.key.toLowerCase().includes(q) ||
-        item.summary.toLowerCase().includes(q) ||
-        item.status.toLowerCase().includes(q)
-    );
+    return umbEpicCatalog
+      .filter((item) => !isCanceledStatusValue(item.status))
+      .filter(
+        (item) =>
+          !q ||
+          item.key.toLowerCase().includes(q) ||
+          item.summary.toLowerCase().includes(q) ||
+          item.status.toLowerCase().includes(q)
+      );
   }, [umbEpicCatalog, umbSearchQuery]);
 
   // Update any field of a task
@@ -379,9 +476,34 @@ export default function App() {
     [handleUpdateTask]
   );
 
+  const sortTasksArray = useCallback(
+    (arr: FcrmTask[]): FcrmTask[] => {
+      if (sortBy === 'default') return arr;
+      return [...arr].sort((a, b) => {
+        if (sortBy === 'priority_desc') {
+          const diff = getPriorityWeight(b.priority) - getPriorityWeight(a.priority);
+          if (diff !== 0) return diff;
+        } else if (sortBy === 'priority_asc') {
+          const diff = getPriorityWeight(a.priority) - getPriorityWeight(b.priority);
+          if (diff !== 0) return diff;
+        } else if (sortBy === 'created_desc') {
+          const diff = parseCreatedAtTimestamp(b.createdAt) - parseCreatedAtTimestamp(a.createdAt);
+          if (diff !== 0) return diff;
+        } else if (sortBy === 'created_asc') {
+          const diff = parseCreatedAtTimestamp(a.createdAt) - parseCreatedAtTimestamp(b.createdAt);
+          if (diff !== 0) return diff;
+        }
+        return a.key.localeCompare(b.key, 'ru', { numeric: true });
+      });
+    },
+    [sortBy]
+  );
+
   const filteredTasks = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return tasks.filter((t) => {
+      if (isCanceledStatusValue(t.status)) return false;
+      if (hideEpicTasks && isEpicIssueTypeValue(t.issueType)) return false;
       if (selectedSprintFilter !== 'all' && t.sprint !== selectedSprintFilter) return false;
       if (selectedComponent !== 'all' && t.component !== selectedComponent) return false;
       if (selectedEpic !== 'all' && `${t.epicKey} · ${t.epicName}` !== selectedEpic) return false;
@@ -401,6 +523,7 @@ export default function App() {
       return (
         t.key.toLowerCase().includes(q) ||
         t.summary.toLowerCase().includes(q) ||
+        (t.issueType || 'Задача').toLowerCase().includes(q) ||
         t.epicName.toLowerCase().includes(q) ||
         t.epicKey.toLowerCase().includes(q) ||
         t.component.toLowerCase().includes(q) ||
@@ -419,6 +542,7 @@ export default function App() {
     selectedEpic,
     selectedCustomer,
     selectedStatusFilter,
+    hideEpicTasks,
   ]);
 
   // Group filtered tasks by Sprint -> Component (2-level Jira Structure hierarchy)
@@ -429,7 +553,8 @@ export default function App() {
       list.push(task);
       map.set(task.sprint, list);
     });
-    return Array.from(map.entries()).map(([sprintName, items]) => {
+    return Array.from(map.entries()).map(([sprintName, rawItems]) => {
+      const items = sortTasksArray(rawItems);
       const compMap = new Map<string, FcrmTask[]>();
       items.forEach((t) => {
         const compName = (t.component || '').trim() || 'Без компонента';
@@ -445,7 +570,7 @@ export default function App() {
         })
         .map(([componentName, compItems]) => ({
           componentName,
-          items: compItems,
+          items: sortTasksArray(compItems),
         }));
       return {
         sprintName,
@@ -453,7 +578,7 @@ export default function App() {
         componentGroups,
       };
     });
-  }, [filteredTasks]);
+  }, [filteredTasks, sortTasksArray]);
 
   const [collapsedComponents, setCollapsedComponents] = useState<Record<string, boolean>>({});
   const [loadingComponents, setLoadingComponents] = useState<Record<string, boolean>>({});
@@ -681,6 +806,8 @@ export default function App() {
     setSelectedEpic('all');
     setSelectedCustomer('all');
     setSelectedStatusFilter('all');
+    setHideEpicTasks(false);
+    setSortBy('default');
   };
 
   // Total table width for smooth horizontal scrolling when columns are resized
@@ -899,13 +1026,41 @@ export default function App() {
             ))}
           </select>
 
+          {/* Фильтр «Скрыть задачи с типом Эпик» */}
+          <button
+            type="button"
+            onClick={() => setHideEpicTasks((v) => !v)}
+            className={`ozon-focusable inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap shrink-0 cursor-pointer rounded-lg transition-colors ${
+              hideEpicTasks ? 'ozon-btn-tinted' : 'ozon-btn-surface text-[#334155]'
+            }`}
+            title="Скрыть или показать задачи с типом Эпик"
+          >
+            <span>{hideEpicTasks ? '✓ Скрыты задачи с типом Эпик' : 'Скрыть задачи с типом Эпик'}</span>
+          </button>
+
+          {/* Сортировка по Приоритету и Дате создания */}
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+            aria-label="Сортировка списка задач"
+            className="ozon-focusable px-2 py-1 text-[11.5px] bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg text-[#071026] cursor-pointer"
+          >
+            <option value="default">Сортировка: По умолчанию</option>
+            <option value="priority_desc">Сортировка: Приоритет (сначала высокий)</option>
+            <option value="priority_asc">Сортировка: Приоритет (сначала низкий)</option>
+            <option value="created_desc">Сортировка: Дата создания (сначала новые)</option>
+            <option value="created_asc">Сортировка: Дата создания (сначала старые)</option>
+          </select>
+
           {/* Negative Action Button per Spec 3 */}
           {(searchQuery ||
             selectedSprintFilter !== 'all' ||
             selectedComponent !== 'all' ||
             selectedEpic !== 'all' ||
             selectedCustomer !== 'all' ||
-            selectedStatusFilter !== 'all') && (
+            selectedStatusFilter !== 'all' ||
+            hideEpicTasks ||
+            sortBy !== 'default') && (
             <button
               onClick={resetFilters}
               className="ozon-btn-negative ozon-focusable inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap shrink-0 cursor-pointer"
@@ -1257,6 +1412,7 @@ export default function App() {
                                         <ChevronRight className="w-3 h-3" />
                                       )}
                                     </button>
+                                    {renderIssueTypeBadge(task.issueType || 'Задача')}
                                     <span className="font-mono text-[11px] font-bold text-[#005BFF] shrink-0 tabular-nums">
                                       {task.key}
                                     </span>
@@ -1520,7 +1676,7 @@ export default function App() {
                                   </td>
                                 )}
 
-                                {/* 8. Спринт (Direct 1-click inline selector in table) */}
+                                {/* 8. Спринт (Direct 1-click inline selector in table — только Активные и Будущие спринты) */}
                                 {config.showSprint && (
                                   <td
                                     onClick={(e) => e.stopPropagation()}
@@ -1536,10 +1692,15 @@ export default function App() {
                                         }));
                                       }}
                                       aria-label={`Спринт задачи ${task.key}`}
-                                      title="Изменить спринт задачи прямо в таблице"
+                                      title="Изменить спринт задачи (доступны только Активные и Будущие спринты)"
                                       className="ozon-inner-control ozon-inline-select w-full px-1 py-0.5 text-[11px] text-[#475569] tabular-nums cursor-pointer truncate"
                                     >
-                                      {uniqueSprints.map((sp) => (
+                                      {!editableSprints.includes(task.sprint) && (
+                                        <option value={task.sprint} disabled hidden>
+                                          {formatSprintWithStatus(task.sprint, true)}
+                                        </option>
+                                      )}
+                                      {editableSprints.map((sp) => (
                                         <option key={sp} value={sp}>
                                           {formatSprintWithStatus(sp, true)}
                                         </option>
@@ -1658,7 +1819,9 @@ export default function App() {
                                  ================================================= */}
                               {isRowExpanded && (
                                 <>
-                                  {task.projectTaskLinks.map((link) => (
+                                  {task.projectTaskLinks
+                                    .filter((link) => !isCanceledStatusValue(link.status))
+                                    .map((link) => (
                                     <tr
                                       key={`${task.key}-pt-${link.id}`}
                                       onClick={() => {
@@ -1677,6 +1840,7 @@ export default function App() {
                                             <FolderGit2 className="w-2.5 h-2.5 text-[#64748B] shrink-0" />
                                             <span>{config.linkTypeProjectTask}</span>
                                           </span>
+                                          {renderIssueTypeBadge(link.issueType || 'Эпик')}
                                           <span className="font-mono font-bold text-[#005BFF] shrink-0">
                                             {link.key}
                                           </span>
@@ -1699,7 +1863,9 @@ export default function App() {
                                       </td>
                                     </tr>
                                   ))}
-                                  {task.inProjectLinks.map((link) => (
+                                  {task.inProjectLinks
+                                    .filter((link) => !isCanceledStatusValue(link.status))
+                                    .map((link) => (
                                     <tr
                                       key={`${task.key}-ip-${link.id}`}
                                       onClick={() => {
@@ -1718,6 +1884,7 @@ export default function App() {
                                             <Link2 className="w-2.5 h-2.5 text-[#64748B] shrink-0" />
                                             <span>{config.linkTypeInProject}</span>
                                           </span>
+                                          {renderIssueTypeBadge(link.issueType || 'Задача')}
                                           <span className="font-mono font-bold text-[#005BFF] shrink-0">
                                             {link.key}
                                           </span>
@@ -1765,7 +1932,7 @@ export default function App() {
                                             </select>
                                           </span>
                                           <span className="text-[#CBD5E1]">·</span>
-                                          {/* Direct inline Sprint selector for 'В проекте' sub-row */}
+                                          {/* Direct inline Sprint selector for 'В проекте' sub-row (только Активные и Будущие спринты) */}
                                           <span
                                             onClick={(e) => e.stopPropagation()}
                                             className="inline-flex items-center gap-1 shrink-0 tabular-nums"
@@ -1785,7 +1952,12 @@ export default function App() {
                                               }
                                               className="ozon-inner-control ozon-inline-select px-1 py-0 text-[11px] font-semibold text-[#071026] cursor-pointer"
                                             >
-                                              {uniqueSprints.map((sp) => (
+                                              {link.sprint && !editableSprints.includes(link.sprint) && (
+                                                <option value={link.sprint} disabled hidden>
+                                                  {formatSprintWithStatus(link.sprint, true)}
+                                                </option>
+                                              )}
+                                              {editableSprints.map((sp) => (
                                                 <option key={sp} value={sp}>
                                                   {formatSprintWithStatus(sp, true)}
                                                 </option>
@@ -1837,7 +2009,7 @@ export default function App() {
               {/* Inspector Header */}
               <div className="px-4 py-2.5 bg-[#F8FAFC] border-b border-[#E2E8F0] flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 text-xs">
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
                     <a
                       href={`https://jit.o3.ru/browse/${selectedTask.key}`}
                       target="_blank"
@@ -1847,6 +2019,7 @@ export default function App() {
                       <span>{selectedTask.key}</span>
                       <ExternalLink className="w-3 h-3" />
                     </a>
+                    {renderIssueTypeBadge(selectedTask.issueType || 'Задача')}
                     <span className="text-[#CBD5E1]">·</span>
                     <span className="font-mono text-[11px] text-[#64748B] tabular-nums">
                       Создана: {selectedTask.createdAt}
@@ -1931,7 +2104,7 @@ export default function App() {
                     }
                     className="ozon-accordion-header ozon-focusable w-full px-3.5 py-2.5 flex items-center justify-between text-left font-bold text-[#071026] cursor-pointer"
                   >
-                    <span>Атрибуты задачи (Эпик, Компонент, Исполнитель, Заказчик/Owner, Спринт)</span>
+                    <span>Атрибуты задачи (Тип задачи, Эпик, Компонент, Исполнитель, Спринт)</span>
                     {openSidebarSections.attributes ? (
                       <ChevronUp className="ozon-accordion-chevron w-4 h-4 shrink-0" />
                     ) : (
@@ -1941,7 +2114,33 @@ export default function App() {
 
                   {openSidebarSections.attributes && (
                     <div className="p-3.5 space-y-2.5 bg-white">
-                      {/* 1. Спринт */}
+                      {/* 0. Тип задачи (доступный в проекте FCRM) */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-4 text-[#64748B] font-medium">
+                          Тип задачи
+                        </label>
+                        <div className="col-span-8 flex items-center gap-2">
+                          {renderIssueTypeBadge(selectedTask.issueType || 'Задача')}
+                          <select
+                            value={selectedTask.issueType || 'Задача'}
+                            onChange={(e) =>
+                              handleUpdateTask(selectedTask.key, (t) => ({
+                                ...t,
+                                issueType: e.target.value,
+                              }))
+                            }
+                            className="ozon-focusable flex-1 px-2.5 py-1 text-xs font-semibold text-[#071026] bg-[#F5F7FA] border border-[#CBD5E1] rounded-lg cursor-pointer"
+                          >
+                            {PROJECT_ISSUE_TYPES.map((it) => (
+                              <option key={it} value={it}>
+                                {it}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* 1. Спринт (только Активные и Будущие спринты) */}
                       <div className="grid grid-cols-12 items-center gap-2">
                         <label className="col-span-4 text-[#64748B] font-medium">
                           Спринт
@@ -1957,7 +2156,12 @@ export default function App() {
                             }
                             className="ozon-focusable w-full px-2.5 py-1 text-xs font-medium text-[#071026] bg-[#F5F7FA] border border-[#CBD5E1] rounded-lg cursor-pointer"
                           >
-                            {uniqueSprints.map((sp) => (
+                            {!editableSprints.includes(selectedTask.sprint) && (
+                              <option value={selectedTask.sprint} disabled hidden>
+                                {formatSprintWithStatus(selectedTask.sprint)}
+                              </option>
+                            )}
+                            {editableSprints.map((sp) => (
                               <option key={sp} value={sp}>
                                 {formatSprintWithStatus(sp)}
                               </option>
@@ -2560,7 +2764,12 @@ export default function App() {
                                     }
                                     className="ozon-inner-control ozon-focusable w-full px-1 py-0.5 text-[11px] text-[#071026] bg-[#F5F7FA] border border-[#CBD5E1] rounded tabular-nums"
                                   >
-                                    {uniqueSprints.map((sp) => (
+                                    {link.sprint && !editableSprints.includes(link.sprint) && (
+                                      <option value={link.sprint} disabled hidden>
+                                        {formatSprintWithStatus(link.sprint)}
+                                      </option>
+                                    )}
+                                    {editableSprints.map((sp) => (
                                       <option key={sp} value={sp}>
                                         {formatSprintWithStatus(sp)}
                                       </option>
@@ -2608,7 +2817,7 @@ export default function App() {
                             onChange={(e) => setNewInProjectSprint(e.target.value)}
                             className="ozon-focusable flex-1 px-2 py-1 text-[11px] bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
                           >
-                            {uniqueSprints.map((sp) => (
+                            {editableSprints.map((sp) => (
                               <option key={sp} value={sp}>
                                 {formatSprintWithStatus(sp)}
                               </option>
@@ -2870,7 +3079,7 @@ export default function App() {
                     }
                     className="ozon-focusable w-full px-2.5 py-1.5 bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
                   >
-                    {uniqueSprints.map((sp) => (
+                    {editableSprints.map((sp) => (
                       <option key={sp} value={sp}>
                         {formatSprintWithStatus(sp)}
                       </option>
