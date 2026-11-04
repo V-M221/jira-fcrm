@@ -5,6 +5,8 @@ export interface LinkedIssueItem {
   key: string;
   summary: string;
   status: 'Открыто' | 'В работе' | 'Ревью' | 'Тестирование' | 'Готово';
+  component?: string;
+  sprint?: string;
   url?: string;
 }
 
@@ -32,20 +34,18 @@ export interface FcrmTask {
   status: IssueStatus;
   priority: 'Критический' | 'Высокий' | 'Средний' | 'Низкий';
   projectTaskLinks: LinkedIssueItem[]; // 9. Блок связей "Задача проекта"
-  inProjectLinks: LinkedIssueItem[]; // 10. Блок связей "В проекте"
+  inProjectLinks: LinkedIssueItem[]; // 10. Блок связей "В проекте" (название, статус, спринт, компонент)
 }
 
 export interface ExtensionConfig {
   boardUrl: string;
   rapidViewId: string;
   projectKey: string;
-  // Jira Custom Field mappings for jit.o3.ru REST API
   epicFieldId: string;
   sprintFieldId: string;
   customerFieldId: string;
   linkTypeProjectTask: string; // "Задача проекта"
   linkTypeInProject: string; // "В проекте"
-  // Visibility toggles for the 10 mandatory fields
   showSummary: boolean;
   showEpic: boolean;
   showComponent: boolean;
@@ -56,7 +56,6 @@ export interface ExtensionConfig {
   showSprint: boolean;
   showProjectTaskLinks: boolean;
   showInProjectLinks: boolean;
-  // Visual density & layout
   compactMode: boolean;
   widenColumns: boolean;
   columnMinWidthPx: number;

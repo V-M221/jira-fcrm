@@ -1,22 +1,25 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import JSZip from 'jszip';
 import {
   Search,
   Download,
-  SlidersHorizontal,
-  Code2,
   Plus,
-  Copy,
-  Check,
   ExternalLink,
   X,
-  ArrowRight,
   FolderGit2,
   Link2,
   RotateCcw,
-  FileCode,
-  Sparkles,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
+  SlidersHorizontal,
+  Maximize2,
+  Minimize2,
+  GripVertical,
+  Check,
+  HelpCircle,
+  Copy,
 } from 'lucide-react';
 import {
   FcrmTask,
@@ -28,7 +31,8 @@ import {
   INITIAL_FCRM_TASKS,
   DEFAULT_EXTENSION_CONFIG,
   STATUS_COLUMNS,
-  SAMPLE_JIRA_ISSUE_JSON,
+  FCRM_UMB_EPIC_TASKS,
+  FCRM_UMB_EPIC_JQL_URL,
 } from './data/fcrmMockData';
 import {
   generateManifestJson,
@@ -38,43 +42,207 @@ import {
   generatePopupJs,
 } from './utils/extensionGenerator';
 
-type ActiveWorkspaceTab = 'board' | 'table' | 'config' | 'extension_code';
-type ExtensionFileKey = 'manifest.json' | 'content.js' | 'styles.css' | 'popup.html' | 'popup.js';
+const DEFAULT_COMPONENT_OPTIONS = [
+  'Core-Scoring',
+  'KYC-Verify',
+  'Corp-Cards',
+  'CRM-DocGen',
+  'AntiFraud-UI',
+  'Tariff-Engine',
+  'API-Gateway',
+  'Sign-Crypto-UI',
+  'Search-Index',
+  'CRM-Routing',
+  'CRM-Frontend',
+  'Security-Audit',
+  'Telephony-UI',
+  'Guarantees-Core',
+  'DWH-ClickHouse',
+  'Card-Processing-GW',
+  'KYC-OCR-Service',
+  'VED-Parser',
+  'FX-Rates-Core',
+  'EIS-Adapter',
+  'QA-Automation',
+];
+
+type ColumnId =
+  | 'task'
+  | 'status'
+  | 'epic'
+  | 'component'
+  | 'assignee'
+  | 'author'
+  | 'customer'
+  | 'createdAt'
+  | 'sprint'
+  | 'projectTaskLinks'
+  | 'inProjectLinks';
+
+const INITIAL_COLUMN_WIDTHS: Record<ColumnId, number> = {
+  task: 330,
+  status: 115,
+  epic: 185,
+  component: 152,
+  assignee: 140,
+  author: 125,
+  customer: 175,
+  createdAt: 112,
+  sprint: 152,
+  projectTaskLinks: 195,
+  inProjectLinks: 235,
+};
 
 export default function App() {
   const [tasks, setTasks] = useState<FcrmTask[]>(INITIAL_FCRM_TASKS);
+  const [umbEpicCatalog, setUmbEpicCatalog] =
+    useState<LinkedIssueItem[]>(FCRM_UMB_EPIC_TASKS);
   const [config, setConfig] = useState<ExtensionConfig>(DEFAULT_EXTENSION_CONFIG);
-  const [activeTab, setActiveTab] = useState<ActiveWorkspaceTab>('board');
+  const [isFieldConfigOpen, setIsFieldConfigOpen] = useState(false);
+  const [isInstallGuideOpen, setIsInstallGuideOpen] = useState(false);
+  const [copiedChromeUrl, setCopiedChromeUrl] = useState(false);
+
+  // Resizable Table Columns state
+  const [columnWidths, setColumnWidths] = useState<Record<ColumnId, number>>(
+    INITIAL_COLUMN_WIDTHS
+  );
+  const [activeResizingCol, setActiveResizingCol] = useState<ColumnId | null>(null);
+  const colResizeRef = useRef<{
+    colId: ColumnId;
+    startX: number;
+    startWidth: number;
+  } | null>(null);
+
+  const startColumnResize = useCallback(
+    (e: React.MouseEvent, colId: ColumnId) => {
+      e.preventDefault();
+      e.stopPropagation();
+      colResizeRef.current = {
+        colId,
+        startX: e.clientX,
+        startWidth: columnWidths[colId],
+      };
+      setActiveResizingCol(colId);
+    },
+    [columnWidths]
+  );
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!colResizeRef.current) return;
+      const { colId, startX, startWidth } = colResizeRef.current;
+      const delta = e.clientX - startX;
+      const minW = colId === 'task' ? 180 : 75;
+      const nextWidth = Math.max(minW, Math.min(800, startWidth + delta));
+      setColumnWidths((prev) => ({
+        ...prev,
+        [colId]: nextWidth,
+      }));
+    };
+
+    const handleMouseUp = () => {
+      if (colResizeRef.current) {
+        colResizeRef.current = null;
+        setActiveResizingCol(null);
+      }
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
 
   // Filter controls
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedSprint, setSelectedSprint] = useState<string>('all');
+  const [selectedSprintFilter, setSelectedSprintFilter] = useState<string>('all');
   const [selectedComponent, setSelectedComponent] = useState<string>('all');
   const [selectedEpic, setSelectedEpic] = useState<string>('all');
   const [selectedCustomer, setSelectedCustomer] = useState<string>('all');
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('all');
+
+  // Structure Sprint Accordion collapse state & loading simulation per spec
+  const [collapsedSprints, setCollapsedSprints] = useState<Record<string, boolean>>({});
+  const [loadingSprints, setLoadingSprints] = useState<Record<string, boolean>>({});
+  const [expandedTaskRows, setExpandedTaskRows] = useState<Record<string, boolean>>({
+    'FCRM-4821': true,
+  });
+
+  // Sidebar Accordion states (matching Spec 2: Accordion Default/Hover/Active/Focus/Load)
+  const [openSidebarSections, setOpenSidebarSections] = useState({
+    attributes: true,
+    projectTasks: true,
+    inProjectTasks: true,
+  });
 
   // Task inspector & creation modals
-  const [selectedTaskKey, setSelectedTaskKey] = useState<string | null>(null);
+  const [selectedTaskKey, setSelectedTaskKey] = useState<string | null>('FCRM-4821');
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
 
-  // New link inputs inside task inspector
+  // Quick-picker search filter for JQL: labels = fcrm_umb_epic
+  const [umbSearchQuery, setUmbSearchQuery] = useState('');
+  const [isUmbPickerOpen, setIsUmbPickerOpen] = useState(true);
+
+  // Resizable Sidebar state
+  const [sidebarWidth, setSidebarWidth] = useState<number>(490);
+  const [isDraggingSidebar, setIsDraggingSidebar] = useState<boolean>(false);
+  const isResizingRef = useRef<boolean>(false);
+
+  const startResizing = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizingRef.current = true;
+    setIsDraggingSidebar(true);
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizingRef.current) return;
+      const newWidth = window.innerWidth - e.clientX;
+      const clamped = Math.max(320, Math.min(newWidth, Math.floor(window.innerWidth * 0.78)));
+      setSidebarWidth(clamped);
+    };
+
+    const handleMouseUp = () => {
+      if (isResizingRef.current) {
+        isResizingRef.current = false;
+        setIsDraggingSidebar(false);
+      }
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+
+  const toggleSidebarExpandPreset = () => {
+    setSidebarWidth((prev) => (prev < 640 ? 760 : 490));
+  };
+
+  // Inline cell editing for text fields in Structure Table
+  const [editingCell, setEditingCell] = useState<{
+    taskKey: string;
+    field: 'epic' | 'assignee' | 'customer' | 'projectTask';
+  } | null>(null);
+
+  // Custom fallback inputs for adding a brand-new item to labels = fcrm_umb_epic
   const [newProjectTaskKey, setNewProjectTaskKey] = useState('');
   const [newProjectTaskSummary, setNewProjectTaskSummary] = useState('');
+
   const [newInProjectKey, setNewInProjectKey] = useState('');
   const [newInProjectSummary, setNewInProjectSummary] = useState('');
+  const [newInProjectComponent, setNewInProjectComponent] = useState('Core-Scoring');
+  const [newInProjectSprint, setNewInProjectSprint] = useState('FCRM Sprint 43 (11.11 – 25.11)');
 
-  // Extension code viewer state
-  const [selectedCodeFile, setSelectedCodeFile] = useState<ExtensionFileKey>('content.js');
-  const [copiedFile, setCopiedFile] = useState<string | null>(null);
   const [isZipping, setIsZipping] = useState(false);
-
-  // JSON Field Detector Sandbox state
-  const [jsonInput, setJsonInput] = useState<string>(SAMPLE_JIRA_ISSUE_JSON);
-  const [detectionMessage, setDetectionMessage] = useState<string | null>(null);
 
   // New Task form state
   const [newTaskForm, setNewTaskForm] = useState({
-    key: 'FCRM-4852',
+    key: 'FCRM-4910',
     summary: '',
     epicKey: 'FCRM-4100',
     epicName: 'Единый кредитный конвейер B2B',
@@ -83,27 +251,42 @@ export default function App() {
     assigneeRole: 'Senior Go Developer',
     authorName: 'Мария Соколова',
     customerName: 'Дмитрий Волков',
-    customerDept: 'Дирекция кредитования МСБ Озон Банк',
-    sprint: 'FCRM Sprint 42 (28.10 – 11.11)',
+    customerDept: 'Дирекция кредитования МСБ',
+    sprint: 'FCRM Sprint 43 (11.11 – 25.11)',
     status: 'todo' as IssueStatus,
     priority: 'Высокий' as FcrmTask['priority'],
-    projectTaskKey: 'PROJ-1190',
-    projectTaskSummary: 'Интеграция скоринга селлеров Ozon Банк v2',
-    inProjectKey: 'FCRM-4853',
-    inProjectSummary: 'Разработка REST-эндпоинта проверки лимитов',
+    selectedUmbKey: 'PROJ-1210',
+    inProjectKey: 'FCRM-4911',
+    inProjectSummary: 'REST-эндпоинт расчёта скорингового балла',
+    inProjectComponent: 'Core-Scoring',
+    inProjectSprint: 'FCRM Sprint 43 (11.11 – 25.11)',
   });
 
-  // Unique values for filters
+  // Unique values for filters & inline selectors
   const uniqueSprints = useMemo(
     () => Array.from(new Set(tasks.map((t) => t.sprint))),
     [tasks]
   );
-  const uniqueComponents = useMemo(
-    () => Array.from(new Set(tasks.map((t) => t.component))),
-    [tasks]
-  );
-  const uniqueEpics = useMemo(
-    () => Array.from(new Set(tasks.map((t) => `${t.epicKey} · ${t.epicName}`))),
+  const allComponents = useMemo(() => {
+    const fromTasks = tasks.map((t) => t.component);
+    const fromInProject = tasks.flatMap((t) =>
+      t.inProjectLinks.map((l) => l.component).filter(Boolean) as string[]
+    );
+    return Array.from(
+      new Set([...DEFAULT_COMPONENT_OPTIONS, ...fromTasks, ...fromInProject])
+    );
+  }, [tasks]);
+
+  const uniqueEpics = useMemo(() => {
+    const map = new Map<string, { epicKey: string; epicName: string }>();
+    tasks.forEach((t) => {
+      map.set(t.epicKey, { epicKey: t.epicKey, epicName: t.epicName });
+    });
+    return Array.from(map.values());
+  }, [tasks]);
+
+  const uniqueAssignees = useMemo(
+    () => Array.from(new Set(tasks.map((t) => t.assignee.name))),
     [tasks]
   );
   const uniqueCustomers = useMemo(
@@ -111,18 +294,82 @@ export default function App() {
     [tasks]
   );
 
+  // Filtered JQL `labels = fcrm_umb_epic` options for quick selection
+  const filteredUmbEpicOptions = useMemo(() => {
+    const q = umbSearchQuery.trim().toLowerCase();
+    if (!q) return umbEpicCatalog;
+    return umbEpicCatalog.filter(
+      (item) =>
+        item.key.toLowerCase().includes(q) ||
+        item.summary.toLowerCase().includes(q) ||
+        item.status.toLowerCase().includes(q)
+    );
+  }, [umbEpicCatalog, umbSearchQuery]);
+
+  // Update any field of a task
+  const handleUpdateTask = useCallback(
+    (taskKey: string, updater: (task: FcrmTask) => FcrmTask) => {
+      setTasks((prev) => prev.map((t) => (t.key === taskKey ? updater(t) : t)));
+    },
+    []
+  );
+
+  // Toggle a task from JQL `labels = fcrm_umb_epic` in the current task's "Задача проекта" block
+  const handleToggleUmbProjectTask = useCallback(
+    (taskKey: string, umbItem: LinkedIssueItem) => {
+      handleUpdateTask(taskKey, (t) => {
+        const exists = t.projectTaskLinks.some((l) => l.key === umbItem.key);
+        if (exists) {
+          return {
+            ...t,
+            projectTaskLinks: t.projectTaskLinks.filter((l) => l.key !== umbItem.key),
+          };
+        }
+        return {
+          ...t,
+          projectTaskLinks: [
+            ...t.projectTaskLinks,
+            {
+              id: `pt-${Date.now()}-${umbItem.key}`,
+              key: umbItem.key,
+              summary: umbItem.summary,
+              status: umbItem.status,
+            },
+          ],
+        };
+      });
+    },
+    [handleUpdateTask]
+  );
+
+  // Update a specific linked issue inside "В проекте" (e.g., its sprint, component, status, or summary)
+  const handleUpdateInProjectLink = useCallback(
+    (taskKey: string, linkId: string, patch: Partial<LinkedIssueItem>) => {
+      handleUpdateTask(taskKey, (t) => ({
+        ...t,
+        inProjectLinks: t.inProjectLinks.map((l) =>
+          l.id === linkId ? { ...l, ...patch } : l
+        ),
+      }));
+    },
+    [handleUpdateTask]
+  );
+
   const filteredTasks = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return tasks.filter((t) => {
-      if (selectedSprint !== 'all' && t.sprint !== selectedSprint) return false;
+      if (selectedSprintFilter !== 'all' && t.sprint !== selectedSprintFilter) return false;
       if (selectedComponent !== 'all' && t.component !== selectedComponent) return false;
       if (selectedEpic !== 'all' && `${t.epicKey} · ${t.epicName}` !== selectedEpic) return false;
       if (selectedCustomer !== 'all' && t.customer.name !== selectedCustomer) return false;
+      if (selectedStatusFilter !== 'all' && t.status !== selectedStatusFilter) return false;
 
       if (!q) return true;
       const inLinks = [
         ...t.projectTaskLinks.map((l) => `${l.key} ${l.summary}`),
-        ...t.inProjectLinks.map((l) => `${l.key} ${l.summary}`),
+        ...t.inProjectLinks.map(
+          (l) => `${l.key} ${l.summary} ${l.component || ''} ${l.sprint || ''}`
+        ),
       ]
         .join(' ')
         .toLowerCase();
@@ -140,74 +387,114 @@ export default function App() {
         inLinks.includes(q)
       );
     });
-  }, [tasks, searchQuery, selectedSprint, selectedComponent, selectedEpic, selectedCustomer]);
+  }, [
+    tasks,
+    searchQuery,
+    selectedSprintFilter,
+    selectedComponent,
+    selectedEpic,
+    selectedCustomer,
+    selectedStatusFilter,
+  ]);
+
+  // Group filtered tasks by Sprint (Jira Structure hierarchy)
+  const sprintGroups = useMemo(() => {
+    const map = new Map<string, FcrmTask[]>();
+    filteredTasks.forEach((task) => {
+      const list = map.get(task.sprint) || [];
+      list.push(task);
+      map.set(task.sprint, list);
+    });
+    return Array.from(map.entries()).map(([sprintName, items]) => ({
+      sprintName,
+      items,
+    }));
+  }, [filteredTasks]);
 
   const selectedTask = useMemo(
     () => tasks.find((t) => t.key === selectedTaskKey) || null,
     [tasks, selectedTaskKey]
   );
 
-  // Generated extension files map
-  const generatedFiles: Record<ExtensionFileKey, string> = useMemo(
-    () => ({
-      'manifest.json': generateManifestJson(config),
-      'content.js': generateContentScriptJs(config),
-      'styles.css': generateStylesCss(config),
-      'popup.html': generatePopupHtml(config),
-      'popup.js': generatePopupJs(config),
-    }),
-    [config]
-  );
+  // Accordion toggle with subtle Loader/500 transition when opening (per Spec 2)
+  const toggleSprintCollapse = (sprintName: string) => {
+    const wasCollapsed = Boolean(collapsedSprints[sprintName]);
+    if (wasCollapsed) {
+      setLoadingSprints((prev) => ({ ...prev, [sprintName]: true }));
+      setCollapsedSprints((prev) => ({ ...prev, [sprintName]: false }));
+      setTimeout(() => {
+        setLoadingSprints((prev) => ({ ...prev, [sprintName]: false }));
+      }, 150);
+    } else {
+      setCollapsedSprints((prev) => ({ ...prev, [sprintName]: true }));
+    }
+  };
 
-  // Download packaged Chrome Extension ZIP
+  const toggleAllSprints = () => {
+    const anyCollapsed = sprintGroups.some((g) => collapsedSprints[g.sprintName]);
+    if (anyCollapsed) {
+      setCollapsedSprints({});
+    } else {
+      const next: Record<string, boolean> = {};
+      sprintGroups.forEach((g) => {
+        next[g.sprintName] = true;
+      });
+      setCollapsedSprints(next);
+    }
+  };
+
+  const toggleTaskRowExpand = (e: React.MouseEvent, taskKey: string) => {
+    e.stopPropagation();
+    setExpandedTaskRows((prev) => ({
+      ...prev,
+      [taskKey]: !prev[taskKey],
+    }));
+  };
+
+  // Download packaged Chrome Extension ZIP + show quick launch modal
   const handleDownloadExtensionZip = async () => {
     setIsZipping(true);
     try {
       const zip = new JSZip();
-      Object.entries(generatedFiles).forEach(([filename, content]) => {
-        zip.file(filename, content);
-      });
+      zip.file('manifest.json', generateManifestJson(config));
+      zip.file('content.js', generateContentScriptJs(config, tasks, umbEpicCatalog));
+      zip.file('styles.css', generateStylesCss(config));
+      zip.file('popup.html', generatePopupHtml(config));
+      zip.file('popup.js', generatePopupJs(config));
 
-      const readmeText = `Ozon Bank Jira Customizer — Chrome Extension (Manifest V3)
-Целевая борда: ${config.boardUrl}
-RapidView ID: ${config.rapidViewId} | Project Key: ${config.projectKey}
+      const readme = `КАК ЗАПУСТИТЬ РАСШИРЕНИЕ В GOOGLE CHROME:
 
-Инструкция по установке в Google Chrome / Яндекс.Браузер / Edge:
-1. Распакуйте скачанный архив ozon-bank-fcrm-jira-extension.zip в любую папку.
-2. Откройте в браузере страницу chrome://extensions/
-3. Включите тумблер «Режим разработчика» (Developer mode) в правом верхнем углу.
-4. Нажмите кнопку «Загрузить распакованное расширение» (Load unpacked) и выберите папку с файлами.
-5. Перейдите на борду ${config.boardUrl} — карточки задач автоматически обновятся в дизайн-системе Ozon Банка со всеми 10 полями и двумя блоками связей («${config.linkTypeProjectTask}» и «${config.linkTypeInProject}»).`;
+1. Распакуйте этот скачанный архив (ozon-bank-jira-structure-fcrm.zip) в любую отдельную папку на компьютере.
+2. Откройте браузер Google Chrome (или Яндекс.Браузер / Edge) и введите в адресной строке:
+   chrome://extensions/
+3. В правом верхнем углу включите переключатель «Режим разработчика» (Developer mode).
+4. В левом верхнем углу нажмите кнопку «Загрузить распакованное расширение» (Load unpacked) и выберите папку, куда вы распаковали файлы.
+5. Откройте вашу доску Jira:
+   https://jit.o3.ru/secure/RapidBoard.jspa?rapidView=9349&projectKey=FCRM#
+   Расширение автоматически включит компактный реестр Ozon Bank · FCRM Structure (также в шапке Jira появится кнопка «Ozon Structure FCRM» для переключения между стандартной доской и реестром Structure).`;
 
-      zip.file('README-INSTALL.txt', readmeText);
+      zip.file('README-ЗАПУСК.txt', readme);
 
       const blob = await zip.generateAsync({ type: 'blob' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `ozon-bank-jira-${config.projectKey.toLowerCase()}-${config.rapidViewId}.zip`;
+      a.download = `ozon-bank-jira-structure-${config.projectKey.toLowerCase()}.zip`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      setIsInstallGuideOpen(true);
     } finally {
-      setIsZipping(false);
+      setTimeout(() => setIsZipping(false), 300);
     }
   };
 
-  const handleCopyCode = (filename: ExtensionFileKey) => {
-    navigator.clipboard.writeText(generatedFiles[filename]);
-    setCopiedFile(filename);
-    setTimeout(() => setCopiedFile(null), 1800);
-  };
-
   const handleMoveTaskStatus = (taskKey: string, newStatus: IssueStatus) => {
-    setTasks((prev) =>
-      prev.map((t) => (t.key === taskKey ? { ...t, status: newStatus } : t))
-    );
+    handleUpdateTask(taskKey, (t) => ({ ...t, status: newStatus }));
   };
 
-  const handleAddProjectTaskLink = (taskKey: string) => {
+  const handleAddCustomProjectTaskLink = (taskKey: string) => {
     if (!newProjectTaskKey.trim() || !newProjectTaskSummary.trim()) return;
     const newItem: LinkedIssueItem = {
       id: `pt-${Date.now()}`,
@@ -215,13 +502,13 @@ RapidView ID: ${config.rapidViewId} | Project Key: ${config.projectKey}
       summary: newProjectTaskSummary.trim(),
       status: 'В работе',
     };
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.key === taskKey
-          ? { ...t, projectTaskLinks: [...t.projectTaskLinks, newItem] }
-          : t
-      )
+    setUmbEpicCatalog((prev) =>
+      prev.some((x) => x.key === newItem.key) ? prev : [newItem, ...prev]
     );
+    handleUpdateTask(taskKey, (t) => ({
+      ...t,
+      projectTaskLinks: [...t.projectTaskLinks, newItem],
+    }));
     setNewProjectTaskKey('');
     setNewProjectTaskSummary('');
   };
@@ -233,14 +520,13 @@ RapidView ID: ${config.rapidViewId} | Project Key: ${config.projectKey}
       key: newInProjectKey.trim().toUpperCase(),
       summary: newInProjectSummary.trim(),
       status: 'Открыто',
+      component: newInProjectComponent.trim() || 'Core-Scoring',
+      sprint: newInProjectSprint.trim() || 'FCRM Sprint 43 (11.11 – 25.11)',
     };
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.key === taskKey
-          ? { ...t, inProjectLinks: [...t.inProjectLinks, newItem] }
-          : t
-      )
-    );
+    handleUpdateTask(taskKey, (t) => ({
+      ...t,
+      inProjectLinks: [...t.inProjectLinks, newItem],
+    }));
     setNewInProjectKey('');
     setNewInProjectSummary('');
   };
@@ -250,52 +536,10 @@ RapidView ID: ${config.rapidViewId} | Project Key: ${config.projectKey}
     block: 'projectTaskLinks' | 'inProjectLinks',
     linkId: string
   ) => {
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.key === taskKey
-          ? { ...t, [block]: t[block].filter((l) => l.id !== linkId) }
-          : t
-      )
-    );
-  };
-
-  const handleAutoDetectFromJson = () => {
-    try {
-      const parsed = JSON.parse(jsonInput);
-      const fields = parsed.fields || parsed;
-      let detectedEpic = config.epicFieldId;
-      let detectedSprint = config.sprintFieldId;
-      let detectedCustomer = config.customerFieldId;
-
-      Object.entries(fields).forEach(([key, val]) => {
-        if (!key.startsWith('customfield_')) return;
-        const strVal = JSON.stringify(val);
-        if (strVal.includes('com.atlassian.greenhopper.service.sprint.Sprint')) {
-          detectedSprint = key;
-        } else if (typeof val === 'string' && /^[A-Z]+-\d+$/.test(val)) {
-          detectedEpic = key;
-        } else if (
-          key !== detectedSprint &&
-          key !== detectedEpic &&
-          val &&
-          typeof val === 'object'
-        ) {
-          detectedCustomer = key;
-        }
-      });
-
-      setConfig((prev) => ({
-        ...prev,
-        epicFieldId: detectedEpic,
-        sprintFieldId: detectedSprint,
-        customerFieldId: detectedCustomer,
-      }));
-      setDetectionMessage(
-        `Успешно распознано из JSON: Эпик = ${detectedEpic}, Спринт = ${detectedSprint}, Заказчик = ${detectedCustomer}`
-      );
-    } catch {
-      setDetectionMessage('Ошибка парсинга JSON: проверьте корректность скопированного ответа из jit.o3.ru.');
-    }
+    handleUpdateTask(taskKey, (t) => ({
+      ...t,
+      [block]: t[block].filter((l) => l.id !== linkId),
+    }));
   };
 
   const handleCreateTask = (e: React.FormEvent) => {
@@ -308,8 +552,14 @@ RapidView ID: ${config.rapidViewId} | Project Key: ${config.projectKey}
       now.getHours()
     )}:${pad(now.getMinutes())}`;
 
+    const matchedUmb = umbEpicCatalog.find(
+      (u) => u.key === newTaskForm.selectedUmbKey
+    );
+
     const created: FcrmTask = {
-      key: newTaskForm.key.trim().toUpperCase() || `FCRM-${Math.floor(4850 + Math.random() * 100)}`,
+      key:
+        newTaskForm.key.trim().toUpperCase() ||
+        `FCRM-${Math.floor(4910 + Math.random() * 90)}`,
       summary: newTaskForm.summary.trim(),
       epicKey: newTaskForm.epicKey.trim(),
       epicName: newTaskForm.epicName.trim(),
@@ -331,15 +581,13 @@ RapidView ID: ${config.rapidViewId} | Project Key: ${config.projectKey}
       sprint: newTaskForm.sprint.trim(),
       status: newTaskForm.status,
       priority: newTaskForm.priority,
-      projectTaskLinks: newTaskForm.projectTaskKey.trim()
+      projectTaskLinks: matchedUmb
         ? [
             {
               id: `pt-${Date.now()}`,
-              key: newTaskForm.projectTaskKey.trim().toUpperCase(),
-              summary:
-                newTaskForm.projectTaskSummary.trim() ||
-                'Связанная проектная задача',
-              status: 'В работе',
+              key: matchedUmb.key,
+              summary: matchedUmb.summary,
+              status: matchedUmb.status,
             },
           ]
         : [],
@@ -351,6 +599,8 @@ RapidView ID: ${config.rapidViewId} | Project Key: ${config.projectKey}
               summary:
                 newTaskForm.inProjectSummary.trim() || 'Задача в контуре проекта',
               status: 'Открыто',
+              component: newTaskForm.inProjectComponent.trim() || newTaskForm.component.trim(),
+              sprint: newTaskForm.inProjectSprint.trim() || newTaskForm.sprint.trim(),
             },
           ]
         : [],
@@ -363,1286 +613,1807 @@ RapidView ID: ${config.rapidViewId} | Project Key: ${config.projectKey}
 
   const resetFilters = () => {
     setSearchQuery('');
-    setSelectedSprint('all');
+    setSelectedSprintFilter('all');
     setSelectedComponent('all');
     setSelectedEpic('all');
     setSelectedCustomer('all');
+    setSelectedStatusFilter('all');
   };
 
-  const activeFieldCount = [
-    config.showSummary,
-    config.showEpic,
-    config.showComponent,
-    config.showAssignee,
-    config.showAuthor,
-    config.showCustomer,
-    config.showCreatedAt,
-    config.showSprint,
-    config.showProjectTaskLinks,
-    config.showInProjectLinks,
-  ].filter(Boolean).length;
+  // Total table width for smooth horizontal scrolling when columns are resized
+  const totalTableWidth = useMemo(() => {
+    let sum = columnWidths.task + columnWidths.status;
+    if (config.showEpic) sum += columnWidths.epic;
+    if (config.showComponent) sum += columnWidths.component;
+    if (config.showAssignee) sum += columnWidths.assignee;
+    if (config.showAuthor) sum += columnWidths.author;
+    if (config.showCustomer) sum += columnWidths.customer;
+    if (config.showCreatedAt) sum += columnWidths.createdAt;
+    if (config.showSprint) sum += columnWidths.sprint;
+    if (config.showProjectTaskLinks) sum += columnWidths.projectTaskLinks;
+    if (config.showInProjectLinks) sum += columnWidths.inProjectLinks;
+    return sum;
+  }, [columnWidths, config]);
+
+  // Helper to render a resizable <th> header cell
+  const renderResizableTh = (
+    colId: ColumnId,
+    label: React.ReactNode,
+    title?: string,
+    extraClassName = ''
+  ) => (
+    <th
+      style={{ width: `${columnWidths[colId]}px` }}
+      title={title}
+      className={`relative group py-1.5 px-2 border-r border-[#E2E8F0] whitespace-nowrap overflow-hidden text-ellipsis ${extraClassName}`}
+    >
+      <div className="truncate pr-2">{label}</div>
+      {/* Drag Handle on Right Edge of Column Header */}
+      <div
+        onMouseDown={(e) => startColumnResize(e, colId)}
+        onClick={(e) => e.stopPropagation()}
+        title="Потяните влево или вправо для изменения ширины столбца"
+        className={`ozon-inner-control absolute top-0 right-0 bottom-0 w-1.5 cursor-col-resize transition-colors z-30 ${
+          activeResizingCol === colId
+            ? 'bg-[#005BFF]'
+            : 'bg-transparent group-hover:bg-[#CBD5E1] hover:!bg-[#005BFF]'
+        }`}
+      />
+    </th>
+  );
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#F5F7FA] text-[#071026]">
+    <div
+      className={`h-screen flex flex-col bg-[#F5F7FA] text-[#071026] overflow-hidden ${
+        isDraggingSidebar || activeResizingCol ? 'cursor-col-resize select-none' : ''
+      }`}
+    >
       {/* =====================================================================
-          TOP BAR CONTRACT: Strictly 1 row, 3 zones separated by gap-8
-          Zone 1: Single text element Brand wordmark
-          Zone 2: 4 concise single-line text nav links
-          Zone 3: 1 primary CTA action button
+          ULTRA-COMPACT TOP BAR CONTRACT: 1 row, 3 zones separated by gap-8
+          Only "Все спринты" in the navigation zone
          ===================================================================== */}
-      <header className="sticky top-0 z-30 flex items-center justify-between gap-8 px-6 py-3.5 bg-white border-b border-[#E2E8F0]">
+      <header className="shrink-0 flex items-center justify-between gap-8 px-3 py-1.5 bg-white border-b border-[#E2E8F0]">
         {/* Zone 1: Single text element wordmark */}
         <a
-          href="#board"
+          href="#structure"
           onClick={(e) => {
             e.preventDefault();
-            setActiveTab('board');
+            resetFilters();
           }}
-          className="text-lg font-bold tracking-tight text-[#071026] whitespace-nowrap shrink-0 font-display"
+          className="ozon-focusable rounded text-sm font-bold tracking-tight text-[#071026] whitespace-nowrap shrink-0 font-display"
         >
-          Ozon Bank · Jira FCRM
+          Ozon Bank · FCRM Structure
         </a>
 
-        {/* Zone 2: 4 clean single-line text navigation links */}
-        <nav className="flex items-center gap-6 text-sm font-medium text-[#475569] overflow-x-auto">
+        {/* Zone 2: Only "Все спринты" single-line link */}
+        <nav className="flex items-center gap-4 text-xs font-semibold text-[#005BFF]">
           <a
-            href="#board"
+            href="#all-sprints"
             onClick={(e) => {
               e.preventDefault();
-              setActiveTab('board');
+              setSelectedSprintFilter('all');
+              setCollapsedSprints({});
             }}
-            className={`py-1 transition-colors whitespace-nowrap shrink-0 border-b-2 ${
-              activeTab === 'board'
-                ? 'text-[#005BFF] border-[#005BFF] font-semibold'
-                : 'border-transparent hover:text-[#071026] hover:underline'
-            }`}
+            className="ozon-focusable rounded hover:underline whitespace-nowrap shrink-0"
           >
-            Канбан FCRM
-          </a>
-          <a
-            href="#table"
-            onClick={(e) => {
-              e.preventDefault();
-              setActiveTab('table');
-            }}
-            className={`py-1 transition-colors whitespace-nowrap shrink-0 border-b-2 ${
-              activeTab === 'table'
-                ? 'text-[#005BFF] border-[#005BFF] font-semibold'
-                : 'border-transparent hover:text-[#071026] hover:underline'
-            }`}
-          >
-            Реестр задач
-          </a>
-          <a
-            href="#config"
-            onClick={(e) => {
-              e.preventDefault();
-              setActiveTab('config');
-            }}
-            className={`py-1 transition-colors whitespace-nowrap shrink-0 border-b-2 ${
-              activeTab === 'config'
-                ? 'text-[#005BFF] border-[#005BFF] font-semibold'
-                : 'border-transparent hover:text-[#071026] hover:underline'
-            }`}
-          >
-            Настройка полей
-          </a>
-          <a
-            href="#extension_code"
-            onClick={(e) => {
-              e.preventDefault();
-              setActiveTab('extension_code');
-            }}
-            className={`py-1 transition-colors whitespace-nowrap shrink-0 border-b-2 ${
-              activeTab === 'extension_code'
-                ? 'text-[#005BFF] border-[#005BFF] font-semibold'
-                : 'border-transparent hover:text-[#071026] hover:underline'
-            }`}
-          >
-            Код расширения
+            Все спринты ({tasks.length})
           </a>
         </nav>
 
-        {/* Zone 3: 1 primary action */}
+        {/* Zone 3: 1 primary action (Uses Spec 3 Button Tinted + Loading spinner replacement) */}
         <div className="flex items-center shrink-0">
           <button
             onClick={handleDownloadExtensionZip}
             disabled={isZipping}
-            className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-[#005BFF] rounded-lg hover:bg-[#004ED6] active:scale-[0.99] transition-all whitespace-nowrap shrink-0 cursor-pointer shadow-xs"
+            className="ozon-btn-tinted ozon-focusable min-w-[172px] h-7 inline-flex items-center justify-center gap-1.5 px-3 text-[11px] font-semibold whitespace-nowrap shrink-0 cursor-pointer"
           >
-            <Download className="w-3.5 h-3.5" />
-            <span>{isZipping ? 'Сборка архива...' : 'Скачать расширение .ZIP'}</span>
+            {isZipping ? (
+              <span className="ozon-loader-500" aria-label="Загрузка" />
+            ) : (
+              <>
+                <Download className="w-3.5 h-3.5" />
+                <span>Скачать расширение .ZIP</span>
+              </>
+            )}
           </button>
         </div>
       </header>
 
       {/* =====================================================================
-          WORKSPACE SUB-HEADER & TARGET BOARD CONTEXT BAR
+          COMPACT JIRA STRUCTURE TOOLBAR (Filters, Search, Group Controls)
          ===================================================================== */}
-      <section className="bg-white border-b border-[#E2E8F0] px-6 py-4">
-        <div className="max-w-[1600px] mx-auto flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2 text-xs text-[#64748B]">
-              <span className="font-semibold text-[#005BFF]">Дизайн-система Ozon Банка</span>
-              <span aria-hidden="true">·</span>
-              <span className="font-mono tabular-nums">rapidView={config.rapidViewId}</span>
-              <span aria-hidden="true">·</span>
-              <span className="font-mono tabular-nums">projectKey={config.projectKey}</span>
-              <span aria-hidden="true">·</span>
-              <span className="tabular-nums">Активных полей карточки: {activeFieldCount} из 10</span>
-            </div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#071026] font-display">
-              Кастомный визуал доски {config.projectKey} (jit.o3.ru)
-            </h1>
+      <div className="shrink-0 bg-white border-b border-[#E2E8F0] px-3 py-1.5 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-[260px]">
+          {/* Expand / Collapse all Sprints button (Spec 3 Surface Button) */}
+          <button
+            onClick={toggleAllSprints}
+            className="ozon-btn-surface ozon-focusable inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap shrink-0 cursor-pointer"
+            title="Свернуть или развернуть все группы спринтов"
+          >
+            <ChevronsUpDown className="w-3 h-3 text-[#005BFF]" />
+            <span>Спринты</span>
+          </button>
+
+          {/* Compact Search */}
+          <div className="relative w-60 sm:w-72">
+            <Search className="w-3 h-3 text-[#64748B] absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Поиск по ключу, задаче, заказчику, связям..."
+              className="ozon-focusable w-full pl-7 pr-6 py-1 text-[11.5px] bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg text-[#071026] placeholder:text-[#64748B] focus:bg-white"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="ozon-focusable rounded absolute right-1.5 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#071026] cursor-pointer"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
           </div>
 
-          {/* Interactive Workspace Controls */}
-          <div className="flex flex-wrap items-center gap-2.5">
-            <a
-              href={config.boardUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-[#071026] bg-[#F5F7FA] hover:bg-[#EBF2FF] hover:text-[#005BFF] border border-[#E2E8F0] rounded-lg transition-colors whitespace-nowrap shrink-0"
-            >
-              <span className="font-mono">jit.o3.ru/secure/RapidBoard.jspa?rapidView=9349</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
+          {/* Compact Select Filters */}
+          <select
+            value={selectedComponent}
+            onChange={(e) => setSelectedComponent(e.target.value)}
+            aria-label="Фильтр по компоненту"
+            className="ozon-focusable px-2 py-1 text-[11.5px] bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg text-[#071026] cursor-pointer"
+          >
+            <option value="all">Компонент: Все</option>
+            {allComponents.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
 
+          <select
+            value={selectedEpic}
+            onChange={(e) => setSelectedEpic(e.target.value)}
+            aria-label="Фильтр по эпику"
+            className="ozon-focusable px-2 py-1 text-[11.5px] bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg text-[#071026] cursor-pointer max-w-[180px] truncate"
+          >
+            <option value="all">Эпик: Все</option>
+            {uniqueEpics.map((ep) => (
+              <option
+                key={ep.epicKey}
+                value={`${ep.epicKey} · ${ep.epicName}`}
+              >
+                {ep.epicKey} · {ep.epicName}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={selectedCustomer}
+            onChange={(e) => setSelectedCustomer(e.target.value)}
+            aria-label="Фильтр по заказчику"
+            className="ozon-focusable px-2 py-1 text-[11.5px] bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg text-[#071026] cursor-pointer"
+          >
+            <option value="all">Заказчик: Все</option>
+            {uniqueCustomers.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={selectedStatusFilter}
+            onChange={(e) => setSelectedStatusFilter(e.target.value)}
+            aria-label="Фильтр по статусу"
+            className="ozon-focusable px-2 py-1 text-[11.5px] bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg text-[#071026] cursor-pointer"
+          >
+            <option value="all">Статус: Все</option>
+            {STATUS_COLUMNS.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.title}
+              </option>
+            ))}
+          </select>
+
+          {/* Negative Action Button per Spec 3 */}
+          {(searchQuery ||
+            selectedSprintFilter !== 'all' ||
+            selectedComponent !== 'all' ||
+            selectedEpic !== 'all' ||
+            selectedCustomer !== 'all' ||
+            selectedStatusFilter !== 'all') && (
             <button
-              onClick={() => setIsNewTaskModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-[#005BFF] bg-[#EBF2FF] hover:bg-[#DBE8FF] rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              onClick={resetFilters}
+              className="ozon-btn-negative ozon-focusable inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap shrink-0 cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Добавить тестовую задачу</span>
+              <RotateCcw className="w-3 h-3" />
+              <span>Сбросить</span>
+            </button>
+          )}
+        </div>
+
+        {/* Right Toolbar Controls */}
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setIsInstallGuideOpen(true)}
+            className="ozon-btn-surface ozon-focusable inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap shrink-0 cursor-pointer"
+            title="Пошаговая инструкция установки и запуска расширения в Chrome"
+          >
+            <HelpCircle className="w-3 h-3 text-[#005BFF]" />
+            <span>Как запустить в Chrome</span>
+          </button>
+
+          <button
+            onClick={() => setIsFieldConfigOpen((v) => !v)}
+            className="ozon-btn-surface ozon-focusable inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            <SlidersHorizontal className="w-3 h-3" />
+            <span>Колонки</span>
+          </button>
+
+          <button
+            onClick={() => setIsNewTaskModalOpen(true)}
+            className="ozon-btn-tinted ozon-focusable inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            <Plus className="w-3 h-3" />
+            <span>Задача</span>
+          </button>
+        </div>
+      </div>
+
+      {/* =====================================================================
+          COLLAPSIBLE COLUMN CONFIG BAR
+         ===================================================================== */}
+      {isFieldConfigOpen && (
+        <div className="shrink-0 bg-[#F8FAFC] border-b border-[#E2E8F0] px-3 py-2 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="font-semibold text-[#475569] text-[11px] mr-1">
+              Видимость колонок:
+            </span>
+            {(
+              [
+                { key: 'showEpic', label: 'Эпик' },
+                { key: 'showComponent', label: 'Компонент' },
+                { key: 'showAssignee', label: 'Исполнитель' },
+                { key: 'showAuthor', label: 'Автор' },
+                { key: 'showCustomer', label: 'Заказчик' },
+                { key: 'showCreatedAt', label: 'Дата создания' },
+                { key: 'showSprint', label: 'Спринт' },
+                { key: 'showProjectTaskLinks', label: 'Задача проекта' },
+                { key: 'showInProjectLinks', label: 'В проекте' },
+              ] as { key: keyof ExtensionConfig; label: string }[]
+            ).map((col) => {
+              const active = Boolean(config[col.key]);
+              return (
+                <button
+                  key={col.key}
+                  onClick={() =>
+                    setConfig((prev) => ({ ...prev, [col.key]: !prev[col.key] }))
+                  }
+                  className={`ozon-focusable px-2.5 py-0.5 text-[11px] font-semibold rounded-md transition-colors cursor-pointer ${
+                    active ? 'ozon-btn-tinted' : 'ozon-btn-surface text-[#64748B]'
+                  }`}
+                >
+                  {col.label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] text-[#64748B]">
+              Потяните за правую границу любого заголовка столбца в таблице для изменения ширины.
+            </span>
+            <button
+              onClick={() => setColumnWidths(INITIAL_COLUMN_WIDTHS)}
+              className="ozon-btn-surface ozon-focusable px-2.5 py-0.5 text-[11px] font-semibold cursor-pointer"
+            >
+              Сбросить ширину столбцов
             </button>
           </div>
         </div>
-      </section>
-
-      {/* =====================================================================
-          FILTER & FIELD VISIBILITY BAR (Shown on Board & Table views)
-         ===================================================================== */}
-      {(activeTab === 'board' || activeTab === 'table') && (
-        <section className="bg-white/80 backdrop-blur-xs border-b border-[#E2E8F0] px-6 py-3">
-          <div className="max-w-[1600px] mx-auto flex flex-col gap-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              {/* Search input */}
-              <div className="relative flex-1 min-w-[260px] max-w-md">
-                <Search className="w-4 h-4 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Поиск по ключу FCRM, названию, заказчику, эпику или связям..."
-                  className="w-full pl-9 pr-8 py-1.5 text-xs bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg text-[#071026] placeholder:text-[#64748B] focus:outline-none focus:border-[#005BFF] focus:bg-white transition-colors"
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#071026] cursor-pointer"
-                    title="Очистить поиск"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-
-              {/* Dropdown Filters */}
-              <div className="flex flex-wrap items-center gap-2">
-                <select
-                  value={selectedSprint}
-                  onChange={(e) => setSelectedSprint(e.target.value)}
-                  aria-label="Фильтр по спринту"
-                  className="px-3 py-1.5 text-xs font-medium bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg text-[#071026] focus:outline-none focus:border-[#005BFF] cursor-pointer"
-                >
-                  <option value="all">Все спринты ({uniqueSprints.length})</option>
-                  {uniqueSprints.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  value={selectedComponent}
-                  onChange={(e) => setSelectedComponent(e.target.value)}
-                  aria-label="Фильтр по компоненту"
-                  className="px-3 py-1.5 text-xs font-medium bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg text-[#071026] focus:outline-none focus:border-[#005BFF] cursor-pointer"
-                >
-                  <option value="all">Все компоненты ({uniqueComponents.length})</option>
-                  {uniqueComponents.map((c) => (
-                    <option key={c} value={c}>
-                      Компонент: {c}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  value={selectedEpic}
-                  onChange={(e) => setSelectedEpic(e.target.value)}
-                  aria-label="Фильтр по эпику"
-                  className="px-3 py-1.5 text-xs font-medium bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg text-[#071026] focus:outline-none focus:border-[#005BFF] cursor-pointer max-w-[230px] truncate"
-                >
-                  <option value="all">Все эпики ({uniqueEpics.length})</option>
-                  {uniqueEpics.map((ep) => (
-                    <option key={ep} value={ep}>
-                      {ep}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  value={selectedCustomer}
-                  onChange={(e) => setSelectedCustomer(e.target.value)}
-                  aria-label="Фильтр по заказчику"
-                  className="px-3 py-1.5 text-xs font-medium bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg text-[#071026] focus:outline-none focus:border-[#005BFF] cursor-pointer"
-                >
-                  <option value="all">Все заказчики ({uniqueCustomers.length})</option>
-                  {uniqueCustomers.map((cust) => (
-                    <option key={cust} value={cust}>
-                      Заказчик: {cust}
-                    </option>
-                  ))}
-                </select>
-
-                {(searchQuery ||
-                  selectedSprint !== 'all' ||
-                  selectedComponent !== 'all' ||
-                  selectedEpic !== 'all' ||
-                  selectedCustomer !== 'all') && (
-                  <button
-                    onClick={resetFilters}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-[#F91155] hover:bg-[#FFF0F5] rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Сбросить</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Interactive Field Toggles Strip (Functional buttons to preview extension layout live) */}
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#F1F5F9]">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] font-semibold text-[#64748B] mr-1">
-                  Отображаемые поля карточки:
-                </span>
-                {(
-                  [
-                    { key: 'showSummary', label: '1. Название задачи' },
-                    { key: 'showEpic', label: '2. Эпик' },
-                    { key: 'showComponent', label: '3. Компонент' },
-                    { key: 'showAssignee', label: '4. Исполнитель' },
-                    { key: 'showAuthor', label: '5. Автор' },
-                    { key: 'showCustomer', label: '6. Заказчик' },
-                    { key: 'showCreatedAt', label: '7. Дата создания' },
-                    { key: 'showSprint', label: '8. Спринт' },
-                    { key: 'showProjectTaskLinks', label: `9. Связи «${config.linkTypeProjectTask}»` },
-                    { key: 'showInProjectLinks', label: `10. Связи «${config.linkTypeInProject}»` },
-                  ] as { key: keyof ExtensionConfig; label: string }[]
-                ).map((item) => {
-                  const isActive = Boolean(config[item.key]);
-                  return (
-                    <button
-                      key={item.key}
-                      onClick={() =>
-                        setConfig((prev) => ({ ...prev, [item.key]: !prev[item.key] }))
-                      }
-                      className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                        isActive
-                          ? 'bg-[#005BFF] text-white'
-                          : 'bg-[#F1F5F9] text-[#64748B] hover:text-[#071026]'
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <button
-                onClick={() =>
-                  setConfig((prev) => ({ ...prev, compactMode: !prev.compactMode }))
-                }
-                className={`px-2.5 py-1 text-[11px] font-semibold rounded-md border transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  config.compactMode
-                    ? 'bg-[#071026] text-white border-[#071026]'
-                    : 'bg-white text-[#475569] border-[#E2E8F0] hover:border-[#005BFF]'
-                }`}
-              >
-                {config.compactMode ? 'Режим: Компактный' : 'Режим: Стандартный Ozon Bank'}
-              </button>
-            </div>
-          </div>
-        </section>
       )}
 
       {/* =====================================================================
-          MAIN WORKSPACE CONTENT AREA
+          MAIN SPLIT WORKSPACE:
+          LEFT: High-Density Jira Structure Grid with Resizable Columns
+          CENTER: Interactive Drag Resizer Handle
+          RIGHT: Resizable Task Details Panel with Editable Fields & Quick Picker
          ===================================================================== */}
-      <main className="flex-1 px-6 py-6 max-w-[1600px] w-full mx-auto">
-        {/* -------------------------------------------------------------------
-            VIEW 1: KANBAN BOARD PREVIEW (FCRM #9349)
-           ------------------------------------------------------------------- */}
-        {activeTab === 'board' && (
-          <div className="space-y-4">
-            {filteredTasks.length === 0 ? (
-              <div className="bg-white border border-[#E2E8F0] rounded-xl p-12 text-center max-w-lg mx-auto my-8">
-                <p className="text-base font-semibold text-[#071026] mb-1">
-                  По выбранным фильтрам задачи не найдены
-                </p>
-                <p className="text-xs text-[#64748B] mb-4">
-                  Попробуйте сбросить параметры фильтрации или добавьте новую задачу в доску FCRM.
-                </p>
-                <button
-                  onClick={resetFilters}
-                  className="px-4 py-2 text-xs font-semibold text-white bg-[#005BFF] rounded-lg hover:bg-[#004ED6] transition-colors cursor-pointer"
-                >
-                  Сбросить все фильтры
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4 items-start">
-                {STATUS_COLUMNS.map((col) => {
-                  const colTasks = filteredTasks.filter((t) => t.status === col.id);
-                  return (
-                    <div
-                      key={col.id}
-                      className="bg-[#EEF2F7] border border-[#E2E8F0] rounded-xl p-3 flex flex-col gap-3 min-h-[620px]"
-                    >
-                      {/* Column Header */}
-                      <div className="flex items-center justify-between px-1 pb-2 border-b-2 border-[#005BFF]">
-                        <div>
-                          <h2 className="text-xs font-bold text-[#071026] tracking-tight">
-                            {col.title}
-                          </h2>
-                          <p className="text-[11px] text-[#64748B] font-mono">
-                            {col.jiraStatusName}
-                          </p>
-                        </div>
-                        <span className="font-mono text-xs font-semibold text-[#005BFF] tabular-nums">
-                          {colTasks.length}
-                        </span>
-                      </div>
+      <div className="flex-1 flex overflow-hidden">
+        {/* LEFT PANE: JIRA STRUCTURE COMPACT TABLE */}
+        <div className="flex-1 overflow-auto bg-white">
+          <table
+            style={{ width: `${totalTableWidth}px`, minWidth: '100%' }}
+            className="table-fixed text-left border-collapse select-none"
+          >
+            <thead className="sticky top-0 z-20 bg-[#F1F5F9] border-b border-[#CBD5E1] text-[11px] font-bold text-[#334155]">
+              <tr>
+                {renderResizableTh(
+                  'task',
+                  'Задача (Спринт → Задача → Связи)',
+                  'Потяните правую границу заголовка для изменения ширины',
+                  'pl-3'
+                )}
+                {renderResizableTh('status', 'Статус ▾', 'Статус задачи')}
+                {config.showEpic &&
+                  renderResizableTh(
+                    'epic',
+                    'Эпик ✎',
+                    'Двойной клик по ячейке для редактирования эпика'
+                  )}
+                {config.showComponent &&
+                  renderResizableTh(
+                    'component',
+                    'Компонент ▾',
+                    'Кликните на компонент в строке для быстрой смены прямо в таблице',
+                    'text-[#005BFF]'
+                  )}
+                {config.showAssignee &&
+                  renderResizableTh(
+                    'assignee',
+                    'Исполнитель ✎',
+                    'Двойной клик по ячейке для редактирования исполнителя'
+                  )}
+                {config.showAuthor &&
+                  renderResizableTh('author', 'Автор', 'Автор задачи')}
+                {config.showCustomer &&
+                  renderResizableTh(
+                    'customer',
+                    'Заказчик ✎',
+                    'Двойной клик по ячейке для редактирования заказчика'
+                  )}
+                {config.showCreatedAt &&
+                  renderResizableTh('createdAt', 'Создана', 'Дата создания задачи')}
+                {config.showSprint &&
+                  renderResizableTh(
+                    'sprint',
+                    'Спринт ▾',
+                    'Кликните для перевода задачи в другой спринт'
+                  )}
+                {config.showProjectTaskLinks &&
+                  renderResizableTh(
+                    'projectTaskLinks',
+                    'Задача проекта (fcrm_umb_epic) ✎',
+                    'Двойной клик для быстрого выбора из фильтра labels = fcrm_umb_epic'
+                  )}
+                {config.showInProjectLinks &&
+                  renderResizableTh(
+                    'inProjectLinks',
+                    'В проекте (Статус · Комп. · Спринт)',
+                    'Связанные задачи блока «В проекте» со статусом, компонентом и спринтом'
+                  )}
+              </tr>
+            </thead>
 
-                      {/* Column Cards */}
-                      <div className="flex flex-col gap-3">
-                        {colTasks.length === 0 ? (
-                          <div className="py-10 px-4 text-center border border-dashed border-[#CBD5E1] rounded-lg text-xs text-[#64748B]">
-                            Нет задач в статусе «{col.title}»
+            <tbody className="text-[12px] divide-y divide-[#E2E8F0]">
+              {sprintGroups.length === 0 ? (
+                <tr>
+                  <td colSpan={11} className="py-12 text-center text-xs text-[#64748B]">
+                    Задачи по заданным критериям не найдены.{' '}
+                    <button
+                      onClick={resetFilters}
+                      className="ozon-btn-tinted ozon-focusable px-2.5 py-1 ml-2 font-semibold cursor-pointer"
+                    >
+                      Сбросить фильтры
+                    </button>
+                  </td>
+                </tr>
+              ) : (
+                sprintGroups.map((group) => {
+                  const isCollapsed = Boolean(collapsedSprints[group.sprintName]);
+                  const isLoading = Boolean(loadingSprints[group.sprintName]);
+                  const doneCount = group.items.filter((i) => i.status === 'done').length;
+
+                  return (
+                    <React.Fragment key={group.sprintName}>
+                      {/* =====================================================
+                          SPRINT GROUP ACCORDION ROW (Spec 2: Accordion Default/Hover/Active/Focus/Load)
+                         ===================================================== */}
+                      <tr
+                        tabIndex={0}
+                        onClick={() => toggleSprintCollapse(group.sprintName)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            toggleSprintCollapse(group.sprintName);
+                          }
+                        }}
+                        className="ozon-accordion-header ozon-focusable bg-[#F8FAFC] hover:bg-[#F2F4F8] cursor-pointer font-semibold text-[#071026]"
+                      >
+                        <td colSpan={11} className="py-1.5 px-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold tracking-tight text-[#071026]">
+                                {group.sprintName}
+                              </span>
+                              <span className="text-[#CBD5E1]">·</span>
+                              <span className="font-mono text-[11px] font-semibold text-[#005BFF] tabular-nums">
+                                {group.items.length} задач
+                              </span>
+                              <span className="text-[#CBD5E1]">·</span>
+                              <span className="text-[11px] font-normal text-[#64748B] tabular-nums">
+                                Готово: {doneCount}/{group.items.length}
+                              </span>
+                            </div>
+
+                            {/* Right Chevron per Accordion Spec 2 */}
+                            <div className="flex items-center gap-2">
+                              {isLoading && (
+                                <span
+                                  className="ozon-loader-500"
+                                  title="Загрузка спринта (Loader/500)"
+                                />
+                              )}
+                              {isCollapsed ? (
+                                <ChevronDown className="ozon-accordion-chevron w-4 h-4 shrink-0" />
+                              ) : (
+                                <ChevronUp className="ozon-accordion-chevron w-4 h-4 shrink-0" />
+                              )}
+                            </div>
                           </div>
-                        ) : (
-                          colTasks.map((task) => (
-                            <article
-                              key={task.key}
-                              onClick={() => setSelectedTaskKey(task.key)}
-                              className={`bg-white border border-[#E2E8F0] hover:border-[#005BFF] rounded-xl transition-all cursor-pointer flex flex-col ${
-                                config.compactMode ? 'p-3 gap-2' : 'p-4 gap-3'
-                              }`}
-                            >
-                              {/* Top Row: Key · Priority · Created Date */}
-                              <div className="flex items-center justify-between gap-2 text-xs">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="font-mono font-bold text-[#005BFF] hover:underline">
-                                    {task.key}
-                                  </span>
-                                  <span className="text-[#CBD5E1]" aria-hidden="true">
-                                    ·
-                                  </span>
-                                  <span
-                                    className={`text-[11px] font-medium ${
-                                      task.priority === 'Критический'
-                                        ? 'text-[#F91155] font-semibold'
-                                        : task.priority === 'Высокий'
-                                        ? 'text-[#D97706]'
-                                        : 'text-[#64748B]'
+                        </td>
+                      </tr>
+
+                      {/* =====================================================
+                          COMPACT TASK ROWS INSIDE SPRINT
+                         ===================================================== */}
+                      {!isCollapsed &&
+                        !isLoading &&
+                        group.items.map((task) => {
+                          const isSelected = selectedTaskKey === task.key;
+                          const isRowExpanded = Boolean(expandedTaskRows[task.key]);
+                          const totalLinks =
+                            task.projectTaskLinks.length + task.inProjectLinks.length;
+
+                          return (
+                            <React.Fragment key={task.key}>
+                              <tr
+                                tabIndex={0}
+                                onClick={() => setSelectedTaskKey(task.key)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') setSelectedTaskKey(task.key);
+                                }}
+                                className={`ozon-row-item ozon-focusable h-7 cursor-pointer ${
+                                  isSelected ? 'ozon-row-selected' : ''
+                                }`}
+                              >
+                                {/* 1. Key + Summary + Structure Tree Expand Chevron */}
+                                <td className="py-0.5 pl-3 pr-2 border-r border-[#EEF2F6] overflow-hidden">
+                                  <div className="flex items-center gap-1 min-w-0">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => toggleTaskRowExpand(e, task.key)}
+                                      className={`ozon-inner-control ozon-focusable w-4 h-4 flex items-center justify-center rounded hover:bg-[#005BFF]/12 text-[#64748B] hover:text-[#005BFF] shrink-0 cursor-pointer ${
+                                        totalLinks === 0 ? 'opacity-25 pointer-events-none' : ''
+                                      }`}
+                                      title="Развернуть связанные задачи в дереве Structure"
+                                    >
+                                      {isRowExpanded ? (
+                                        <ChevronDown className="w-3 h-3 text-[#005BFF]" />
+                                      ) : (
+                                        <ChevronRight className="w-3 h-3" />
+                                      )}
+                                    </button>
+                                    <span className="font-mono text-[11px] font-bold text-[#005BFF] shrink-0 tabular-nums">
+                                      {task.key}
+                                    </span>
+                                    <span
+                                      className="font-medium text-[#071026] truncate text-[11.5px]"
+                                      title={task.summary}
+                                    >
+                                      {task.summary}
+                                    </span>
+                                  </div>
+                                </td>
+
+                                {/* Status (Direct 1-click inline selector in table) */}
+                                <td
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="py-0.5 px-1.5 border-r border-[#EEF2F6] whitespace-nowrap overflow-hidden"
+                                >
+                                  <select
+                                    value={task.status}
+                                    onChange={(e) =>
+                                      handleMoveTaskStatus(
+                                        task.key,
+                                        e.target.value as IssueStatus
+                                      )
+                                    }
+                                    aria-label={`Статус задачи ${task.key}`}
+                                    className={`ozon-inner-control ozon-inline-select w-full px-1 py-0.5 text-[11px] cursor-pointer truncate ${
+                                      task.status === 'in_progress'
+                                        ? 'text-[#005BFF] font-semibold'
+                                        : task.status === 'review'
+                                        ? 'text-[#D97706] font-semibold'
+                                        : task.status === 'testing'
+                                        ? 'text-[#7C3AED] font-semibold'
+                                        : task.status === 'done'
+                                        ? 'text-[#16A34A] font-semibold'
+                                        : 'text-[#475569]'
                                     }`}
                                   >
-                                    {task.priority}
-                                  </span>
-                                </div>
-                                {config.showCreatedAt && (
-                                  <span
-                                    className="font-mono text-[11px] text-[#64748B] tabular-nums"
-                                    title="Дата создания задачи"
+                                    {STATUS_COLUMNS.map((st) => (
+                                      <option key={st.id} value={st.id}>
+                                        {st.title}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </td>
+
+                                {/* 2. Эпик */}
+                                {config.showEpic && (
+                                  <td
+                                    onDoubleClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingCell({ taskKey: task.key, field: 'epic' });
+                                    }}
+                                    className="py-0.5 px-2 border-r border-[#EEF2F6] truncate text-[11px]"
+                                    title={`${task.epicKey} · ${task.epicName} (Двойной клик для изменения)`}
                                   >
-                                    {task.createdAt}
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* 1. Название задачи */}
-                              {config.showSummary && (
-                                <h3
-                                  className={`font-semibold text-[#071026] leading-snug ${
-                                    config.compactMode ? 'text-xs' : 'text-[13.5px]'
-                                  }`}
-                                >
-                                  {task.summary}
-                                </h3>
-                              )}
-
-                              {/* 2. Эпик · 3. Компонент · 8. Спринт (Zero-Pill clean unboxed metadata with · separators) */}
-                              {(config.showEpic || config.showComponent || config.showSprint) && (
-                                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11.5px] text-[#475569] pt-2 border-t border-[#F1F5F9]">
-                                  {config.showEpic && (
-                                    <span className="font-semibold text-[#005BFF]">
-                                      Эпик: {task.epicKey} ({task.epicName})
-                                    </span>
-                                  )}
-                                  {config.showEpic &&
-                                    (config.showComponent || config.showSprint) && (
-                                      <span className="text-[#CBD5E1]" aria-hidden="true">
-                                        ·
-                                      </span>
+                                    {editingCell?.taskKey === task.key &&
+                                    editingCell.field === 'epic' ? (
+                                      <input
+                                        type="text"
+                                        autoFocus
+                                        defaultValue={task.epicName}
+                                        onClick={(e) => e.stopPropagation()}
+                                        onBlur={(e) => {
+                                          const val = e.target.value.trim();
+                                          if (val) {
+                                            handleUpdateTask(task.key, (t) => ({
+                                              ...t,
+                                              epicName: val,
+                                            }));
+                                          }
+                                          setEditingCell(null);
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            (e.target as HTMLInputElement).blur();
+                                          } else if (e.key === 'Escape') {
+                                            setEditingCell(null);
+                                          }
+                                        }}
+                                        className="ozon-inner-control ozon-focusable w-full px-1 py-0 text-[11px] bg-white border border-[#005BFF] rounded"
+                                      />
+                                    ) : (
+                                      <>
+                                        <span className="font-mono font-semibold text-[#005BFF]">
+                                          {task.epicKey}
+                                        </span>{' '}
+                                        <span className="text-[#334155]">{task.epicName}</span>
+                                      </>
                                     )}
-                                  {config.showComponent && (
-                                    <span>
-                                      Компонент:{' '}
-                                      <strong className="font-semibold text-[#071026]">
-                                        {task.component}
-                                      </strong>
-                                    </span>
-                                  )}
-                                  {config.showComponent && config.showSprint && (
-                                    <span className="text-[#CBD5E1]" aria-hidden="true">
-                                      ·
-                                    </span>
-                                  )}
-                                  {config.showSprint && (
-                                    <span className="text-[#64748B] tabular-nums">
-                                      {task.sprint}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
+                                  </td>
+                                )}
 
-                              {/* 4. Исполнитель · 5. Автор · 6. Заказчик */}
-                              {(config.showAssignee ||
-                                config.showAuthor ||
-                                config.showCustomer) && (
-                                <div className="bg-[#F8FAFC] border border-[#EEF2F6] rounded-lg p-2.5 flex flex-col gap-1.5 text-[11.5px]">
-                                  {config.showAssignee && (
-                                    <div className="flex items-baseline justify-between gap-2">
-                                      <span className="text-[#64748B] shrink-0">
-                                        Исполнитель:
-                                      </span>
-                                      <span className="font-semibold text-[#071026] text-right truncate">
-                                        {task.assignee.name}
-                                      </span>
-                                    </div>
-                                  )}
-                                  {config.showAuthor && (
-                                    <div className="flex items-baseline justify-between gap-2">
-                                      <span className="text-[#64748B] shrink-0">Автор:</span>
-                                      <span className="font-medium text-[#334155] text-right truncate">
-                                        {task.author.name}
-                                      </span>
-                                    </div>
-                                  )}
-                                  {config.showCustomer && (
-                                    <div className="flex items-baseline justify-between gap-2 pt-1 border-t border-[#E2E8F0]/70">
-                                      <span className="text-[#64748B] shrink-0">Заказчик:</span>
-                                      <span
-                                        className="font-semibold text-[#004ED6] text-right truncate"
-                                        title={`${task.customer.name} — ${task.customer.department}`}
+                                {/* 3. КОМПОНЕНТ — ПРЯМОЕ ИЗМЕНЕНИЕ В ТАБЛИЦЕ В 1 КЛИК */}
+                                {config.showComponent && (
+                                  <td
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="py-0.5 px-1.5 border-r border-[#EEF2F6] overflow-hidden"
+                                  >
+                                    <select
+                                      value={task.component}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        handleUpdateTask(task.key, (t) => ({
+                                          ...t,
+                                          component: val,
+                                        }));
+                                      }}
+                                      aria-label={`Компонент задачи ${task.key}`}
+                                      title="Изменить компонент задачи прямо в таблице"
+                                      className="ozon-inner-control ozon-inline-select w-full px-1.5 py-0.5 text-[11px] font-semibold text-[#071026] cursor-pointer truncate"
+                                    >
+                                      {allComponents.map((comp) => (
+                                        <option key={comp} value={comp}>
+                                          {comp}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                )}
+
+                                {/* 4. Исполнитель */}
+                                {config.showAssignee && (
+                                  <td
+                                    onDoubleClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingCell({ taskKey: task.key, field: 'assignee' });
+                                    }}
+                                    className="py-0.5 px-2 border-r border-[#EEF2F6] truncate text-[11px] text-[#071026]"
+                                    title={`${task.assignee.name} (Двойной клик для изменения)`}
+                                  >
+                                    {editingCell?.taskKey === task.key &&
+                                    editingCell.field === 'assignee' ? (
+                                      <input
+                                        type="text"
+                                        autoFocus
+                                        defaultValue={task.assignee.name}
+                                        onClick={(e) => e.stopPropagation()}
+                                        onBlur={(e) => {
+                                          const val = e.target.value.trim();
+                                          if (val) {
+                                            handleUpdateTask(task.key, (t) => ({
+                                              ...t,
+                                              assignee: { ...t.assignee, name: val },
+                                            }));
+                                          }
+                                          setEditingCell(null);
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            (e.target as HTMLInputElement).blur();
+                                          } else if (e.key === 'Escape') {
+                                            setEditingCell(null);
+                                          }
+                                        }}
+                                        className="ozon-inner-control ozon-focusable w-full px-1 py-0 text-[11px] bg-white border border-[#005BFF] rounded"
+                                      />
+                                    ) : (
+                                      task.assignee.name
+                                    )}
+                                  </td>
+                                )}
+
+                                {/* 5. Автор */}
+                                {config.showAuthor && (
+                                  <td
+                                    className="py-0.5 px-2 border-r border-[#EEF2F6] truncate text-[11px] text-[#475569]"
+                                    title={task.author.name}
+                                  >
+                                    {task.author.name}
+                                  </td>
+                                )}
+
+                                {/* 6. Заказчик */}
+                                {config.showCustomer && (
+                                  <td
+                                    onDoubleClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingCell({ taskKey: task.key, field: 'customer' });
+                                    }}
+                                    className="py-0.5 px-2 border-r border-[#EEF2F6] truncate text-[11px]"
+                                    title={`${task.customer.name} · ${task.customer.department} (Двойной клик для изменения)`}
+                                  >
+                                    {editingCell?.taskKey === task.key &&
+                                    editingCell.field === 'customer' ? (
+                                      <input
+                                        type="text"
+                                        autoFocus
+                                        defaultValue={task.customer.name}
+                                        onClick={(e) => e.stopPropagation()}
+                                        onBlur={(e) => {
+                                          const val = e.target.value.trim();
+                                          if (val) {
+                                            handleUpdateTask(task.key, (t) => ({
+                                              ...t,
+                                              customer: { ...t.customer, name: val },
+                                            }));
+                                          }
+                                          setEditingCell(null);
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            (e.target as HTMLInputElement).blur();
+                                          } else if (e.key === 'Escape') {
+                                            setEditingCell(null);
+                                          }
+                                        }}
+                                        className="ozon-inner-control ozon-focusable w-full px-1 py-0 text-[11px] bg-white border border-[#005BFF] rounded"
+                                      />
+                                    ) : (
+                                      <>
+                                        <span className="font-semibold text-[#004ED6]">
+                                          {task.customer.name}
+                                        </span>{' '}
+                                        <span className="text-[#64748B] text-[10px]">
+                                          · {task.customer.department}
+                                        </span>
+                                      </>
+                                    )}
+                                  </td>
+                                )}
+
+                                {/* 7. Дата создания */}
+                                {config.showCreatedAt && (
+                                  <td className="py-0.5 px-2 border-r border-[#EEF2F6] whitespace-nowrap truncate font-mono text-[10.5px] text-[#475569] tabular-nums">
+                                    {task.createdAt}
+                                  </td>
+                                )}
+
+                                {/* 8. Спринт (Direct 1-click inline selector in table) */}
+                                {config.showSprint && (
+                                  <td
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="py-0.5 px-1.5 border-r border-[#EEF2F6] overflow-hidden"
+                                  >
+                                    <select
+                                      value={task.sprint}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        handleUpdateTask(task.key, (t) => ({
+                                          ...t,
+                                          sprint: val,
+                                        }));
+                                      }}
+                                      aria-label={`Спринт задачи ${task.key}`}
+                                      title="Изменить спринт задачи прямо в таблице"
+                                      className="ozon-inner-control ozon-inline-select w-full px-1 py-0.5 text-[11px] text-[#475569] tabular-nums cursor-pointer truncate"
+                                    >
+                                      {uniqueSprints.map((sp) => (
+                                        <option key={sp} value={sp}>
+                                          {sp.replace('FCRM ', '')}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                )}
+
+                                {/* 9. Блок связей «Задача проекта» (Quick-Select from JQL labels = fcrm_umb_epic) */}
+                                {config.showProjectTaskLinks && (
+                                  <td
+                                    onDoubleClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingCell({
+                                        taskKey: task.key,
+                                        field: 'projectTask',
+                                      });
+                                    }}
+                                    className="py-0.5 px-2 border-r border-[#EEF2F6] truncate text-[11px]"
+                                    title={
+                                      task.projectTaskLinks
+                                        .map((l) => `${l.key}: ${l.summary} (${l.status})`)
+                                        .join('\n') +
+                                      '\n(Двойной клик для быстрого выбора из labels = fcrm_umb_epic)'
+                                    }
+                                  >
+                                    {editingCell?.taskKey === task.key &&
+                                    editingCell.field === 'projectTask' ? (
+                                      <select
+                                        autoFocus
+                                        value=""
+                                        onClick={(e) => e.stopPropagation()}
+                                        onChange={(e) => {
+                                          const chosenKey = e.target.value;
+                                          const found = umbEpicCatalog.find(
+                                            (u) => u.key === chosenKey
+                                          );
+                                          if (found) {
+                                            handleToggleUmbProjectTask(task.key, found);
+                                          }
+                                          setEditingCell(null);
+                                        }}
+                                        onBlur={() => setEditingCell(null)}
+                                        className="ozon-inner-control ozon-focusable w-full px-1 py-0 text-[11px] bg-white border border-[#005BFF] rounded"
                                       >
-                                        {task.customer.name} · {task.customer.department}
+                                        <option value="" disabled>
+                                          + Выбрать из fcrm_umb_epic...
+                                        </option>
+                                        {umbEpicCatalog.map((u) => {
+                                          const linked = task.projectTaskLinks.some(
+                                            (l) => l.key === u.key
+                                          );
+                                          return (
+                                            <option key={u.key} value={u.key}>
+                                              {linked ? '✓ ' : ''}
+                                              {u.key} · {u.summary}
+                                            </option>
+                                          );
+                                        })}
+                                      </select>
+                                    ) : task.projectTaskLinks.length === 0 ? (
+                                      <span className="text-[#94A3B8] italic">
+                                        + Выбрать (fcrm_umb_epic)
+                                      </span>
+                                    ) : (
+                                      <div className="flex items-center gap-1 truncate">
+                                        <span className="font-mono font-semibold text-[#005BFF] shrink-0">
+                                          {task.projectTaskLinks.map((l) => l.key).join(', ')}
+                                        </span>
+                                        <span className="text-[#64748B] truncate">
+                                          {task.projectTaskLinks[0].summary}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </td>
+                                )}
+
+                                {/* 10. Блок связей «В проекте» (с отображением компонента и спринта) */}
+                                {config.showInProjectLinks && (
+                                  <td
+                                    className="py-0.5 px-2 truncate text-[11px]"
+                                    title={task.inProjectLinks
+                                      .map(
+                                        (l) =>
+                                          `${l.key}: ${l.summary} | Статус: ${l.status} | Компонент: ${
+                                            l.component || '—'
+                                          } | Спринт: ${l.sprint || '—'}`
+                                      )
+                                      .join('\n')}
+                                  >
+                                    {task.inProjectLinks.length === 0 ? (
+                                      <span className="text-[#CBD5E1]">—</span>
+                                    ) : (
+                                      <div className="flex items-center gap-1 truncate">
+                                        <span className="font-mono font-semibold text-[#005BFF] shrink-0 tabular-nums">
+                                          {task.inProjectLinks.map((l) => l.key).join(', ')}
+                                        </span>
+                                        <span className="text-[#071026] font-medium shrink-0">
+                                          {task.inProjectLinks[0].component}
+                                        </span>
+                                        <span className="text-[#CBD5E1]">·</span>
+                                        <span className="text-[#64748B] truncate tabular-nums">
+                                          {(task.inProjectLinks[0].sprint || '').replace(
+                                            'FCRM ',
+                                            ''
+                                          )}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </td>
+                                )}
+                              </tr>
+
+                              {/* =================================================
+                                  INLINE SUB-TREE ROWS FOR LINKED ISSUES
+                                 ================================================= */}
+                              {isRowExpanded && (
+                                <>
+                                  {task.projectTaskLinks.map((link) => (
+                                    <tr
+                                      key={`${task.key}-pt-${link.id}`}
+                                      onClick={() => setSelectedTaskKey(task.key)}
+                                      className="ozon-row-item bg-[#FAFBFD] text-[11px] text-[#475569] cursor-pointer"
+                                    >
+                                      <td colSpan={11} className="py-1 pl-9 pr-3">
+                                        <div className="flex items-center gap-2">
+                                          <FolderGit2 className="w-3 h-3 text-[#005BFF] shrink-0" />
+                                          <span className="text-[10.5px] font-semibold text-[#64748B] w-28 shrink-0">
+                                            {config.linkTypeProjectTask}:
+                                          </span>
+                                          <span className="font-mono font-bold text-[#005BFF] shrink-0">
+                                            {link.key}
+                                          </span>
+                                          <span className="text-[#071026] font-medium truncate">
+                                            {link.summary}
+                                          </span>
+                                          <span className="text-[#CBD5E1]">·</span>
+                                          <span className="text-[#64748B] shrink-0">
+                                            Статус: <strong className="text-[#071026]">{link.status}</strong>
+                                          </span>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                  {task.inProjectLinks.map((link) => (
+                                    <tr
+                                      key={`${task.key}-ip-${link.id}`}
+                                      onClick={() => setSelectedTaskKey(task.key)}
+                                      className="ozon-row-item bg-[#F8FAFC] text-[11px] text-[#475569] cursor-pointer"
+                                    >
+                                      <td colSpan={11} className="py-1 pl-9 pr-3">
+                                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                          <Link2 className="w-3 h-3 text-[#005BFF] shrink-0" />
+                                          <span className="text-[10.5px] font-semibold text-[#004ED6] w-28 shrink-0">
+                                            {config.linkTypeInProject}:
+                                          </span>
+                                          <span className="font-mono font-bold text-[#005BFF] shrink-0">
+                                            {link.key}
+                                          </span>
+                                          <span className="text-[#071026] font-medium truncate max-w-sm">
+                                            {link.summary}
+                                          </span>
+                                          <span className="text-[#CBD5E1]">·</span>
+                                          <span className="text-[#475569] shrink-0">
+                                            Статус:{' '}
+                                            <strong className="text-[#071026]">
+                                              {link.status}
+                                            </strong>
+                                          </span>
+                                          <span className="text-[#CBD5E1]">·</span>
+                                          {/* Direct inline Component selector for 'В проекте' sub-row */}
+                                          <span
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="inline-flex items-center gap-1 shrink-0"
+                                          >
+                                            <span className="text-[#64748B]">Компонент:</span>
+                                            <select
+                                              value={link.component || 'Core-Scoring'}
+                                              onChange={(e) =>
+                                                handleUpdateInProjectLink(
+                                                  task.key,
+                                                  link.id,
+                                                  { component: e.target.value }
+                                                )
+                                              }
+                                              className="ozon-inner-control ozon-inline-select px-1 py-0 text-[11px] font-semibold text-[#005BFF] cursor-pointer"
+                                            >
+                                              {allComponents.map((comp) => (
+                                                <option key={comp} value={comp}>
+                                                  {comp}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </span>
+                                          <span className="text-[#CBD5E1]">·</span>
+                                          {/* Direct inline Sprint selector for 'В проекте' sub-row */}
+                                          <span
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="inline-flex items-center gap-1 shrink-0 tabular-nums"
+                                          >
+                                            <span className="text-[#64748B]">Спринт:</span>
+                                            <select
+                                              value={
+                                                link.sprint ||
+                                                'FCRM Sprint 43 (11.11 – 25.11)'
+                                              }
+                                              onChange={(e) =>
+                                                handleUpdateInProjectLink(
+                                                  task.key,
+                                                  link.id,
+                                                  { sprint: e.target.value }
+                                                )
+                                              }
+                                              className="ozon-inner-control ozon-inline-select px-1 py-0 text-[11px] font-semibold text-[#071026] cursor-pointer"
+                                            >
+                                              {uniqueSprints.map((sp) => (
+                                                <option key={sp} value={sp}>
+                                                  {sp.replace('FCRM ', '')}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </span>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </>
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
+                    </React.Fragment>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* ===================================================================
+            RESIZABLE RIGHT DOCKED SPLIT PANEL: JIRA STRUCTURE ISSUE DETAILS
+           =================================================================== */}
+        {selectedTask && (
+          <>
+            {/* Interactive Drag Resizer Handle */}
+            <div
+              onMouseDown={startResizing}
+              className={`w-1.5 shrink-0 cursor-col-resize flex items-center justify-center group transition-colors ${
+                isDraggingSidebar
+                  ? 'bg-[#005BFF]'
+                  : 'bg-[#E2E8F0] hover:bg-[#005BFF]'
+              }`}
+              title="Потяните влево или вправо для изменения ширины панели деталей задачи"
+            >
+              <GripVertical className="w-3 h-3 text-[#64748B] group-hover:text-white pointer-events-none" />
+            </div>
+
+            <aside
+              style={{ width: `${sidebarWidth}px` }}
+              className="shrink-0 bg-white flex flex-col h-full overflow-hidden"
+            >
+              {/* Inspector Header */}
+              <div className="px-4 py-2.5 bg-[#F8FAFC] border-b border-[#E2E8F0] flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 text-xs">
+                    <a
+                      href={`https://jit.o3.ru/browse/${selectedTask.key}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ozon-focusable rounded font-mono font-bold text-[#005BFF] hover:underline inline-flex items-center gap-1"
+                    >
+                      <span>{selectedTask.key}</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                    <span className="text-[#CBD5E1]">·</span>
+                    <span className="font-mono text-[11px] text-[#64748B] tabular-nums">
+                      Создана: {selectedTask.createdAt}
+                    </span>
+                    <span className="text-[#CBD5E1]">·</span>
+                    <span className="text-[11px] text-[#64748B]">
+                      Автор: <strong className="text-[#071026]">{selectedTask.author.name}</strong>
+                    </span>
+                  </div>
+
+                  {/* Editable Task Summary */}
+                  <input
+                    type="text"
+                    value={selectedTask.summary}
+                    onChange={(e) =>
+                      handleUpdateTask(selectedTask.key, (t) => ({
+                        ...t,
+                        summary: e.target.value,
+                      }))
+                    }
+                    className="ozon-focusable w-full text-sm font-bold text-[#071026] mt-1 leading-snug font-display bg-transparent border border-transparent hover:border-[#CBD5E1] focus:border-[#005BFF] focus:bg-white rounded-lg px-1.5 py-0.5 -ml-1.5 transition-colors"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={toggleSidebarExpandPreset}
+                    className="ozon-btn-surface ozon-focusable p-1.5 cursor-pointer"
+                    title={
+                      sidebarWidth < 640
+                        ? 'Расширить панель деталей'
+                        : 'Стандартная ширина панели'
+                    }
+                  >
+                    {sidebarWidth < 640 ? (
+                      <Maximize2 className="w-3.5 h-3.5" />
+                    ) : (
+                      <Minimize2 className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setSelectedTaskKey(null)}
+                    className="ozon-btn-surface ozon-focusable p-1.5 text-[#64748B] hover:text-[#071026] cursor-pointer"
+                    title="Закрыть панель деталей"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Inspector Scrollable Body */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 text-xs">
+                {/* Status bar (Spec 3 Action Buttons) */}
+                <div className="flex flex-wrap gap-1.5">
+                  {STATUS_COLUMNS.map((col) => {
+                    const active = selectedTask.status === col.id;
+                    return (
+                      <button
+                        key={col.id}
+                        onClick={() => handleMoveTaskStatus(selectedTask.key, col.id)}
+                        className={`ozon-focusable px-3 py-1 text-[11px] font-semibold cursor-pointer ${
+                          active ? 'ozon-btn-tinted font-bold ring-1 ring-[#005BFF]/30' : 'ozon-btn-surface text-[#475569]'
+                        }`}
+                      >
+                        {col.title}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* ===========================================================
+                    ACCORDION 1: Атрибуты задачи
+                   =========================================================== */}
+                <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOpenSidebarSections((s) => ({
+                        ...s,
+                        attributes: !s.attributes,
+                      }))
+                    }
+                    className="ozon-accordion-header ozon-focusable w-full px-3.5 py-2.5 flex items-center justify-between text-left font-bold text-[#071026] cursor-pointer"
+                  >
+                    <span>Атрибуты задачи (Эпик, Компонент, Исполнитель, Заказчик, Спринт)</span>
+                    {openSidebarSections.attributes ? (
+                      <ChevronUp className="ozon-accordion-chevron w-4 h-4 shrink-0" />
+                    ) : (
+                      <ChevronDown className="ozon-accordion-chevron w-4 h-4 shrink-0" />
+                    )}
+                  </button>
+
+                  {openSidebarSections.attributes && (
+                    <div className="p-3.5 space-y-2.5 bg-white">
+                      {/* 1. Спринт */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-4 text-[#64748B] font-medium">
+                          Спринт
+                        </label>
+                        <div className="col-span-8">
+                          <select
+                            value={selectedTask.sprint}
+                            onChange={(e) =>
+                              handleUpdateTask(selectedTask.key, (t) => ({
+                                ...t,
+                                sprint: e.target.value,
+                              }))
+                            }
+                            className="ozon-focusable w-full px-2.5 py-1 text-xs font-medium text-[#071026] bg-[#F5F7FA] border border-[#CBD5E1] rounded-lg cursor-pointer"
+                          >
+                            {uniqueSprints.map((sp) => (
+                              <option key={sp} value={sp}>
+                                {sp}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* 2. Эпик */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-4 text-[#64748B] font-medium">
+                          Эпик
+                        </label>
+                        <div className="col-span-8 flex gap-1.5">
+                          <input
+                            type="text"
+                            value={selectedTask.epicKey}
+                            onChange={(e) =>
+                              handleUpdateTask(selectedTask.key, (t) => ({
+                                ...t,
+                                epicKey: e.target.value,
+                              }))
+                            }
+                            placeholder="FCRM-4100"
+                            className="ozon-focusable w-24 shrink-0 px-2 py-1 text-xs font-mono font-semibold text-[#005BFF] bg-[#F5F7FA] border border-[#CBD5E1] rounded-lg"
+                          />
+                          <input
+                            list="fcrm-epics-list"
+                            type="text"
+                            value={selectedTask.epicName}
+                            onChange={(e) =>
+                              handleUpdateTask(selectedTask.key, (t) => ({
+                                ...t,
+                                epicName: e.target.value,
+                              }))
+                            }
+                            placeholder="Название эпика"
+                            className="ozon-focusable flex-1 min-w-0 px-2.5 py-1 text-xs font-medium text-[#071026] bg-[#F5F7FA] border border-[#CBD5E1] rounded-lg"
+                          />
+                          <datalist id="fcrm-epics-list">
+                            {uniqueEpics.map((ep) => (
+                              <option key={ep.epicKey} value={ep.epicName} />
+                            ))}
+                          </datalist>
+                        </div>
+                      </div>
+
+                      {/* 3. Компонент */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-4 text-[#64748B] font-medium">
+                          Компонент
+                        </label>
+                        <div className="col-span-8">
+                          <select
+                            value={selectedTask.component}
+                            onChange={(e) =>
+                              handleUpdateTask(selectedTask.key, (t) => ({
+                                ...t,
+                                component: e.target.value,
+                              }))
+                            }
+                            className="ozon-focusable w-full px-2.5 py-1 text-xs font-semibold text-[#005BFF] bg-[#F5F7FA] border border-[#CBD5E1] rounded-lg cursor-pointer"
+                          >
+                            {allComponents.map((c) => (
+                              <option key={c} value={c}>
+                                {c}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* 4. Исполнитель */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-4 text-[#64748B] font-medium">
+                          Исполнитель
+                        </label>
+                        <div className="col-span-8 flex gap-1.5">
+                          <input
+                            list="fcrm-assignees-list"
+                            type="text"
+                            value={selectedTask.assignee.name}
+                            onChange={(e) =>
+                              handleUpdateTask(selectedTask.key, (t) => ({
+                                ...t,
+                                assignee: { ...t.assignee, name: e.target.value },
+                              }))
+                            }
+                            placeholder="ФИО исполнителя"
+                            className="ozon-focusable flex-1 min-w-0 px-2.5 py-1 text-xs font-semibold text-[#071026] bg-[#F5F7FA] border border-[#CBD5E1] rounded-lg"
+                          />
+                          <input
+                            type="text"
+                            value={selectedTask.assignee.role}
+                            onChange={(e) =>
+                              handleUpdateTask(selectedTask.key, (t) => ({
+                                ...t,
+                                assignee: { ...t.assignee, role: e.target.value },
+                              }))
+                            }
+                            placeholder="Роль"
+                            className="ozon-focusable w-32 shrink-0 px-2 py-1 text-[11px] text-[#475569] bg-[#F5F7FA] border border-[#CBD5E1] rounded-lg"
+                          />
+                          <datalist id="fcrm-assignees-list">
+                            {uniqueAssignees.map((a) => (
+                              <option key={a} value={a} />
+                            ))}
+                          </datalist>
+                        </div>
+                      </div>
+
+                      {/* 5. Заказчик */}
+                      <div className="grid grid-cols-12 items-start gap-2">
+                        <label className="col-span-4 text-[#64748B] font-medium pt-1">
+                          Заказчик
+                        </label>
+                        <div className="col-span-8 space-y-1.5">
+                          <input
+                            list="fcrm-customers-list"
+                            type="text"
+                            value={selectedTask.customer.name}
+                            onChange={(e) =>
+                              handleUpdateTask(selectedTask.key, (t) => ({
+                                ...t,
+                                customer: { ...t.customer, name: e.target.value },
+                              }))
+                            }
+                            placeholder="ФИО заказчика"
+                            className="ozon-focusable w-full px-2.5 py-1 text-xs font-semibold text-[#004ED6] bg-[#F5F7FA] border border-[#CBD5E1] rounded-lg"
+                          />
+                          <input
+                            type="text"
+                            value={selectedTask.customer.department}
+                            onChange={(e) =>
+                              handleUpdateTask(selectedTask.key, (t) => ({
+                                ...t,
+                                customer: { ...t.customer, department: e.target.value },
+                              }))
+                            }
+                            placeholder="Подразделение Ozon Банка"
+                            className="ozon-focusable w-full px-2.5 py-1 text-[11px] text-[#475569] bg-[#F5F7FA] border border-[#CBD5E1] rounded-lg"
+                          />
+                          <datalist id="fcrm-customers-list">
+                            {uniqueCustomers.map((c) => (
+                              <option key={c} value={c} />
+                            ))}
+                          </datalist>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* ===========================================================
+                    ACCORDION 2: Связи «Задача проекта» (JQL: labels = fcrm_umb_epic)
+                   =========================================================== */}
+                <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOpenSidebarSections((s) => ({
+                        ...s,
+                        projectTasks: !s.projectTasks,
+                      }))
+                    }
+                    className="ozon-accordion-header ozon-focusable w-full px-3.5 py-2.5 flex items-center justify-between text-left font-bold text-[#071026] cursor-pointer"
+                  >
+                    <span className="inline-flex items-center gap-1.5">
+                      <FolderGit2 className="w-3.5 h-3.5 text-[#005BFF]" />
+                      <span>
+                        Связи: «{config.linkTypeProjectTask}» ({selectedTask.projectTaskLinks.length})
+                      </span>
+                    </span>
+                    {openSidebarSections.projectTasks ? (
+                      <ChevronUp className="ozon-accordion-chevron w-4 h-4 shrink-0" />
+                    ) : (
+                      <ChevronDown className="ozon-accordion-chevron w-4 h-4 shrink-0" />
+                    )}
+                  </button>
+
+                  {openSidebarSections.projectTasks && (
+                    <div className="p-3.5 space-y-2.5 bg-white">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-[#64748B]">
+                          Привязанные задачи из <code className="font-mono">fcrm_umb_epic</code>:
+                        </span>
+                        <a
+                          href={FCRM_UMB_EPIC_JQL_URL}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="ozon-focusable rounded inline-flex items-center gap-1 text-[10.5px] font-mono font-semibold text-[#005BFF] hover:underline"
+                        >
+                          <span>Открыть JQL в Jira</span>
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      </div>
+
+                      {selectedTask.projectTaskLinks.length === 0 ? (
+                        <p className="text-[11px] text-[#94A3B8]">
+                          Нет привязанных задач проекта. Выберите задачу из списка ниже:
+                        </p>
+                      ) : (
+                        <div className="space-y-1">
+                          {selectedTask.projectTaskLinks.map((link) => (
+                            <div
+                              key={link.id}
+                              tabIndex={0}
+                              className="ozon-row-item ozon-focusable rounded-xl p-2 flex items-center justify-between gap-2.5 border border-[#EEF2F6]"
+                            >
+                              <div className="w-7 h-7 rounded-lg bg-[#E5F0FF] text-[#005BFF] flex items-center justify-center shrink-0">
+                                <FolderGit2 className="w-3.5 h-3.5" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="text-xs font-semibold text-[#071026] truncate">
+                                  <a
+                                    href={`https://jit.o3.ru/browse/${link.key}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="ozon-inner-control font-mono font-bold text-[#005BFF] hover:underline mr-1.5"
+                                  >
+                                    {link.key}
+                                  </a>
+                                  <span>{link.summary}</span>
+                                </div>
+                                <div className="text-[11px] text-[#64748B]">
+                                  Статус: {link.status} · labels = fcrm_umb_epic
+                                </div>
+                              </div>
+                              <button
+                                onClick={() =>
+                                  handleRemoveLink(
+                                    selectedTask.key,
+                                    'projectTaskLinks',
+                                    link.id
+                                  )
+                                }
+                                className="ozon-inner-control ozon-btn-negative ozon-focusable px-2 py-1 text-[10.5px] font-semibold cursor-pointer shrink-0"
+                                title="Отвязать задачу проекта"
+                              >
+                                Убрать
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Quick-Picker from JQL filter: https://jit.o3.ru/issues/?jql=labels+%3D+fcrm_umb_epic */}
+                      <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-2.5 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <button
+                            type="button"
+                            onClick={() => setIsUmbPickerOpen((v) => !v)}
+                            className="ozon-focusable rounded inline-flex items-center gap-1 text-[11px] font-bold text-[#071026] hover:text-[#005BFF] cursor-pointer"
+                          >
+                            {isUmbPickerOpen ? (
+                              <ChevronDown className="w-3.5 h-3.5 text-[#005BFF]" />
+                            ) : (
+                              <ChevronRight className="w-3.5 h-3.5 text-[#005BFF]" />
+                            )}
+                            <span>Быстрый выбор из фильтра labels = fcrm_umb_epic</span>
+                          </button>
+                          <span className="text-[10.5px] font-mono text-[#64748B] tabular-nums">
+                            {umbEpicCatalog.length} задач
+                          </span>
+                        </div>
+
+                        {isUmbPickerOpen && (
+                          <>
+                            <div className="relative">
+                              <Search className="w-3 h-3 text-[#64748B] absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                              <input
+                                type="text"
+                                value={umbSearchQuery}
+                                onChange={(e) => setUmbSearchQuery(e.target.value)}
+                                placeholder="Быстрый фильтр по задачам labels = fcrm_umb_epic..."
+                                className="ozon-focusable w-full pl-6 pr-6 py-1 text-[11px] bg-white border border-[#CBD5E1] rounded-lg text-[#071026] placeholder:text-[#94A3B8]"
+                              />
+                              {umbSearchQuery && (
+                                <button
+                                  type="button"
+                                  onClick={() => setUmbSearchQuery('')}
+                                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#071026] cursor-pointer"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="max-h-40 overflow-y-auto divide-y divide-[#EEF2F6] bg-white border border-[#E2E8F0] rounded-lg">
+                              {filteredUmbEpicOptions.map((umbItem) => {
+                                const isLinked = selectedTask.projectTaskLinks.some(
+                                  (l) => l.key === umbItem.key
+                                );
+                                return (
+                                  <button
+                                    key={umbItem.key}
+                                    type="button"
+                                    onClick={() =>
+                                      handleToggleUmbProjectTask(
+                                        selectedTask.key,
+                                        umbItem
+                                      )
+                                    }
+                                    className={`ozon-row-item ozon-focusable w-full text-left px-2.5 py-1.5 flex items-center justify-between gap-2 text-[11px] cursor-pointer ${
+                                      isLinked ? 'ozon-row-selected' : ''
+                                    }`}
+                                  >
+                                    <div className="min-w-0 flex-1 truncate">
+                                      <span className="font-mono font-bold text-[#005BFF] mr-1.5">
+                                        {umbItem.key}
+                                      </span>
+                                      <span className="truncate font-medium text-[#071026]">
+                                        {umbItem.summary}
                                       </span>
                                     </div>
-                                  )}
-                                </div>
-                              )}
-
-                              {/* 9 & 10. Два блока связей: «Задача проекта» и «В проекте» */}
-                              {(config.showProjectTaskLinks || config.showInProjectLinks) && (
-                                <div className="flex flex-col gap-2 pt-2 border-t border-[#E2E8F0]">
-                                  {/* Блок связей 1: «Задача проекта» */}
-                                  {config.showProjectTaskLinks && (
-                                    <div className="bg-[#FAFBFD] border border-[#E2E8F0] rounded-lg p-2">
-                                      <div className="flex items-center justify-between text-[11px] font-bold text-[#334155] mb-1.5">
-                                        <span className="inline-flex items-center gap-1">
-                                          <FolderGit2 className="w-3 h-3 text-[#005BFF]" />
-                                          <span>{config.linkTypeProjectTask}</span>
-                                        </span>
-                                        <span className="font-mono text-[10.5px] text-[#64748B] tabular-nums">
-                                          {task.projectTaskLinks.length}
-                                        </span>
-                                      </div>
-                                      {task.projectTaskLinks.length === 0 ? (
-                                        <p className="text-[11px] text-[#94A3B8]">
-                                          Нет связанных проектных задач
-                                        </p>
-                                      ) : (
-                                        <div className="flex flex-col divide-y divide-[#EEF2F6]">
-                                          {task.projectTaskLinks.map((link) => (
-                                            <div
-                                              key={link.id}
-                                              className="py-1 first:pt-0 last:pb-0 flex items-baseline justify-between gap-1.5 text-[11px]"
-                                            >
-                                              <span className="font-mono font-semibold text-[#005BFF] shrink-0">
-                                                {link.key}
-                                              </span>
-                                              <span
-                                                className="text-[#071026] truncate flex-1"
-                                                title={link.summary}
-                                              >
-                                                {link.summary}
-                                              </span>
-                                              <span className="text-[10px] text-[#64748B] shrink-0">
-                                                {link.status}
-                                              </span>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      )}
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <span className="text-[10px] text-[#64748B]">
+                                        {umbItem.status}
+                                      </span>
+                                      <span
+                                        className={`w-4 h-4 rounded flex items-center justify-center border ${
+                                          isLinked
+                                            ? 'bg-[#005BFF] border-[#005BFF] text-white'
+                                            : 'border-[#CBD5E1] bg-white text-transparent'
+                                        }`}
+                                      >
+                                        <Check className="w-2.5 h-2.5" />
+                                      </span>
                                     </div>
-                                  )}
+                                  </button>
+                                );
+                              })}
+                            </div>
 
-                                  {/* Блок связей 2: «В проекте» */}
-                                  {config.showInProjectLinks && (
-                                    <div className="bg-[#FAFBFD] border border-[#E2E8F0] rounded-lg p-2">
-                                      <div className="flex items-center justify-between text-[11px] font-bold text-[#334155] mb-1.5">
-                                        <span className="inline-flex items-center gap-1">
-                                          <Link2 className="w-3 h-3 text-[#005BFF]" />
-                                          <span>{config.linkTypeInProject}</span>
-                                        </span>
-                                        <span className="font-mono text-[10.5px] text-[#64748B] tabular-nums">
-                                          {task.inProjectLinks.length}
-                                        </span>
-                                      </div>
-                                      {task.inProjectLinks.length === 0 ? (
-                                        <p className="text-[11px] text-[#94A3B8]">
-                                          Нет задач в блоке «{config.linkTypeInProject}»
-                                        </p>
-                                      ) : (
-                                        <div className="flex flex-col divide-y divide-[#EEF2F6]">
-                                          {task.inProjectLinks.map((link) => (
-                                            <div
-                                              key={link.id}
-                                              className="py-1 first:pt-0 last:pb-0 flex items-baseline justify-between gap-1.5 text-[11px]"
-                                            >
-                                              <span className="font-mono font-semibold text-[#005BFF] shrink-0">
-                                                {link.key}
-                                              </span>
-                                              <span
-                                                className="text-[#071026] truncate flex-1"
-                                                title={link.summary}
-                                              >
-                                                {link.summary}
-                                              </span>
-                                              <span className="text-[10px] text-[#64748B] shrink-0">
-                                                {link.status}
-                                              </span>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </article>
-                          ))
+                            <div className="flex gap-1.5 pt-1">
+                              <input
+                                type="text"
+                                placeholder="PROJ-1250"
+                                value={newProjectTaskKey}
+                                onChange={(e) => setNewProjectTaskKey(e.target.value)}
+                                className="ozon-focusable w-24 px-2 py-1 text-[11px] font-mono bg-white border border-[#CBD5E1] rounded-lg"
+                              />
+                              <input
+                                type="text"
+                                placeholder="Или добавить новую задачу fcrm_umb_epic..."
+                                value={newProjectTaskSummary}
+                                onChange={(e) => setNewProjectTaskSummary(e.target.value)}
+                                className="ozon-focusable flex-1 px-2 py-1 text-[11px] bg-white border border-[#CBD5E1] rounded-lg"
+                              />
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleAddCustomProjectTaskLink(selectedTask.key)
+                                }
+                                className="ozon-btn-tinted ozon-focusable px-2.5 py-1 text-[11px] font-semibold shrink-0 cursor-pointer"
+                              >
+                                +
+                              </button>
+                            </div>
+                          </>
                         )}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
+                  )}
+                </div>
 
-        {/* -------------------------------------------------------------------
-            VIEW 2: HIGH-DENSITY TABLE REGISTRY VIEW (All 10 Fields)
-           ------------------------------------------------------------------- */}
-        {activeTab === 'table' && (
-          <div className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-[#E2E8F0] flex items-center justify-between">
-              <div>
-                <h2 className="text-base font-bold text-[#071026] font-display">
-                  Полный реестр задач доски {config.projectKey} (RapidView #{config.rapidViewId})
-                </h2>
-                <p className="text-xs text-[#64748B]">
-                  Табличное представление всех 10 обязательных атрибутов и связанных блоков «{config.linkTypeProjectTask}» / «{config.linkTypeInProject}»
-                </p>
-              </div>
-              <span className="text-xs font-mono text-[#64748B] tabular-nums">
-                Показано записей: {filteredTasks.length}
-              </span>
-            </div>
+                {/* ===========================================================
+                    ACCORDION 3: Связи «В проекте»
+                   =========================================================== */}
+                <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOpenSidebarSections((s) => ({
+                        ...s,
+                        inProjectTasks: !s.inProjectTasks,
+                      }))
+                    }
+                    className="ozon-accordion-header ozon-focusable w-full px-3.5 py-2.5 flex items-center justify-between text-left font-bold text-[#071026] cursor-pointer"
+                  >
+                    <span className="inline-flex items-center gap-1.5">
+                      <Link2 className="w-3.5 h-3.5 text-[#005BFF]" />
+                      <span>
+                        Связи: «{config.linkTypeInProject}» ({selectedTask.inProjectLinks.length})
+                      </span>
+                    </span>
+                    {openSidebarSections.inProjectTasks ? (
+                      <ChevronUp className="ozon-accordion-chevron w-4 h-4 shrink-0" />
+                    ) : (
+                      <ChevronDown className="ozon-accordion-chevron w-4 h-4 shrink-0" />
+                    )}
+                  </button>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0] text-[#475569] font-semibold">
-                    <th className="py-3 px-4 whitespace-nowrap">Ключ и название задачи</th>
-                    <th className="py-3 px-3 whitespace-nowrap">Эпик / Компонент</th>
-                    <th className="py-3 px-3 whitespace-nowrap">Исполнитель / Автор</th>
-                    <th className="py-3 px-3 whitespace-nowrap">Заказчик</th>
-                    <th className="py-3 px-3 whitespace-nowrap">Дата создания / Спринт</th>
-                    <th className="py-3 px-3 whitespace-nowrap">
-                      Связи: «{config.linkTypeProjectTask}»
-                    </th>
-                    <th className="py-3 px-4 whitespace-nowrap">
-                      Связи: «{config.linkTypeInProject}»
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#E2E8F0]">
-                  {filteredTasks.map((task) => (
-                    <tr
-                      key={task.key}
-                      onClick={() => setSelectedTaskKey(task.key)}
-                      className="hover:bg-[#F5F7FA] transition-colors cursor-pointer align-top"
-                    >
-                      <td className="py-3.5 px-4 max-w-[290px]">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-mono font-bold text-[#005BFF]">
-                            {task.key}
-                          </span>
-                          <span className="text-[#CBD5E1]">·</span>
-                          <span className="text-[11px] text-[#64748B]">
-                            {STATUS_COLUMNS.find((c) => c.id === task.status)?.title}
-                          </span>
-                        </div>
-                        <p className="font-semibold text-[#071026] leading-snug">
-                          {task.summary}
+                  {openSidebarSections.inProjectTasks && (
+                    <div className="p-3.5 space-y-2.5 bg-white">
+                      {selectedTask.inProjectLinks.length === 0 ? (
+                        <p className="text-[11px] text-[#94A3B8]">
+                          Нет связанных задач в блоке «{config.linkTypeInProject}»
                         </p>
-                      </td>
+                      ) : (
+                        <div className="space-y-2">
+                          {selectedTask.inProjectLinks.map((link) => (
+                            <div
+                              key={link.id}
+                              tabIndex={0}
+                              className="ozon-row-item ozon-focusable rounded-xl p-2.5 space-y-2 border border-[#E2E8F0]"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                  <div className="w-7 h-7 rounded-lg bg-[#E5F0FF] text-[#005BFF] flex items-center justify-center shrink-0">
+                                    <Link2 className="w-3.5 h-3.5" />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="text-xs font-semibold text-[#071026] truncate">
+                                      <a
+                                        href={`https://jit.o3.ru/browse/${link.key}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="ozon-inner-control font-mono font-bold text-[#005BFF] hover:underline mr-1.5"
+                                      >
+                                        {link.key}
+                                      </a>
+                                      <span>{link.summary}</span>
+                                    </div>
+                                    <div className="text-[11px] text-[#64748B]">
+                                      {link.component || '—'} · {link.sprint || '—'}
+                                    </div>
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() =>
+                                    handleRemoveLink(
+                                      selectedTask.key,
+                                      'inProjectLinks',
+                                      link.id
+                                    )
+                                  }
+                                  className="ozon-inner-control ozon-btn-negative ozon-focusable px-2 py-1 text-[10.5px] font-semibold cursor-pointer shrink-0"
+                                  title="Удалить связь"
+                                >
+                                  Убрать
+                                </button>
+                              </div>
 
-                      <td className="py-3.5 px-3 whitespace-nowrap">
-                        <div className="font-semibold text-[#005BFF]">
-                          {task.epicKey} · {task.epicName}
-                        </div>
-                        <div className="text-[#475569] mt-0.5">
-                          Компонент: <strong className="text-[#071026]">{task.component}</strong>
-                        </div>
-                      </td>
+                              {/* Статус, Компонент и Спринт задачи «В проекте» */}
+                              <div className="grid grid-cols-12 gap-1.5 items-center pt-1.5 border-t border-[#EEF2F6]">
+                                <div className="col-span-3">
+                                  <label className="block text-[9.5px] text-[#64748B]">
+                                    Статус
+                                  </label>
+                                  <select
+                                    value={link.status}
+                                    onChange={(e) =>
+                                      handleUpdateInProjectLink(
+                                        selectedTask.key,
+                                        link.id,
+                                        {
+                                          status: e.target
+                                            .value as LinkedIssueItem['status'],
+                                        }
+                                      )
+                                    }
+                                    className="ozon-inner-control ozon-focusable w-full px-1 py-0.5 text-[11px] font-medium bg-[#F5F7FA] border border-[#CBD5E1] rounded"
+                                  >
+                                    <option value="Открыто">Открыто</option>
+                                    <option value="В работе">В работе</option>
+                                    <option value="Ревью">Ревью</option>
+                                    <option value="Тестирование">Тестирование</option>
+                                    <option value="Готово">Готово</option>
+                                  </select>
+                                </div>
 
-                      <td className="py-3.5 px-3 whitespace-nowrap">
-                        <div className="text-[#071026] font-semibold">
-                          Исп: {task.assignee.name}
-                        </div>
-                        <div className="text-[#64748B] mt-0.5">
-                          Авт: {task.author.name}
-                        </div>
-                      </td>
+                                <div className="col-span-4">
+                                  <label className="block text-[9.5px] text-[#64748B]">
+                                    Компонент
+                                  </label>
+                                  <select
+                                    value={link.component || 'Core-Scoring'}
+                                    onChange={(e) =>
+                                      handleUpdateInProjectLink(
+                                        selectedTask.key,
+                                        link.id,
+                                        { component: e.target.value }
+                                      )
+                                    }
+                                    className="ozon-inner-control ozon-focusable w-full px-1 py-0.5 text-[11px] font-semibold text-[#005BFF] bg-[#F5F7FA] border border-[#CBD5E1] rounded"
+                                  >
+                                    {allComponents.map((c) => (
+                                      <option key={c} value={c}>
+                                        {c}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
 
-                      <td className="py-3.5 px-3 max-w-[220px]">
-                        <div className="font-semibold text-[#004ED6]">
-                          {task.customer.name}
-                        </div>
-                        <div className="text-[11px] text-[#64748B] leading-tight mt-0.5">
-                          {task.customer.department}
-                        </div>
-                      </td>
-
-                      <td className="py-3.5 px-3 whitespace-nowrap">
-                        <div className="font-mono tabular-nums text-[#071026]">
-                          {task.createdAt}
-                        </div>
-                        <div className="text-[11px] text-[#64748B] mt-0.5 tabular-nums">
-                          {task.sprint}
-                        </div>
-                      </td>
-
-                      <td className="py-3.5 px-3 max-w-[240px]">
-                        <div className="flex flex-col gap-1">
-                          {task.projectTaskLinks.map((l) => (
-                            <div key={l.id} className="text-[11px] leading-tight">
-                              <span className="font-mono font-semibold text-[#005BFF]">
-                                {l.key}
-                              </span>{' '}
-                              <span className="text-[#071026]">{l.summary}</span>{' '}
-                              <span className="text-[#64748B]">({l.status})</span>
+                                <div className="col-span-5">
+                                  <label className="block text-[9.5px] text-[#64748B]">
+                                    Спринт
+                                  </label>
+                                  <select
+                                    value={
+                                      link.sprint ||
+                                      'FCRM Sprint 43 (11.11 – 25.11)'
+                                    }
+                                    onChange={(e) =>
+                                      handleUpdateInProjectLink(
+                                        selectedTask.key,
+                                        link.id,
+                                        { sprint: e.target.value }
+                                      )
+                                    }
+                                    className="ozon-inner-control ozon-focusable w-full px-1 py-0.5 text-[11px] text-[#071026] bg-[#F5F7FA] border border-[#CBD5E1] rounded tabular-nums"
+                                  >
+                                    {uniqueSprints.map((sp) => (
+                                      <option key={sp} value={sp}>
+                                        {sp}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </div>
                             </div>
                           ))}
                         </div>
-                      </td>
+                      )}
 
-                      <td className="py-3.5 px-4 max-w-[240px]">
-                        <div className="flex flex-col gap-1">
-                          {task.inProjectLinks.map((l) => (
-                            <div key={l.id} className="text-[11px] leading-tight">
-                              <span className="font-mono font-semibold text-[#005BFF]">
-                                {l.key}
-                              </span>{' '}
-                              <span className="text-[#071026]">{l.summary}</span>{' '}
-                              <span className="text-[#64748B]">({l.status})</span>
-                            </div>
-                          ))}
+                      {/* Форма добавления новой задачи в блок «В проекте» со Спринтом и Компонентом */}
+                      <div className="space-y-1.5 pt-2 border-t border-[#F1F5F9]">
+                        <div className="flex gap-1.5">
+                          <input
+                            type="text"
+                            placeholder="FCRM-4920"
+                            value={newInProjectKey}
+                            onChange={(e) => setNewInProjectKey(e.target.value)}
+                            className="ozon-focusable w-24 px-2 py-1 text-[11px] font-mono bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Название задачи в проекте..."
+                            value={newInProjectSummary}
+                            onChange={(e) => setNewInProjectSummary(e.target.value)}
+                            className="ozon-focusable flex-1 px-2 py-1 text-[11px] bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
+                          />
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                        <div className="flex gap-1.5">
+                          <select
+                            value={newInProjectComponent}
+                            onChange={(e) => setNewInProjectComponent(e.target.value)}
+                            className="ozon-focusable w-36 px-2 py-1 text-[11px] bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
+                          >
+                            {allComponents.map((c) => (
+                              <option key={c} value={c}>
+                                {c}
+                              </option>
+                            ))}
+                          </select>
+                          <select
+                            value={newInProjectSprint}
+                            onChange={(e) => setNewInProjectSprint(e.target.value)}
+                            className="ozon-focusable flex-1 px-2 py-1 text-[11px] bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
+                          >
+                            {uniqueSprints.map((sp) => (
+                              <option key={sp} value={sp}>
+                                {sp}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => handleAddInProjectLink(selectedTask.key)}
+                            className="ozon-btn-tinted ozon-focusable px-3 py-1 text-[11px] font-semibold shrink-0 cursor-pointer"
+                          >
+                            Добавить
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </aside>
+          </>
         )}
+      </div>
 
-        {/* -------------------------------------------------------------------
-            VIEW 3: FIELD MAPPING & JIT.O3.RU REST API CONFIGURATOR
-           ------------------------------------------------------------------- */}
-        {activeTab === 'config' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Left Column: Custom field IDs & visual geometry */}
-            <div className="lg:col-span-7 bg-white border border-[#E2E8F0] rounded-xl p-6 space-y-6">
-              <div className="border-b border-[#E2E8F0] pb-4">
-                <h2 className="text-lg font-bold text-[#071026] font-display">
-                  01. Маппинг полей Jira REST API (jit.o3.ru)
-                </h2>
-                <p className="text-xs text-[#64748B] mt-1">
-                  Расширение обращается к <code className="font-mono text-[#005BFF]">/rest/api/2/issue/FCRM-XXXX</code> от имени текущей сессии пользователя и подтягивает кастомные поля и блоки связей.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-[#071026] mb-1">
-                    ID доски (rapidView)
-                  </label>
-                  <input
-                    type="text"
-                    value={config.rapidViewId}
-                    onChange={(e) =>
-                      setConfig((prev) => ({ ...prev, rapidViewId: e.target.value }))
-                    }
-                    className="w-full px-3 py-2 text-xs font-mono bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg focus:outline-none focus:border-[#005BFF] focus:bg-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-[#071026] mb-1">
-                    Ключ проекта (projectKey)
-                  </label>
-                  <input
-                    type="text"
-                    value={config.projectKey}
-                    onChange={(e) =>
-                      setConfig((prev) => ({ ...prev, projectKey: e.target.value }))
-                    }
-                    className="w-full px-3 py-2 text-xs font-mono bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg focus:outline-none focus:border-[#005BFF] focus:bg-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-[#071026] mb-1">
-                    Поле «Заказчик» (Custom Field ID)
-                  </label>
-                  <input
-                    type="text"
-                    value={config.customerFieldId}
-                    onChange={(e) =>
-                      setConfig((prev) => ({ ...prev, customerFieldId: e.target.value }))
-                    }
-                    className="w-full px-3 py-2 text-xs font-mono bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg focus:outline-none focus:border-[#005BFF] focus:bg-white"
-                  />
-                  <p className="text-[11px] text-[#64748B] mt-1">
-                    В Jira Ozon обычно <code className="font-mono">customfield_14201</code> или аналогичный справочник
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-[#071026] mb-1">
-                    Поле «Эпик» (Epic Link Field ID)
-                  </label>
-                  <input
-                    type="text"
-                    value={config.epicFieldId}
-                    onChange={(e) =>
-                      setConfig((prev) => ({ ...prev, epicFieldId: e.target.value }))
-                    }
-                    className="w-full px-3 py-2 text-xs font-mono bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg focus:outline-none focus:border-[#005BFF] focus:bg-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-[#071026] mb-1">
-                    Поле «Спринт» (Sprint Field ID)
-                  </label>
-                  <input
-                    type="text"
-                    value={config.sprintFieldId}
-                    onChange={(e) =>
-                      setConfig((prev) => ({ ...prev, sprintFieldId: e.target.value }))
-                    }
-                    className="w-full px-3 py-2 text-xs font-mono bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg focus:outline-none focus:border-[#005BFF] focus:bg-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-[#071026] mb-1">
-                    Мин. ширина колонки RapidBoard (px)
-                  </label>
-                  <input
-                    type="number"
-                    min={260}
-                    max={520}
-                    value={config.columnMinWidthPx}
-                    onChange={(e) =>
-                      setConfig((prev) => ({
-                        ...prev,
-                        columnMinWidthPx: Number(e.target.value) || 340,
-                      }))
-                    }
-                    className="w-full px-3 py-2 text-xs font-mono tabular-nums bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg focus:outline-none focus:border-[#005BFF] focus:bg-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-[#071026] mb-1">
-                    Тип связей №1 («Задача проекта»)
-                  </label>
-                  <input
-                    type="text"
-                    value={config.linkTypeProjectTask}
-                    onChange={(e) =>
-                      setConfig((prev) => ({
-                        ...prev,
-                        linkTypeProjectTask: e.target.value,
-                      }))
-                    }
-                    className="w-full px-3 py-2 text-xs bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg focus:outline-none focus:border-[#005BFF] focus:bg-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-[#071026] mb-1">
-                    Тип связей №2 («В проекте»)
-                  </label>
-                  <input
-                    type="text"
-                    value={config.linkTypeInProject}
-                    onChange={(e) =>
-                      setConfig((prev) => ({
-                        ...prev,
-                        linkTypeInProject: e.target.value,
-                      }))
-                    }
-                    className="w-full px-3 py-2 text-xs bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg focus:outline-none focus:border-[#005BFF] focus:bg-white"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-[#E2E8F0] flex items-center justify-between">
-                <span className="text-xs text-[#64748B]">
-                  Все изменения мгновенно пересобирают <code className="font-mono">content.js</code> и <code className="font-mono">styles.css</code>.
-                </span>
-                <button
-                  onClick={() => setActiveTab('extension_code')}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-[#005BFF] rounded-lg hover:bg-[#004ED6] transition-colors cursor-pointer"
-                >
-                  <span>Перейти к коду расширения</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Right Column: Auto-Detector from real jit.o3.ru JSON */}
-            <div className="lg:col-span-5 bg-white border border-[#E2E8F0] rounded-xl p-6 space-y-4">
-              <div>
-                <h2 className="text-lg font-bold text-[#071026] font-display">
-                  02. Автоопределение ID полей из JSON ответа jit.o3.ru
-                </h2>
-                <p className="text-xs text-[#64748B] mt-1">
-                  Откройте в браузере <code className="font-mono text-[#005BFF]">https://jit.o3.ru/rest/api/2/issue/FCRM-XXXX</code>, вставьте фрагмент JSON ниже, и конструктор автоматически вычислит ID полей Спринта, Эпика и Заказчика.
-                </p>
-              </div>
-
-              <textarea
-                rows={12}
-                value={jsonInput}
-                onChange={(e) => setJsonInput(e.target.value)}
-                className="w-full p-3 text-[11px] font-mono bg-[#071026] text-[#E2E8F0] rounded-lg border border-[#1E293B] focus:outline-none focus:border-[#005BFF]"
-              />
-
-              {detectionMessage && (
-                <div className="p-3 rounded-lg bg-[#EBF2FF] border border-[#005BFF]/20 text-xs font-medium text-[#004ED6]">
-                  {detectionMessage}
-                </div>
-              )}
-
-              <div className="flex items-center justify-between gap-3">
-                <button
-                  onClick={() => {
-                    setJsonInput(SAMPLE_JIRA_ISSUE_JSON);
-                    setDetectionMessage(null);
-                  }}
-                  className="px-3 py-2 text-xs font-medium text-[#475569] hover:text-[#071026] cursor-pointer"
-                >
-                  Восстановить пример FCRM-4821
-                </button>
-
-                <button
-                  onClick={handleAutoDetectFromJson}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-[#005BFF] rounded-lg hover:bg-[#004ED6] transition-colors cursor-pointer"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Определить ID полей</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* -------------------------------------------------------------------
-            VIEW 4: CHROME EXTENSION SOURCE CODE & INSTALLATION GUIDE
-           ------------------------------------------------------------------- */}
-        {activeTab === 'extension_code' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Installation Steps */}
-            <div className="lg:col-span-4 bg-white border border-[#E2E8F0] rounded-xl p-6 space-y-5">
-              <div>
-                <h2 className="text-lg font-bold text-[#071026] font-display">
-                  Установка расширения в Chrome
-                </h2>
-                <p className="text-xs text-[#64748B] mt-1">
-                  Готовый пакет Manifest V3 для доски <code className="font-mono">rapidView=9349&projectKey=FCRM</code>
-                </p>
-              </div>
-
-              <ol className="space-y-3 text-xs text-[#334155]">
-                <li className="p-3 rounded-lg bg-[#F8FAFC] border border-[#EEF2F6]">
-                  <div className="font-bold text-[#071026] mb-0.5">
-                    01. Скачайте и распакуйте ZIP-архив
-                  </div>
-                  Нажмите кнопку «Скачать расширение .ZIP» в правом верхнем углу и распакуйте архив в отдельную папку.
-                </li>
-                <li className="p-3 rounded-lg bg-[#F8FAFC] border border-[#EEF2F6]">
-                  <div className="font-bold text-[#071026] mb-0.5">
-                    02. Откройте управление расширениями
-                  </div>
-                  Перейдите по адресу <code className="font-mono text-[#005BFF]">chrome://extensions/</code> и включите переключатель «Режим разработчика» (Developer mode).
-                </li>
-                <li className="p-3 rounded-lg bg-[#F8FAFC] border border-[#EEF2F6]">
-                  <div className="font-bold text-[#071026] mb-0.5">
-                    03. Загрузите распакованное расширение
-                  </div>
-                  Нажмите «Загрузить распакованное расширение» (Load unpacked) и укажите папку с файлами <code className="font-mono">manifest.json</code> и <code className="font-mono">content.js</code>.
-                </li>
-                <li className="p-3 rounded-lg bg-[#F8FAFC] border border-[#EEF2F6]">
-                  <div className="font-bold text-[#071026] mb-0.5">
-                    04. Откройте борду FCRM на jit.o3.ru
-                  </div>
-                  Перейдите на <code className="font-mono text-[#005BFF]">jit.o3.ru/secure/RapidBoard.jspa?rapidView=9349&projectKey=FCRM#</code>. Скрипт автоматически обогатит каждую карточку.
-                </li>
-              </ol>
-
+      {/* =====================================================================
+          HOW TO LAUNCH CHROME EXTENSION MODAL
+         ===================================================================== */}
+      {isInstallGuideOpen && (
+        <div className="fixed inset-0 z-50 bg-[#071026]/50 backdrop-blur-[1px] flex items-center justify-center p-4">
+          <div className="bg-white border border-[#E2E8F0] rounded-2xl max-w-lg w-full p-5 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
+              <h2 className="text-base font-bold text-[#071026] font-display">
+                Как запустить расширение в Google Chrome
+              </h2>
               <button
-                onClick={handleDownloadExtensionZip}
-                disabled={isZipping}
-                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold text-white bg-[#005BFF] rounded-lg hover:bg-[#004ED6] transition-colors cursor-pointer"
+                onClick={() => setIsInstallGuideOpen(false)}
+                className="ozon-btn-surface ozon-focusable p-1 text-[#64748B] hover:text-[#071026] cursor-pointer"
               >
-                <Download className="w-4 h-4" />
-                <span>Скачать готовый архив расширения (.ZIP)</span>
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Source Code Viewer */}
-            <div className="lg:col-span-8 bg-white border border-[#E2E8F0] rounded-xl overflow-hidden flex flex-col">
-              <div className="px-4 py-3 bg-[#F8FAFC] border-b border-[#E2E8F0] flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {(
-                    [
-                      'content.js',
-                      'styles.css',
-                      'manifest.json',
-                      'popup.html',
-                      'popup.js',
-                    ] as ExtensionFileKey[]
-                  ).map((fileKey) => (
-                    <button
-                      key={fileKey}
-                      onClick={() => setSelectedCodeFile(fileKey)}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono font-medium rounded-lg transition-colors cursor-pointer ${
-                        selectedCodeFile === fileKey
-                          ? 'bg-[#005BFF] text-white'
-                          : 'bg-white text-[#475569] border border-[#E2E8F0] hover:text-[#071026]'
-                      }`}
-                    >
-                      <FileCode className="w-3.5 h-3.5" />
-                      <span>{fileKey}</span>
-                    </button>
-                  ))}
+            <div className="space-y-3 text-xs text-[#334155]">
+              <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
+                <div className="font-bold text-[#071026] mb-1">
+                  Шаг 1. Скачайте и распакуйте архив расширения
                 </div>
-
-                <button
-                  onClick={() => handleCopyCode(selectedCodeFile)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#071026] bg-white border border-[#E2E8F0] hover:border-[#005BFF] rounded-lg transition-colors cursor-pointer"
-                >
-                  {copiedFile === selectedCodeFile ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-[#10B981]" />
-                      <span>Скопировано</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" />
-                      <span>Копировать {selectedCodeFile}</span>
-                    </>
-                  )}
-                </button>
+                <p>
+                  Нажмите кнопку <strong>«Скачать расширение .ZIP»</strong> — в архиве лежат готовые файлы Chrome Extension Manifest V3 (<code className="font-mono text-[#005BFF]">manifest.json</code>, <code className="font-mono text-[#005BFF]">content.js</code>, <code className="font-mono text-[#005BFF]">styles.css</code>, <code className="font-mono text-[#005BFF]">popup.html</code>). Распакуйте архив в любую папку на компьютере.
+                </p>
               </div>
 
-              <pre className="p-5 bg-[#071026] text-[#E2E8F0] text-xs font-mono overflow-x-auto max-h-[640px] leading-relaxed">
-                <code>{generatedFiles[selectedCodeFile]}</code>
-              </pre>
-            </div>
-          </div>
-        )}
-      </main>
-
-      {/* =====================================================================
-          SLIDE-OVER TASK INSPECTOR (View & Edit all 10 fields + Add/Remove links)
-         ===================================================================== */}
-      {selectedTask && (
-        <div className="fixed inset-0 z-40 bg-[#071026]/40 backdrop-blur-[1px] flex justify-end">
-          <div className="w-full max-w-xl bg-white h-full shadow-2xl border-l border-[#E2E8F0] flex flex-col justify-between overflow-y-auto">
-            <div className="p-6 space-y-6">
-              {/* Drawer Top Bar */}
-              <div className="flex items-start justify-between gap-4 pb-4 border-b border-[#E2E8F0]">
-                <div>
-                  <div className="flex items-center gap-2 text-xs text-[#64748B]">
-                    <span className="font-mono font-bold text-[#005BFF] text-sm">
-                      {selectedTask.key}
-                    </span>
-                    <span>·</span>
-                    <span>Создано: <strong className="font-mono tabular-nums text-[#071026]">{selectedTask.createdAt}</strong></span>
-                  </div>
-                  <h2 className="text-lg font-bold text-[#071026] mt-1 font-display leading-snug">
-                    {selectedTask.summary}
-                  </h2>
+              <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-2">
+                <div className="font-bold text-[#071026]">
+                  Шаг 2. Откройте управление расширениями в Chrome
                 </div>
-                <button
-                  onClick={() => setSelectedTaskKey(null)}
-                  className="p-1.5 rounded-lg text-[#64748B] hover:text-[#071026] hover:bg-[#F5F7FA] cursor-pointer"
-                  aria-label="Закрыть карточку"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Status Switcher */}
-              <div>
-                <label className="block text-xs font-semibold text-[#64748B] mb-2">
-                  Статус на доске RapidBoard #9349:
-                </label>
-                <div className="flex flex-wrap gap-1.5 p-1 bg-[#F5F7FA] rounded-lg border border-[#E2E8F0]">
-                  {STATUS_COLUMNS.map((col) => (
-                    <button
-                      key={col.id}
-                      onClick={() => handleMoveTaskStatus(selectedTask.key, col.id)}
-                      className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
-                        selectedTask.status === col.id
-                          ? 'bg-[#005BFF] text-white'
-                          : 'text-[#475569] hover:text-[#071026]'
-                      }`}
-                    >
-                      {col.title}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* All 8 Core Attributes Grid */}
-              <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                <div>
-                  <div className="text-[#64748B] mb-0.5">2. Эпик</div>
-                  <div className="font-semibold text-[#005BFF]">
-                    {selectedTask.epicKey} · {selectedTask.epicName}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[#64748B] mb-0.5">3. Компонент</div>
-                  <div className="font-semibold text-[#071026]">
-                    {selectedTask.component}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[#64748B] mb-0.5">4. Исполнитель</div>
-                  <div className="font-semibold text-[#071026]">
-                    {selectedTask.assignee.name} ({selectedTask.assignee.role})
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[#64748B] mb-0.5">5. Автор</div>
-                  <div className="font-semibold text-[#071026]">
-                    {selectedTask.author.name} ({selectedTask.author.login})
-                  </div>
-                </div>
-                <div className="sm:col-span-2 pt-2 border-t border-[#E2E8F0]">
-                  <div className="text-[#64748B] mb-0.5">6. Заказчик</div>
-                  <div className="font-semibold text-[#004ED6]">
-                    {selectedTask.customer.name} — {selectedTask.customer.department}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[#64748B] mb-0.5">7. Дата создания</div>
-                  <div className="font-mono font-semibold tabular-nums text-[#071026]">
-                    {selectedTask.createdAt}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[#64748B] mb-0.5">8. Спринт</div>
-                  <div className="font-semibold tabular-nums text-[#071026]">
-                    {selectedTask.sprint}
-                  </div>
-                </div>
-              </div>
-
-              {/* Block 9: Связи «Задача проекта» */}
-              <div className="border border-[#E2E8F0] rounded-xl p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-[#071026] flex items-center gap-1.5">
-                    <FolderGit2 className="w-4 h-4 text-[#005BFF]" />
-                    <span>9. Блок связей «{config.linkTypeProjectTask}»</span>
-                  </h3>
-                  <span className="font-mono text-xs font-semibold text-[#005BFF] tabular-nums">
-                    {selectedTask.projectTaskLinks.length}
-                  </span>
-                </div>
-
-                <div className="divide-y divide-[#EEF2F6]">
-                  {selectedTask.projectTaskLinks.map((link) => (
-                    <div
-                      key={link.id}
-                      className="py-2 flex items-center justify-between gap-2 text-xs"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <span className="font-mono font-bold text-[#005BFF] mr-2">
-                          {link.key}
-                        </span>
-                        <span className="text-[#071026] font-medium">
-                          {link.summary}
-                        </span>
-                        <span className="text-[#64748B] ml-2">({link.status})</span>
-                      </div>
-                      <button
-                        onClick={() =>
-                          handleRemoveLink(
-                            selectedTask.key,
-                            'projectTaskLinks',
-                            link.id
-                          )
-                        }
-                        className="text-[#94A3B8] hover:text-[#F91155] p-1 cursor-pointer"
-                        title="Удалить связь"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Add new Project Task link */}
-                <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-[#F1F5F9]">
-                  <input
-                    type="text"
-                    placeholder="Ключ (напр. PROJ-1204)"
-                    value={newProjectTaskKey}
-                    onChange={(e) => setNewProjectTaskKey(e.target.value)}
-                    className="sm:w-36 px-2.5 py-1.5 text-xs font-mono bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg focus:outline-none focus:border-[#005BFF]"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Название связанной задачи проекта..."
-                    value={newProjectTaskSummary}
-                    onChange={(e) => setNewProjectTaskSummary(e.target.value)}
-                    className="flex-1 px-2.5 py-1.5 text-xs bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg focus:outline-none focus:border-[#005BFF]"
-                  />
+                <p>
+                  Скопируйте адрес ниже, вставьте его в новую вкладку Chrome и нажмите Enter:
+                </p>
+                <div className="flex items-center justify-between bg-white border border-[#CBD5E1] rounded-lg px-3 py-1.5">
+                  <code className="font-mono font-bold text-[#005BFF]">
+                    chrome://extensions/
+                  </code>
                   <button
-                    onClick={() => handleAddProjectTaskLink(selectedTask.key)}
-                    className="px-3 py-1.5 text-xs font-semibold text-white bg-[#005BFF] rounded-lg hover:bg-[#004ED6] shrink-0 cursor-pointer"
+                    onClick={() => {
+                      navigator.clipboard.writeText('chrome://extensions/');
+                      setCopiedChromeUrl(true);
+                      setTimeout(() => setCopiedChromeUrl(false), 1600);
+                    }}
+                    className="ozon-btn-tinted ozon-focusable inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold cursor-pointer"
                   >
-                    Добавить
+                    {copiedChromeUrl ? (
+                      <>
+                        <Check className="w-3 h-3" />
+                        <span>Скопировано</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3" />
+                        <span>Скопировать адрес</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
 
-              {/* Block 10: Связи «В проекте» */}
-              <div className="border border-[#E2E8F0] rounded-xl p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-[#071026] flex items-center gap-1.5">
-                    <Link2 className="w-4 h-4 text-[#005BFF]" />
-                    <span>10. Блок связей «{config.linkTypeInProject}»</span>
-                  </h3>
-                  <span className="font-mono text-xs font-semibold text-[#005BFF] tabular-nums">
-                    {selectedTask.inProjectLinks.length}
-                  </span>
+              <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
+                <div className="font-bold text-[#071026] mb-1">
+                  Шаг 3. Загрузите распакованную папку
                 </div>
+                <p>
+                  Включите тумблер <strong>«Режим разработчика» (Developer mode)</strong> в правом верхнем углу страницы <code className="font-mono">chrome://extensions/</code>, затем нажмите кнопку <strong>«Загрузить распакованное расширение» (Load unpacked)</strong> и выберите папку с распакованными файлами.
+                </p>
+              </div>
 
-                <div className="divide-y divide-[#EEF2F6]">
-                  {selectedTask.inProjectLinks.map((link) => (
-                    <div
-                      key={link.id}
-                      className="py-2 flex items-center justify-between gap-2 text-xs"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <span className="font-mono font-bold text-[#005BFF] mr-2">
-                          {link.key}
-                        </span>
-                        <span className="text-[#071026] font-medium">
-                          {link.summary}
-                        </span>
-                        <span className="text-[#64748B] ml-2">({link.status})</span>
-                      </div>
-                      <button
-                        onClick={() =>
-                          handleRemoveLink(selectedTask.key, 'inProjectLinks', link.id)
-                        }
-                        className="text-[#94A3B8] hover:text-[#F91155] p-1 cursor-pointer"
-                        title="Удалить связь"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
+              <div className="p-3 rounded-xl bg-[#E8F1FF] border border-[#005BFF]/20">
+                <div className="font-bold text-[#071026] mb-1">
+                  Шаг 4. Откройте вашу доску FCRM на jit.o3.ru
                 </div>
-
-                {/* Add new In-Project link */}
-                <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-[#F1F5F9]">
-                  <input
-                    type="text"
-                    placeholder="Ключ (напр. FCRM-4890)"
-                    value={newInProjectKey}
-                    onChange={(e) => setNewInProjectKey(e.target.value)}
-                    className="sm:w-36 px-2.5 py-1.5 text-xs font-mono bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg focus:outline-none focus:border-[#005BFF]"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Название задачи в проекте..."
-                    value={newInProjectSummary}
-                    onChange={(e) => setNewInProjectSummary(e.target.value)}
-                    className="flex-1 px-2.5 py-1.5 text-xs bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg focus:outline-none focus:border-[#005BFF]"
-                  />
-                  <button
-                    onClick={() => handleAddInProjectLink(selectedTask.key)}
-                    className="px-3 py-1.5 text-xs font-semibold text-white bg-[#005BFF] rounded-lg hover:bg-[#004ED6] shrink-0 cursor-pointer"
+                <p>
+                  Перейдите на{' '}
+                  <a
+                    href={config.boardUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-mono font-bold text-[#005BFF] underline"
                   >
-                    Добавить
-                  </button>
-                </div>
+                    jit.o3.ru/secure/RapidBoard.jspa?rapidView=9349&projectKey=FCRM#
+                  </a>
+                  . Расширение автоматически запустит компактный реестр Ozon Bank Structure и добавит в шапку Jira кнопку <strong>«Ozon Structure FCRM»</strong> для быстрого переключения.
+                </p>
               </div>
             </div>
 
-            <div className="p-4 bg-[#F8FAFC] border-t border-[#E2E8F0] flex items-center justify-between">
-              <a
-                href={`https://jit.o3.ru/browse/${selectedTask.key}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#005BFF] hover:underline"
-              >
-                <span>Открыть {selectedTask.key} в jit.o3.ru</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#E2E8F0]">
               <button
-                onClick={() => setSelectedTaskKey(null)}
-                className="px-4 py-2 text-xs font-semibold text-[#071026] bg-white border border-[#E2E8F0] rounded-lg hover:bg-[#F1F5F9] cursor-pointer"
+                onClick={handleDownloadExtensionZip}
+                className="ozon-btn-tinted ozon-focusable inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold cursor-pointer"
               >
-                Закрыть
+                <Download className="w-3.5 h-3.5" />
+                <span>Скачать .ZIP ещё раз</span>
+              </button>
+              <button
+                onClick={() => setIsInstallGuideOpen(false)}
+                className="ozon-btn-surface ozon-focusable px-4 py-1.5 text-xs font-semibold cursor-pointer"
+              >
+                Понятно
               </button>
             </div>
           </div>
@@ -1654,25 +2425,23 @@ RapidView ID: ${config.rapidViewId} | Project Key: ${config.projectKey}
          ===================================================================== */}
       {isNewTaskModalOpen && (
         <div className="fixed inset-0 z-50 bg-[#071026]/50 backdrop-blur-[1px] flex items-center justify-center p-4">
-          <div className="bg-white border border-[#E2E8F0] rounded-2xl max-w-2xl w-full p-6 space-y-5 max-h-[90vh] overflow-y-auto shadow-xl">
-            <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
-              <h2 className="text-lg font-bold text-[#071026] font-display">
-                Добавить тестовую задачу на доску FCRM
+          <div className="bg-white border border-[#E2E8F0] rounded-xl max-w-xl w-full p-5 space-y-4 max-h-[90vh] overflow-y-auto shadow-xl">
+            <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-2.5">
+              <h2 className="text-base font-bold text-[#071026] font-display">
+                Добавить задачу в реестр FCRM
               </h2>
               <button
                 onClick={() => setIsNewTaskModalOpen(false)}
-                className="p-1 text-[#64748B] hover:text-[#071026] cursor-pointer"
+                className="ozon-btn-surface ozon-focusable p-1 text-[#64748B] hover:text-[#071026] cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateTask} className="space-y-4 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <form onSubmit={handleCreateTask} className="space-y-3 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 <div>
-                  <label className="block font-semibold text-[#071026] mb-1">
-                    Ключ задачи
-                  </label>
+                  <label className="block font-semibold text-[#071026] mb-1">Ключ</label>
                   <input
                     type="text"
                     required
@@ -1680,30 +2449,30 @@ RapidView ID: ${config.rapidViewId} | Project Key: ${config.projectKey}
                     onChange={(e) =>
                       setNewTaskForm((p) => ({ ...p, key: e.target.value }))
                     }
-                    className="w-full px-3 py-2 font-mono bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
+                    className="ozon-focusable w-full px-2.5 py-1.5 font-mono bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
                   />
                 </div>
                 <div className="sm:col-span-2">
                   <label className="block font-semibold text-[#071026] mb-1">
-                    1. Название задачи (Summary) *
+                    Название задачи *
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="Например: Реализация скоринга гарантий МСБ в FCRM..."
+                    placeholder="Описание задачи..."
                     value={newTaskForm.summary}
                     onChange={(e) =>
                       setNewTaskForm((p) => ({ ...p, summary: e.target.value }))
                     }
-                    className="w-full px-3 py-2 bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
+                    className="ozon-focusable w-full px-2.5 py-1.5 bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 <div>
                   <label className="block font-semibold text-[#071026] mb-1">
-                    2. Ключ эпика
+                    Ключ эпика
                   </label>
                   <input
                     type="text"
@@ -1711,7 +2480,7 @@ RapidView ID: ${config.rapidViewId} | Project Key: ${config.projectKey}
                     onChange={(e) =>
                       setNewTaskForm((p) => ({ ...p, epicKey: e.target.value }))
                     }
-                    className="w-full px-3 py-2 font-mono bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
+                    className="ozon-focusable w-full px-2.5 py-1.5 font-mono bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
                   />
                 </div>
                 <div>
@@ -1724,28 +2493,33 @@ RapidView ID: ${config.rapidViewId} | Project Key: ${config.projectKey}
                     onChange={(e) =>
                       setNewTaskForm((p) => ({ ...p, epicName: e.target.value }))
                     }
-                    className="w-full px-3 py-2 bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
+                    className="ozon-focusable w-full px-2.5 py-1.5 bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
                   />
                 </div>
                 <div>
                   <label className="block font-semibold text-[#071026] mb-1">
-                    3. Компонент
+                    Компонент
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={newTaskForm.component}
                     onChange={(e) =>
                       setNewTaskForm((p) => ({ ...p, component: e.target.value }))
                     }
-                    className="w-full px-3 py-2 bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
-                  />
+                    className="ozon-focusable w-full px-2.5 py-1.5 bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
+                  >
+                    {allComponents.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 <div>
                   <label className="block font-semibold text-[#071026] mb-1">
-                    4. Исполнитель
+                    Исполнитель
                   </label>
                   <input
                     type="text"
@@ -1753,41 +2527,42 @@ RapidView ID: ${config.rapidViewId} | Project Key: ${config.projectKey}
                     onChange={(e) =>
                       setNewTaskForm((p) => ({ ...p, assigneeName: e.target.value }))
                     }
-                    className="w-full px-3 py-2 bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
+                    className="ozon-focusable w-full px-2.5 py-1.5 bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-[#071026] mb-1">
-                    5. Автор
-                  </label>
+                  <label className="block font-semibold text-[#071026] mb-1">Автор</label>
                   <input
                     type="text"
                     value={newTaskForm.authorName}
                     onChange={(e) =>
                       setNewTaskForm((p) => ({ ...p, authorName: e.target.value }))
                     }
-                    className="w-full px-3 py-2 bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
+                    className="ozon-focusable w-full px-2.5 py-1.5 bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-[#071026] mb-1">
-                    8. Спринт
-                  </label>
-                  <input
-                    type="text"
+                  <label className="block font-semibold text-[#071026] mb-1">Спринт</label>
+                  <select
                     value={newTaskForm.sprint}
                     onChange={(e) =>
                       setNewTaskForm((p) => ({ ...p, sprint: e.target.value }))
                     }
-                    className="w-full px-3 py-2 bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
-                  />
+                    className="ozon-focusable w-full px-2.5 py-1.5 bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
+                  >
+                    {uniqueSprints.map((sp) => (
+                      <option key={sp} value={sp}>
+                        {sp}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
                   <label className="block font-semibold text-[#071026] mb-1">
-                    6. Заказчик (ФИО)
+                    Заказчик
                   </label>
                   <input
                     type="text"
@@ -1795,12 +2570,12 @@ RapidView ID: ${config.rapidViewId} | Project Key: ${config.projectKey}
                     onChange={(e) =>
                       setNewTaskForm((p) => ({ ...p, customerName: e.target.value }))
                     }
-                    className="w-full px-3 py-2 bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
+                    className="ozon-focusable w-full px-2.5 py-1.5 bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
                   />
                 </div>
                 <div>
                   <label className="block font-semibold text-[#071026] mb-1">
-                    Подразделение заказчика в Ozon Банке
+                    Подразделение заказчика
                   </label>
                   <input
                     type="text"
@@ -1808,83 +2583,48 @@ RapidView ID: ${config.rapidViewId} | Project Key: ${config.projectKey}
                     onChange={(e) =>
                       setNewTaskForm((p) => ({ ...p, customerDept: e.target.value }))
                     }
-                    className="w-full px-3 py-2 bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
+                    className="ozon-focusable w-full px-2.5 py-1.5 bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-[#E2E8F0]">
-                <div>
-                  <label className="block font-semibold text-[#071026] mb-1">
-                    9. Связь «{config.linkTypeProjectTask}» (Ключ и название)
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newTaskForm.projectTaskKey}
-                      onChange={(e) =>
-                        setNewTaskForm((p) => ({
-                          ...p,
-                          projectTaskKey: e.target.value,
-                        }))
-                      }
-                      className="w-28 px-2.5 py-2 font-mono bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
-                    />
-                    <input
-                      type="text"
-                      value={newTaskForm.projectTaskSummary}
-                      onChange={(e) =>
-                        setNewTaskForm((p) => ({
-                          ...p,
-                          projectTaskSummary: e.target.value,
-                        }))
-                      }
-                      className="flex-1 px-2.5 py-2 bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-[#071026] mb-1">
-                    10. Связь «{config.linkTypeInProject}» (Ключ и название)
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newTaskForm.inProjectKey}
-                      onChange={(e) =>
-                        setNewTaskForm((p) => ({ ...p, inProjectKey: e.target.value }))
-                      }
-                      className="w-28 px-2.5 py-2 font-mono bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
-                    />
-                    <input
-                      type="text"
-                      value={newTaskForm.inProjectSummary}
-                      onChange={(e) =>
-                        setNewTaskForm((p) => ({
-                          ...p,
-                          inProjectSummary: e.target.value,
-                        }))
-                      }
-                      className="flex-1 px-2.5 py-2 bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg"
-                    />
-                  </div>
-                </div>
+              {/* Quick select from JQL labels = fcrm_umb_epic when creating a task */}
+              <div className="pt-2 border-t border-[#E2E8F0]">
+                <label className="block font-semibold text-[#071026] mb-1">
+                  Задача проекта (быстрый выбор из JQL: labels = fcrm_umb_epic)
+                </label>
+                <select
+                  value={newTaskForm.selectedUmbKey}
+                  onChange={(e) =>
+                    setNewTaskForm((p) => ({
+                      ...p,
+                      selectedUmbKey: e.target.value,
+                    }))
+                  }
+                  className="ozon-focusable w-full px-2.5 py-1.5 bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg text-[#071026]"
+                >
+                  <option value="">— Без привязки —</option>
+                  {umbEpicCatalog.map((u) => (
+                    <option key={u.key} value={u.key}>
+                      {u.key} · {u.summary} ({u.status})
+                    </option>
+                  ))}
+                </select>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-4 border-t border-[#E2E8F0]">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#E2E8F0]">
                 <button
                   type="button"
                   onClick={() => setIsNewTaskModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-[#475569] hover:text-[#071026] cursor-pointer"
+                  className="ozon-btn-surface ozon-focusable px-3.5 py-1.5 text-xs font-semibold cursor-pointer"
                 >
                   Отмена
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-xs font-semibold text-white bg-[#005BFF] rounded-lg hover:bg-[#004ED6] cursor-pointer"
+                  className="ozon-btn-tinted ozon-focusable px-4 py-1.5 text-xs font-semibold cursor-pointer"
                 >
-                  Создать карточку на доске
+                  Добавить
                 </button>
               </div>
             </form>

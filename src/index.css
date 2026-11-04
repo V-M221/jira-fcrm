@@ -6,6 +6,18 @@
     --font-display: 'Plus Jakarta Sans', 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
     --font-sans: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
+
+    /* Ozon Bank Design System Tokens from Attached Specs */
+    --ozon-label-action: #005BFF;
+    --ozon-label-action-hover-veil: rgba(0, 91, 255, 0.10); /* Spec: LabelAction 10% opacity */
+    --ozon-label-action-active-veil: rgba(0, 91, 255, 0.20); /* Spec: LabelAction 20% opacity */
+    --ozon-layer-surface: #F2F4F8; /* Spec: layerSurface hover/pressed veil */
+    --ozon-graphic-accent-primary: #E11D68; /* Spec: graphic/Main/AccentPrimary Focus ring */
+    --ozon-graphic-secondary: #1E293B; /* Spec: graphic/Main/Secondary Accordion chevron hover */
+    --ozon-negative-bg: #FBECE9; /* Spec: Negative state background */
+    --ozon-negative-text: #D9381E; /* Spec: Negative state text/icon */
+    --ozon-disabled-bg: #E9ECEF; /* Spec: Disabled state background */
+    --ozon-disabled-text: #868E96; /* Spec: Disabled state text/icon */
   }
 
   body {
@@ -24,7 +36,161 @@
   }
 }
 
-/* Custom subtle scrollbars matching Ozon Bank FinTech workspace */
+/* ============================================================================
+   1. SPEC: Cell / Row Hover & Inner Control Isolation
+   "Накладывается паранжа на всю область карты с цветом layerSurface.
+    Если у компонента в контейнере Left или Right лежит action- или control-компонент,
+    то состояние hover принимает только внутренний компонент."
+   ============================================================================ */
+.ozon-row-item {
+  transition: background-color 120ms ease;
+}
+
+.ozon-row-item:hover:not(:has(.ozon-inner-control:hover)) {
+  background-color: var(--ozon-layer-surface);
+}
+
+.ozon-row-item.ozon-row-selected {
+  background-color: #E8F1FF;
+}
+
+.ozon-row-item.ozon-row-selected:hover:not(:has(.ozon-inner-control:hover)) {
+  background-color: #DCE9FF;
+}
+
+/* ============================================================================
+   2. SPEC: Focus Ring (graphic/Main/AccentPrimary, 4px offset, radius + 4px)
+   "Отступ (паддинг): рамка отступает от края компонента на 4 px с каждой стороны.
+    Цвет: рамка использует токен graphic/Main/AccentPrimary."
+   ============================================================================ */
+.ozon-focusable:focus-visible {
+  outline: 2px solid var(--ozon-graphic-accent-primary);
+  outline-offset: 4px;
+}
+
+/* ============================================================================
+   3. SPEC: Accordion Header & Chevron Hover (graphic/Main/Secondary)
+   "При наведении мышкой на аккордеон Chevron становится цветом graphic/Main/Secondary"
+   ============================================================================ */
+.ozon-accordion-header {
+  border-bottom: 1px solid #E2E8F0;
+  transition: background-color 120ms ease;
+}
+
+.ozon-accordion-header .ozon-accordion-chevron {
+  color: #94A3B8;
+  transition: color 120ms ease, transform 150ms ease;
+}
+
+.ozon-accordion-header:hover .ozon-accordion-chevron {
+  color: var(--ozon-graphic-secondary);
+}
+
+/* ============================================================================
+   4. SPEC: Action Button States (Default, Hover 10% LabelAction, Active 20% LabelAction,
+      Negative, Disabled, Loading)
+   ============================================================================ */
+.ozon-btn-tinted {
+  background-color: #E5F0FF;
+  color: var(--ozon-label-action);
+  border-radius: 10px;
+  transition: background-color 120ms ease;
+}
+
+.ozon-btn-tinted:hover:not(:disabled) {
+  /* Base #E5F0FF + 10% LabelAction (#005BFF) veil */
+  background-color: #D0E3FF;
+}
+
+.ozon-btn-tinted:active:not(:disabled) {
+  /* Base #E5F0FF + 20% LabelAction (#005BFF) veil */
+  background-color: #B8D4FF;
+}
+
+.ozon-btn-surface {
+  background-color: #FFFFFF;
+  color: var(--ozon-label-action);
+  border: 1px solid #E2E8F0;
+  border-radius: 10px;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.ozon-btn-surface:hover:not(:disabled) {
+  /* White + 10% LabelAction (#005BFF) veil */
+  background-color: rgba(0, 91, 255, 0.10);
+  border-color: rgba(0, 91, 255, 0.25);
+}
+
+.ozon-btn-surface:active:not(:disabled) {
+  /* White + 20% LabelAction (#005BFF) veil */
+  background-color: rgba(0, 91, 255, 0.20);
+}
+
+.ozon-btn-negative {
+  background-color: var(--ozon-negative-bg);
+  color: var(--ozon-negative-text);
+  border-radius: 10px;
+  transition: background-color 120ms ease;
+}
+
+.ozon-btn-negative:hover:not(:disabled) {
+  background-color: #F7DCD7;
+}
+
+.ozon-btn-negative:active:not(:disabled) {
+  background-color: #F2C9C2;
+}
+
+.ozon-btn-disabled,
+.ozon-btn-tinted:disabled,
+.ozon-btn-surface:disabled,
+.ozon-btn-negative:disabled {
+  background-color: var(--ozon-disabled-bg) !important;
+  color: var(--ozon-disabled-text) !important;
+  border-color: transparent !important;
+  cursor: not-allowed !important;
+}
+
+/* Inline table control (Component / Sprint / Status / ProjectTask selector) */
+.ozon-inline-select {
+  border-radius: 6px;
+  background-color: transparent;
+  border: 1px solid transparent;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.ozon-inline-select:hover {
+  background-color: var(--ozon-label-action-hover-veil);
+  border-color: rgba(0, 91, 255, 0.25);
+}
+
+.ozon-inline-select:active {
+  background-color: var(--ozon-label-action-active-veil);
+}
+
+.ozon-inline-select:focus-visible {
+  background-color: #FFFFFF;
+  outline: 2px solid var(--ozon-graphic-accent-primary);
+  outline-offset: 2px;
+}
+
+/* Loader/500 spinner */
+@keyframes ozon-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ozon-loader-500 {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(0, 91, 255, 0.18);
+  border-top-color: #005BFF;
+  border-radius: 9999px;
+  animation: ozon-spin 0.65s linear infinite;
+}
+
+/* Custom subtle scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
