@@ -20,6 +20,8 @@ import {
   Check,
   HelpCircle,
   Copy,
+  Paperclip,
+  UserX,
 } from 'lucide-react';
 import {
   FcrmTask,
@@ -166,11 +168,12 @@ export default function App() {
 
   // Task inspector & creation modals
   const [selectedTaskKey, setSelectedTaskKey] = useState<string | null>('FCRM-4821');
+  const [isEditingDescription, setIsEditingDescription] = useState<boolean>(false);
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
 
-  // Quick-picker search filter for JQL: labels = fcrm_umb_epic
+  // Quick-picker search filter for JQL: labels = fcrm_umb_epic (по умолчанию закрыт)
   const [umbSearchQuery, setUmbSearchQuery] = useState('');
-  const [isUmbPickerOpen, setIsUmbPickerOpen] = useState(true);
+  const [isUmbPickerOpen, setIsUmbPickerOpen] = useState(false);
 
   // Resizable Sidebar state
   const [sidebarWidth, setSidebarWidth] = useState<number>(490);
@@ -260,6 +263,36 @@ export default function App() {
         )
       ),
     [tasks, config.projectKey]
+  );
+
+  const getSprintStatusLabel = useCallback(
+    (sprintName: string): 'Прошедший' | 'Активный' | 'Будущий' | null => {
+      if (!sprintName) return null;
+      const low = sprintName.toLowerCase();
+      if (low.includes('бэклог') || low.includes('backlog') || low === 'не в спринте') {
+        return null;
+      }
+      if (low.includes('42') || low.includes('41') || low.includes('прошедш') || low.includes('closed')) {
+        return 'Прошедший';
+      }
+      if (low.includes('44') || low.includes('45') || low.includes('будущ') || low.includes('future')) {
+        return 'Будущий';
+      }
+      return 'Активный';
+    },
+    []
+  );
+
+  const formatSprintWithStatus = useCallback(
+    (sprintName: string, stripPrefix = false): string => {
+      if (!sprintName) return 'Не в спринте';
+      const base = stripPrefix ? sprintName.replace('FCRM ', '') : sprintName;
+      const st = getSprintStatusLabel(sprintName);
+      if (!st) return base;
+      if (base.includes(`(${st})`)) return base;
+      return `${base} (${st})`;
+    },
+    [getSprintStatusLabel]
   );
   const allComponents = useMemo(() => {
     const fromFcrmTasks = tasks
@@ -423,12 +456,22 @@ export default function App() {
   }, [filteredTasks]);
 
   const [collapsedComponents, setCollapsedComponents] = useState<Record<string, boolean>>({});
+  const [loadingComponents, setLoadingComponents] = useState<Record<string, boolean>>({});
 
   const toggleComponentCollapse = (compKey: string) => {
-    setCollapsedComponents((prev) => ({
-      ...prev,
-      [compKey]: !prev[compKey],
-    }));
+    const wasCollapsed = Boolean(collapsedComponents[compKey]);
+    if (wasCollapsed) {
+      setLoadingComponents((prev) => ({ ...prev, [compKey]: true }));
+      setCollapsedComponents((prev) => ({ ...prev, [compKey]: false }));
+      setTimeout(() => {
+        setLoadingComponents((prev) => ({ ...prev, [compKey]: false }));
+      }, 220);
+    } else {
+      setCollapsedComponents((prev) => ({
+        ...prev,
+        [compKey]: true,
+      }));
+    }
   };
 
   const selectedTask = useMemo(
@@ -709,7 +752,7 @@ export default function App() {
           Ozon Bank · FCRM Structure
         </a>
 
-        {/* Zone 2: Only "Все спринты" single-line link */}
+        {/* Zone 2: "Все спринты" + легенда индикаторов (скрепка и красный человечек) */}
         <nav className="flex items-center gap-4 text-xs font-semibold text-[#005BFF]">
           <a
             href="#all-sprints"
@@ -722,6 +765,24 @@ export default function App() {
           >
             Все спринты ({tasks.length})
           </a>
+          <span
+            className="inline-flex items-center gap-1 text-[11px] font-medium text-[#64748B]"
+            title="Красная скрепка отмечает задачи без привязанной «Задачи проекта»"
+          >
+            <span className="inline-flex items-center justify-center w-4 h-4 rounded bg-[#FEE2E2] text-[#DC2626]">
+              <Paperclip className="w-2.5 h-2.5" />
+            </span>
+            <span>— нет «Задачи проекта»</span>
+          </span>
+          <span
+            className="inline-flex items-center gap-1 text-[11px] font-medium text-[#64748B]"
+            title="Красный человечек отмечает задачи без назначенного Исполнителя"
+          >
+            <span className="inline-flex items-center justify-center w-4 h-4 rounded bg-[#FEE2E2] text-[#DC2626]">
+              <UserX className="w-2.5 h-2.5" />
+            </span>
+            <span>— нет Исполнителя</span>
+          </span>
         </nav>
 
         {/* Zone 3: 1 primary action (Uses Spec 3 Button Tinted + Loading spinner replacement) */}
@@ -813,10 +874,10 @@ export default function App() {
           <select
             value={selectedCustomer}
             onChange={(e) => setSelectedCustomer(e.target.value)}
-            aria-label="Фильтр по заказчику"
+            aria-label="Фильтр по Заказчик/Owner"
             className="ozon-focusable px-2 py-1 text-[11.5px] bg-[#F5F7FA] border border-[#E2E8F0] rounded-lg text-[#071026] cursor-pointer"
           >
-            <option value="all">Заказчик: Все</option>
+            <option value="all">Заказчик/Owner: Все</option>
             {uniqueCustomers.map((c) => (
               <option key={c} value={c}>
                 {c}
@@ -899,7 +960,7 @@ export default function App() {
                 { key: 'showComponent', label: 'Компонент' },
                 { key: 'showAssignee', label: 'Исполнитель' },
                 { key: 'showAuthor', label: 'Автор' },
-                { key: 'showCustomer', label: 'Заказчик' },
+                { key: 'showCustomer', label: 'Заказчик/Owner' },
                 { key: 'showCreatedAt', label: 'Дата создания' },
                 { key: 'showSprint', label: 'Спринт' },
                 { key: 'showProjectTaskLinks', label: 'Задача проекта' },
@@ -942,9 +1003,9 @@ export default function App() {
           CENTER: Interactive Drag Resizer Handle
           RIGHT: Resizable Task Details Panel with Editable Fields & Quick Picker
          ===================================================================== */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden min-h-0">
         {/* LEFT PANE: JIRA STRUCTURE COMPACT TABLE */}
-        <div className="flex-1 overflow-auto bg-white">
+        <div className="flex-1 overflow-auto bg-white min-h-0">
           <table
             style={{
               width: `${totalTableWidth}px`,
@@ -986,8 +1047,8 @@ export default function App() {
                 {config.showCustomer &&
                   renderResizableTh(
                     'customer',
-                    'Заказчик ✎',
-                    'Двойной клик по ячейке для редактирования заказчика'
+                    'Заказчик/Owner ✎',
+                    'Двойной клик по ячейке для редактирования поля Заказчик/Owner'
                   )}
                 {config.showCreatedAt &&
                   renderResizableTh('createdAt', 'Создана', 'Дата создания задачи')}
@@ -1053,6 +1114,23 @@ export default function App() {
                               <span className="text-xs font-bold tracking-tight text-[#071026]">
                                 {group.sprintName}
                               </span>
+                              {(() => {
+                                const spStatus = getSprintStatusLabel(group.sprintName);
+                                if (!spStatus) return null;
+                                const badgeClass =
+                                  spStatus === 'Активный'
+                                    ? 'bg-[#DCFCE7] text-[#15803D]'
+                                    : spStatus === 'Будущий'
+                                    ? 'bg-[#E5F0FF] text-[#005BFF]'
+                                    : 'bg-[#F1F5F9] text-[#475569]';
+                                return (
+                                  <span
+                                    className={`px-2 py-0.5 rounded-[5px] text-[10px] font-bold ${badgeClass}`}
+                                  >
+                                    {spStatus}
+                                  </span>
+                                );
+                              })()}
                               <span className="text-[#CBD5E1]">·</span>
                               <span className="font-mono text-[11px] font-semibold text-[#005BFF] tabular-nums">
                                 {group.items.length} задач
@@ -1089,6 +1167,7 @@ export default function App() {
                         group.componentGroups.map((compGroup) => {
                           const compKey = `${group.sprintName}::${compGroup.componentName}`;
                           const isCompCollapsed = Boolean(collapsedComponents[compKey]);
+                          const isCompLoading = Boolean(loadingComponents[compKey]);
 
                           return (
                             <React.Fragment key={compKey}>
@@ -1096,19 +1175,30 @@ export default function App() {
                                 onClick={() => toggleComponentCollapse(compKey)}
                                 className="bg-[#FAFBFD] hover:bg-[#F1F5F9] cursor-pointer text-[11px] font-semibold text-[#334155] border-b border-[#E2E8F0]"
                               >
-                                <td colSpan={11} className="py-1 pl-6 pr-3">
-                                  <div className="flex items-center gap-2">
-                                    {isCompCollapsed ? (
-                                      <ChevronRight className="w-3.5 h-3.5 text-[#005BFF] shrink-0" />
-                                    ) : (
-                                      <ChevronDown className="w-3.5 h-3.5 text-[#005BFF] shrink-0" />
-                                    )}
-                                    <span className="text-[#64748B] font-medium">Компонент:</span>
-                                    <span className="font-bold text-[#071026]">
-                                      {compGroup.componentName}
-                                    </span>
-                                    <span className="font-mono text-[10.5px] font-semibold text-[#005BFF] bg-[#EBF3FF] px-1.5 py-0.2 rounded tabular-nums">
-                                      {compGroup.items.length} задач
+                                <td colSpan={11} className="py-1 pl-7 pr-3 border-l-[3px] border-l-[#93C5FD]">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      {isCompLoading ? (
+                                        <span className="ozon-loader-500" title="Перезапрос задач компонента из Jira..." />
+                                      ) : isCompCollapsed ? (
+                                        <ChevronRight className="w-3.5 h-3.5 text-[#005BFF] shrink-0" />
+                                      ) : (
+                                        <ChevronDown className="w-3.5 h-3.5 text-[#005BFF] shrink-0" />
+                                      )}
+                                      <span className="text-[#64748B] font-medium">Компонент:</span>
+                                      <span className="font-bold text-[#071026]">
+                                        {compGroup.componentName}
+                                      </span>
+                                      <span className="font-mono text-[10.5px] font-semibold text-[#005BFF] bg-[#EBF3FF] px-1.5 py-0.2 rounded tabular-nums">
+                                        {compGroup.items.length} задач
+                                      </span>
+                                    </div>
+                                    <span className="text-[10.5px] text-[#94A3B8]">
+                                      {isCompLoading
+                                        ? 'Перезапрос задач из Jira...'
+                                        : isCompCollapsed
+                                        ? `Показать (${compGroup.items.length})`
+                                        : 'Свернуть'}
                                     </span>
                                   </div>
                                 </td>
@@ -1119,21 +1209,39 @@ export default function App() {
                                   const isRowExpanded = Boolean(expandedTaskRows[task.key]);
                                   const totalLinks =
                                     task.projectTaskLinks.length + task.inProjectLinks.length;
+                                  const hasNoProjectTask = task.projectTaskLinks.length === 0;
+                                  const assigneeClean = (task.assignee?.name || '').trim().toLowerCase();
+                                  const hasNoAssignee =
+                                    !assigneeClean ||
+                                    assigneeClean === 'не назначен' ||
+                                    assigneeClean === 'не указан' ||
+                                    assigneeClean === '—' ||
+                                    assigneeClean === '-';
 
                                   return (
                                     <React.Fragment key={task.key}>
                               <tr
                                 tabIndex={0}
-                                onClick={() => setSelectedTaskKey(task.key)}
+                                onClick={(e) => {
+                                  if (totalLinks > 0) {
+                                    toggleTaskRowExpand(e, task.key);
+                                  } else {
+                                    setSelectedTaskKey(task.key);
+                                    setIsEditingDescription(false);
+                                  }
+                                }}
                                 onKeyDown={(e) => {
-                                  if (e.key === 'Enter') setSelectedTaskKey(task.key);
+                                  if (e.key === 'Enter') {
+                                    setSelectedTaskKey(task.key);
+                                    setIsEditingDescription(false);
+                                  }
                                 }}
                                 className={`ozon-row-item ozon-focusable h-7 cursor-pointer ${
                                   isSelected ? 'ozon-row-selected' : ''
                                 }`}
                               >
-                                {/* 1. Key + Summary + Structure Tree Expand Chevron */}
-                                <td className="py-0.5 pl-3 pr-2 border-r border-[#EEF2F6] overflow-hidden">
+                                {/* 1. Key + Summary + Structure Tree Expand Chevron + ◨ Детали button (Уровень 3 лесенки: pl-11) */}
+                                <td className="py-0.5 pl-11 pr-2 border-l-[3px] border-l-[#E2E8F0] border-r border-r-[#EEF2F6] overflow-hidden">
                                   <div className="flex items-center gap-1 min-w-0">
                                     <button
                                       type="button"
@@ -1152,12 +1260,46 @@ export default function App() {
                                     <span className="font-mono text-[11px] font-bold text-[#005BFF] shrink-0 tabular-nums">
                                       {task.key}
                                     </span>
+                                    {hasNoProjectTask && (
+                                      <span
+                                        className="inline-flex items-center justify-center w-4 h-4 rounded bg-[#FEE2E2] text-[#DC2626] shrink-0 cursor-help"
+                                        title="Внимание: у задачи нет связи «Задача проекта» (fcrm_umb_epic)"
+                                      >
+                                        <Paperclip className="w-2.5 h-2.5" />
+                                      </span>
+                                    )}
+                                    {hasNoAssignee && (
+                                      <span
+                                        className="inline-flex items-center justify-center w-4 h-4 rounded bg-[#FEE2E2] text-[#DC2626] shrink-0 cursor-help"
+                                        title="Внимание: у задачи не назначен Исполнитель"
+                                      >
+                                        <UserX className="w-2.5 h-2.5" />
+                                      </span>
+                                    )}
                                     <span
-                                      className="font-medium text-[#071026] truncate text-[11.5px]"
+                                      className="font-medium text-[#071026] truncate text-[11.5px] flex-1"
                                       title={task.summary}
                                     >
                                       {task.summary}
                                     </span>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedTaskKey((prev) =>
+                                          prev === task.key ? null : task.key
+                                        );
+                                        setIsEditingDescription(false);
+                                      }}
+                                      title="Открыть панель деталей задачи справа"
+                                      className={`ozon-inner-control shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold border transition-colors cursor-pointer ${
+                                        isSelected
+                                          ? 'bg-[#005BFF] text-white border-[#005BFF]'
+                                          : 'bg-[#F8FAFC] text-[#475569] border-[#CBD5E1] hover:bg-[#EBF3FF] hover:text-[#005BFF] hover:border-[#93C5FD]'
+                                      }`}
+                                    >
+                                      ◨ Детали
+                                    </button>
                                   </div>
                                 </td>
 
@@ -1399,7 +1541,7 @@ export default function App() {
                                     >
                                       {uniqueSprints.map((sp) => (
                                         <option key={sp} value={sp}>
-                                          {sp.replace('FCRM ', '')}
+                                          {formatSprintWithStatus(sp, true)}
                                         </option>
                                       ))}
                                     </select>
@@ -1519,14 +1661,21 @@ export default function App() {
                                   {task.projectTaskLinks.map((link) => (
                                     <tr
                                       key={`${task.key}-pt-${link.id}`}
-                                      onClick={() => setSelectedTaskKey(task.key)}
+                                      onClick={() => {
+                                        setSelectedTaskKey(task.key);
+                                        setIsEditingDescription(false);
+                                      }}
                                       className="ozon-row-item bg-[#FAFBFD] text-[11px] text-[#475569] cursor-pointer"
                                     >
-                                      <td colSpan={11} className="py-1 pl-9 pr-3">
+                                      <td colSpan={11} className="py-1 pl-16 pr-3 border-l-[3px] border-l-[#CBD5E1]">
                                         <div className="flex items-center gap-2">
-                                          <FolderGit2 className="w-3 h-3 text-[#005BFF] shrink-0" />
-                                          <span className="text-[10.5px] font-semibold text-[#64748B] w-28 shrink-0">
-                                            {config.linkTypeProjectTask}:
+                                          <span className="text-[#94A3B8] font-bold">↳</span>
+                                          <span
+                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[5px] text-[10px] font-semibold bg-[#F8FAFC] text-[#475569] border border-[#CBD5E1] shrink-0"
+                                            title="Тип связи: Задача проекта (fcrm_umb_epic)"
+                                          >
+                                            <FolderGit2 className="w-2.5 h-2.5 text-[#64748B] shrink-0" />
+                                            <span>{config.linkTypeProjectTask}</span>
                                           </span>
                                           <span className="font-mono font-bold text-[#005BFF] shrink-0">
                                             {link.key}
@@ -1535,8 +1684,16 @@ export default function App() {
                                             {link.summary}
                                           </span>
                                           <span className="text-[#CBD5E1]">·</span>
-                                          <span className="text-[#64748B] shrink-0">
-                                            Статус: <strong className="text-[#071026]">{link.status}</strong>
+                                          <span
+                                            className={`px-1.5 py-0.5 rounded-[5px] text-[10px] font-bold shrink-0 ${
+                                              link.status === 'Готово'
+                                                ? 'bg-[#DCFCE7] text-[#15803D]'
+                                                : link.status === 'В работе'
+                                                ? 'bg-[#E5F0FF] text-[#005BFF]'
+                                                : 'bg-[#F1F5F9] text-[#475569]'
+                                            }`}
+                                          >
+                                            {link.status}
                                           </span>
                                         </div>
                                       </td>
@@ -1545,14 +1702,21 @@ export default function App() {
                                   {task.inProjectLinks.map((link) => (
                                     <tr
                                       key={`${task.key}-ip-${link.id}`}
-                                      onClick={() => setSelectedTaskKey(task.key)}
+                                      onClick={() => {
+                                        setSelectedTaskKey(task.key);
+                                        setIsEditingDescription(false);
+                                      }}
                                       className="ozon-row-item bg-[#F8FAFC] text-[11px] text-[#475569] cursor-pointer"
                                     >
-                                      <td colSpan={11} className="py-1 pl-9 pr-3">
+                                      <td colSpan={11} className="py-1 pl-16 pr-3 border-l-[3px] border-l-[#CBD5E1]">
                                         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                                          <Link2 className="w-3 h-3 text-[#005BFF] shrink-0" />
-                                          <span className="text-[10.5px] font-semibold text-[#004ED6] w-28 shrink-0">
-                                            {config.linkTypeInProject}:
+                                          <span className="text-[#94A3B8] font-bold">↳</span>
+                                          <span
+                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[5px] text-[10px] font-semibold bg-[#F8FAFC] text-[#475569] border border-[#CBD5E1] shrink-0"
+                                            title="Тип связи: В проекте (смежная задача реализации)"
+                                          >
+                                            <Link2 className="w-2.5 h-2.5 text-[#64748B] shrink-0" />
+                                            <span>{config.linkTypeInProject}</span>
                                           </span>
                                           <span className="font-mono font-bold text-[#005BFF] shrink-0">
                                             {link.key}
@@ -1561,11 +1725,19 @@ export default function App() {
                                             {link.summary}
                                           </span>
                                           <span className="text-[#CBD5E1]">·</span>
-                                          <span className="text-[#475569] shrink-0">
-                                            Статус:{' '}
-                                            <strong className="text-[#071026]">
-                                              {link.status}
-                                            </strong>
+                                          <span
+                                            className={`px-1.5 py-0.5 rounded-[5px] text-[10px] font-bold shrink-0 ${
+                                              link.status === 'Готово'
+                                                ? 'bg-[#DCFCE7] text-[#15803D]'
+                                                : link.status === 'В работе'
+                                                ? 'bg-[#E5F0FF] text-[#005BFF]'
+                                                : link.status === 'Ревью' ||
+                                                  link.status === 'Тестирование'
+                                                ? 'bg-[#FEF3C7] text-[#B45309]'
+                                                : 'bg-[#F1F5F9] text-[#475569]'
+                                            }`}
+                                          >
+                                            {link.status}
                                           </span>
                                           <span className="text-[#CBD5E1]">·</span>
                                           {/* Direct inline Component selector for 'В проекте' sub-row */}
@@ -1615,7 +1787,7 @@ export default function App() {
                                             >
                                               {uniqueSprints.map((sp) => (
                                                 <option key={sp} value={sp}>
-                                                  {sp.replace('FCRM ', '')}
+                                                  {formatSprintWithStatus(sp, true)}
                                                 </option>
                                               ))}
                                             </select>
@@ -1660,7 +1832,7 @@ export default function App() {
 
             <aside
               style={{ width: `${sidebarWidth}px` }}
-              className="shrink-0 bg-white flex flex-col h-full overflow-hidden"
+              className="shrink-0 bg-white flex flex-col h-full min-h-0 overflow-hidden"
             >
               {/* Inspector Header */}
               <div className="px-4 py-2.5 bg-[#F8FAFC] border-b border-[#E2E8F0] flex items-start justify-between gap-2">
@@ -1726,7 +1898,7 @@ export default function App() {
               </div>
 
               {/* Inspector Scrollable Body */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3 text-xs">
+              <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 text-xs">
                 {/* Status bar (Spec 3 Action Buttons) */}
                 <div className="flex flex-wrap gap-1.5">
                   {STATUS_COLUMNS.map((col) => {
@@ -1759,7 +1931,7 @@ export default function App() {
                     }
                     className="ozon-accordion-header ozon-focusable w-full px-3.5 py-2.5 flex items-center justify-between text-left font-bold text-[#071026] cursor-pointer"
                   >
-                    <span>Атрибуты задачи (Эпик, Компонент, Исполнитель, Заказчик, Спринт)</span>
+                    <span>Атрибуты задачи (Эпик, Компонент, Исполнитель, Заказчик/Owner, Спринт)</span>
                     {openSidebarSections.attributes ? (
                       <ChevronUp className="ozon-accordion-chevron w-4 h-4 shrink-0" />
                     ) : (
@@ -1787,7 +1959,7 @@ export default function App() {
                           >
                             {uniqueSprints.map((sp) => (
                               <option key={sp} value={sp}>
-                                {sp}
+                                {formatSprintWithStatus(sp)}
                               </option>
                             ))}
                           </select>
@@ -1858,7 +2030,7 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* 4. Исполнитель */}
+                      {/* 4. Исполнитель (оформлено аналогично Заказчик/Owner с кнопкой ОК) */}
                       <div className="grid grid-cols-12 items-center gap-2">
                         <label className="col-span-4 text-[#64748B] font-medium">
                           Исполнитель
@@ -1874,21 +2046,15 @@ export default function App() {
                                 assignee: { ...t.assignee, name: e.target.value },
                               }))
                             }
-                            placeholder="ФИО исполнителя"
+                            placeholder="🔍 Поиск Исполнителя по ФИО или логину..."
                             className="ozon-focusable flex-1 min-w-0 px-2.5 py-1 text-xs font-semibold text-[#071026] bg-[#F5F7FA] border border-[#CBD5E1] rounded-lg"
                           />
-                          <input
-                            type="text"
-                            value={selectedTask.assignee.role}
-                            onChange={(e) =>
-                              handleUpdateTask(selectedTask.key, (t) => ({
-                                ...t,
-                                assignee: { ...t.assignee, role: e.target.value },
-                              }))
-                            }
-                            placeholder="Роль"
-                            className="ozon-focusable w-32 shrink-0 px-2 py-1 text-[11px] text-[#475569] bg-[#F5F7FA] border border-[#CBD5E1] rounded-lg"
-                          />
+                          <button
+                            type="button"
+                            className="ozon-btn-tinted ozon-focusable px-2.5 py-1 text-[11px] font-bold shrink-0 cursor-pointer"
+                          >
+                            ОК
+                          </button>
                           <datalist id="fcrm-assignees-list">
                             {uniqueAssignees.map((a) => (
                               <option key={a} value={a} />
@@ -1897,12 +2063,12 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* 5. Заказчик */}
-                      <div className="grid grid-cols-12 items-start gap-2">
-                        <label className="col-span-4 text-[#64748B] font-medium pt-1">
-                          Заказчик
+                      {/* 5. Заказчик/Owner */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-4 text-[#64748B] font-medium">
+                          Заказчик/Owner
                         </label>
-                        <div className="col-span-8 space-y-1.5">
+                        <div className="col-span-8 flex gap-1.5">
                           <input
                             list="fcrm-customers-list"
                             type="text"
@@ -1913,21 +2079,15 @@ export default function App() {
                                 customer: { ...t.customer, name: e.target.value },
                               }))
                             }
-                            placeholder="ФИО заказчика"
-                            className="ozon-focusable w-full px-2.5 py-1 text-xs font-semibold text-[#004ED6] bg-[#F5F7FA] border border-[#CBD5E1] rounded-lg"
+                            placeholder="🔍 Поиск Заказчик/Owner по ФИО или логину..."
+                            className="ozon-focusable flex-1 min-w-0 px-2.5 py-1 text-xs font-semibold text-[#071026] bg-[#F5F7FA] border border-[#CBD5E1] rounded-lg"
                           />
-                          <input
-                            type="text"
-                            value={selectedTask.customer.department}
-                            onChange={(e) =>
-                              handleUpdateTask(selectedTask.key, (t) => ({
-                                ...t,
-                                customer: { ...t.customer, department: e.target.value },
-                              }))
-                            }
-                            placeholder="Подразделение Ozon Банка"
-                            className="ozon-focusable w-full px-2.5 py-1 text-[11px] text-[#475569] bg-[#F5F7FA] border border-[#CBD5E1] rounded-lg"
-                          />
+                          <button
+                            type="button"
+                            className="ozon-btn-tinted ozon-focusable px-2.5 py-1 text-[11px] font-bold shrink-0 cursor-pointer"
+                          >
+                            ОК
+                          </button>
                           <datalist id="fcrm-customers-list">
                             {uniqueCustomers.map((c) => (
                               <option key={c} value={c} />
@@ -1960,26 +2120,81 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* 7. Описание задачи */}
+                      {/* 7. Описание задачи (с поддержкой форматирования Jira Wiki / Markdown) */}
                       <div className="pt-1.5 border-t border-[#EEF2F6] space-y-1.5">
-                        <label className="block text-[11px] font-bold uppercase tracking-wider text-[#475569]">
-                          Описание задачи
-                        </label>
-                        <textarea
-                          rows={3}
-                          value={
-                            selectedTask.description ??
-                            `Реализация задачи ${selectedTask.key} (${selectedTask.summary}) в рамках компонента «${selectedTask.component}» и эпика ${selectedTask.epicKey}.`
-                          }
-                          onChange={(e) =>
-                            handleUpdateTask(selectedTask.key, (t) => ({
-                              ...t,
-                              description: e.target.value,
-                            }))
-                          }
-                          placeholder="Введите описание задачи..."
-                          className="ozon-focusable w-full px-2.5 py-1.5 text-xs text-[#071026] bg-[#F8FAFC] border border-[#CBD5E1] rounded-lg resize-y leading-relaxed"
-                        />
+                        <div className="flex items-center justify-between">
+                          <label className="block text-[11px] font-bold uppercase tracking-wider text-[#475569]">
+                            Описание задачи
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingDescription((v) => !v)}
+                            className="ozon-btn-surface ozon-focusable px-2 py-0.5 text-[10.5px] font-semibold text-[#005BFF] cursor-pointer"
+                          >
+                            {isEditingDescription ? '👁 Просмотр' : '✎ Редактировать'}
+                          </button>
+                        </div>
+
+                        {isEditingDescription ? (
+                          <textarea
+                            rows={6}
+                            value={
+                              selectedTask.description ??
+                              `*Цель / Зачем*\nДать сотрудникам поддержки возможность вручную сбрасывать закэшированные данные в рамках задачи ${selectedTask.key} (${selectedTask.summary}).\n\n*Контекст*\nКомпонент: «${selectedTask.component}», эпик ${selectedTask.epicKey}.\n\n*Суть / Что делаем*\n1 заходит в карточку клиента в CRM\n2 выбирает действие и подтверждает операцию\nh2.\n*Связанные материалы*\nСм. https://jit.o3.ru/browse/OB-277222`
+                            }
+                            onChange={(e) =>
+                              handleUpdateTask(selectedTask.key, (t) => ({
+                                ...t,
+                                description: e.target.value,
+                              }))
+                            }
+                            placeholder="Введите описание задачи (поддерживается разметка Jira: *жирный*, h2., списки, ссылки)..."
+                            className="ozon-focusable w-full px-2.5 py-1.5 text-xs text-[#071026] bg-[#F8FAFC] border border-[#005BFF] rounded-lg resize-y leading-relaxed"
+                          />
+                        ) : (
+                          <div
+                            onDoubleClick={() => setIsEditingDescription(true)}
+                            title="Двойной клик для редактирования описания"
+                            className="p-2.5 bg-[#FAFBFD] border border-[#E2E8F0] rounded-lg space-y-1.5 text-[11.5px] leading-relaxed text-[#071026] cursor-text"
+                          >
+                            {(
+                              selectedTask.description ??
+                              `*Цель / Зачем*\nДать сотрудникам поддержки возможность вручную сбрасывать закэшированные данные о получателях/плательщиках СБП в рамках задачи ${selectedTask.key}.\n\n*Контекст*\nДанные о доступных банках-получателях СБП сохраняются в кэше (${selectedTask.component}).\n\n*Суть / Что делаем*\nВ карточке клиента в CRM добавляется кнопка «Сбросить кэш» и подтверждение действия.\nh2.\n*Клиентский путь*\n1 клиент переводит в другой банк\n2 закрывает счет в банке\n3 обращается в поддержку — саппорт сбрасывает кэш (https://jit.o3.ru/browse/OB-277222)`
+                            )
+                              .split('\n')
+                              .map((rawLine, idx) => {
+                                const trimmed = rawLine.trim();
+                                if (!trimmed) return null;
+                                if (/^h[1-6]\.\s*$/i.test(trimmed) || /^-{3,}$/.test(trimmed)) {
+                                  return <hr key={idx} className="border-t border-[#E2E8F0] my-1.5" />;
+                                }
+                                const boldHeading = trimmed.match(/^\*{1,2}([^*]+)\*{1,2}:?$/);
+                                if (boldHeading) {
+                                  return (
+                                    <div key={idx} className="font-bold text-[#071026] text-[12px] pt-1">
+                                      {boldHeading[1]}
+                                    </div>
+                                  );
+                                }
+                                const numMatch = trimmed.match(/^(?:(\d+)[.)]?)\s+(.+)$/);
+                                if (numMatch) {
+                                  return (
+                                    <div key={idx} className="flex items-start gap-1.5 pl-1">
+                                      <span className="font-mono font-bold text-[#005BFF] text-[11px] shrink-0">
+                                        {numMatch[1]}.
+                                      </span>
+                                      <span>{numMatch[2]}</span>
+                                    </div>
+                                  );
+                                }
+                                return (
+                                  <p key={idx} className="text-[#1E293B]">
+                                    {trimmed}
+                                  </p>
+                                );
+                              })}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -2347,7 +2562,7 @@ export default function App() {
                                   >
                                     {uniqueSprints.map((sp) => (
                                       <option key={sp} value={sp}>
-                                        {sp}
+                                        {formatSprintWithStatus(sp)}
                                       </option>
                                     ))}
                                   </select>
@@ -2395,7 +2610,7 @@ export default function App() {
                           >
                             {uniqueSprints.map((sp) => (
                               <option key={sp} value={sp}>
-                                {sp}
+                                {formatSprintWithStatus(sp)}
                               </option>
                             ))}
                           </select>
@@ -2657,7 +2872,7 @@ export default function App() {
                   >
                     {uniqueSprints.map((sp) => (
                       <option key={sp} value={sp}>
-                        {sp}
+                        {formatSprintWithStatus(sp)}
                       </option>
                     ))}
                   </select>
@@ -2667,7 +2882,7 @@ export default function App() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
                   <label className="block font-semibold text-[#071026] mb-1">
-                    Заказчик
+                    Заказчик/Owner
                   </label>
                   <input
                     type="text"
@@ -2680,7 +2895,7 @@ export default function App() {
                 </div>
                 <div>
                   <label className="block font-semibold text-[#071026] mb-1">
-                    Подразделение заказчика
+                    Подразделение (Заказчик/Owner)
                   </label>
                   <input
                     type="text"
