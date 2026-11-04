@@ -13,6 +13,7 @@ export interface LinkedIssueItem {
 export interface FcrmTask {
   key: string;
   summary: string; // 1. Название задачи
+  description?: string; // Описание задачи
   epicKey: string;
   epicName: string; // 2. Эпик
   component: string; // 3. Компонент

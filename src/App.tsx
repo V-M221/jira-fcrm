@@ -43,27 +43,14 @@ import {
 } from './utils/extensionGenerator';
 
 const DEFAULT_COMPONENT_OPTIONS = [
+  'CRM: Поддержка (Развитие)',
+  'CRM: Поддержка (Продукт)',
+  'Роли и доступы',
   'Core-Scoring',
   'KYC-Verify',
   'Corp-Cards',
   'CRM-DocGen',
   'AntiFraud-UI',
-  'Tariff-Engine',
-  'API-Gateway',
-  'Sign-Crypto-UI',
-  'Search-Index',
-  'CRM-Routing',
-  'CRM-Frontend',
-  'Security-Audit',
-  'Telephony-UI',
-  'Guarantees-Core',
-  'DWH-ClickHouse',
-  'Card-Processing-GW',
-  'KYC-OCR-Service',
-  'VED-Parser',
-  'FX-Rates-Core',
-  'EIS-Adapter',
-  'QA-Automation',
 ];
 
 type ColumnId =
@@ -262,20 +249,24 @@ export default function App() {
     inProjectSprint: 'FCRM Sprint 43 (11.11 – 25.11)',
   });
 
-  // Unique values for filters & inline selectors
+  // Unique values for filters & inline selectors — strictly FCRM project only
   const uniqueSprints = useMemo(
-    () => Array.from(new Set(tasks.map((t) => t.sprint))),
-    [tasks]
+    () =>
+      Array.from(
+        new Set(
+          tasks
+            .filter((t) => t.key.startsWith(`${config.projectKey}-`))
+            .map((t) => t.sprint)
+        )
+      ),
+    [tasks, config.projectKey]
   );
   const allComponents = useMemo(() => {
-    const fromTasks = tasks.map((t) => t.component);
-    const fromInProject = tasks.flatMap((t) =>
-      t.inProjectLinks.map((l) => l.component).filter(Boolean) as string[]
-    );
-    return Array.from(
-      new Set([...DEFAULT_COMPONENT_OPTIONS, ...fromTasks, ...fromInProject])
-    );
-  }, [tasks]);
+    const fromFcrmTasks = tasks
+      .filter((t) => t.key.startsWith(`${config.projectKey}-`))
+      .map((t) => t.component);
+    return Array.from(new Set([...DEFAULT_COMPONENT_OPTIONS, ...fromFcrmTasks]));
+  }, [tasks, config.projectKey]);
 
   const uniqueEpics = useMemo(() => {
     const map = new Map<string, { epicKey: string; epicName: string }>();
@@ -397,7 +388,7 @@ export default function App() {
     selectedStatusFilter,
   ]);
 
-  // Group filtered tasks by Sprint (Jira Structure hierarchy)
+  // Group filtered tasks by Sprint -> Component (2-level Jira Structure hierarchy)
   const sprintGroups = useMemo(() => {
     const map = new Map<string, FcrmTask[]>();
     filteredTasks.forEach((task) => {
@@ -405,11 +396,40 @@ export default function App() {
       list.push(task);
       map.set(task.sprint, list);
     });
-    return Array.from(map.entries()).map(([sprintName, items]) => ({
-      sprintName,
-      items,
-    }));
+    return Array.from(map.entries()).map(([sprintName, items]) => {
+      const compMap = new Map<string, FcrmTask[]>();
+      items.forEach((t) => {
+        const compName = (t.component || '').trim() || 'Без компонента';
+        const compList = compMap.get(compName) || [];
+        compList.push(t);
+        compMap.set(compName, compList);
+      });
+      const componentGroups = Array.from(compMap.entries())
+        .sort((a, b) => {
+          if (a[0] === 'Без компонента') return 1;
+          if (b[0] === 'Без компонента') return -1;
+          return a[0].localeCompare(b[0], 'ru');
+        })
+        .map(([componentName, compItems]) => ({
+          componentName,
+          items: compItems,
+        }));
+      return {
+        sprintName,
+        items,
+        componentGroups,
+      };
+    });
   }, [filteredTasks]);
+
+  const [collapsedComponents, setCollapsedComponents] = useState<Record<string, boolean>>({});
+
+  const toggleComponentCollapse = (compKey: string) => {
+    setCollapsedComponents((prev) => ({
+      ...prev,
+      [compKey]: !prev[compKey],
+    }));
+  };
 
   const selectedTask = useMemo(
     () => tasks.find((t) => t.key === selectedTaskKey) || null,
@@ -643,7 +663,11 @@ export default function App() {
     extraClassName = ''
   ) => (
     <th
-      style={{ width: `${columnWidths[colId]}px` }}
+      style={{
+        width: `${columnWidths[colId]}px`,
+        minWidth: `${columnWidths[colId]}px`,
+        maxWidth: `${columnWidths[colId]}px`,
+      }}
       title={title}
       className={`relative group py-1.5 px-2 border-r border-[#E2E8F0] whitespace-nowrap overflow-hidden text-ellipsis ${extraClassName}`}
     >
@@ -922,14 +946,18 @@ export default function App() {
         {/* LEFT PANE: JIRA STRUCTURE COMPACT TABLE */}
         <div className="flex-1 overflow-auto bg-white">
           <table
-            style={{ width: `${totalTableWidth}px`, minWidth: '100%' }}
+            style={{
+              width: `${totalTableWidth}px`,
+              minWidth: `${totalTableWidth}px`,
+              maxWidth: `${totalTableWidth}px`,
+            }}
             className="table-fixed text-left border-collapse select-none"
           >
             <thead className="sticky top-0 z-20 bg-[#F1F5F9] border-b border-[#CBD5E1] text-[11px] font-bold text-[#334155]">
               <tr>
                 {renderResizableTh(
                   'task',
-                  'Задача (Спринт → Задача → Связи)',
+                  'Задача (Спринт → Компонент → Задача)',
                   'Потяните правую границу заголовка для изменения ширины',
                   'pl-3'
                 )}
@@ -1054,18 +1082,46 @@ export default function App() {
                       </tr>
 
                       {/* =====================================================
-                          COMPACT TASK ROWS INSIDE SPRINT
+                          2ND LEVEL: COMPONENT SUB-GROUPS & COMPACT TASK ROWS
                          ===================================================== */}
                       {!isCollapsed &&
                         !isLoading &&
-                        group.items.map((task) => {
-                          const isSelected = selectedTaskKey === task.key;
-                          const isRowExpanded = Boolean(expandedTaskRows[task.key]);
-                          const totalLinks =
-                            task.projectTaskLinks.length + task.inProjectLinks.length;
+                        group.componentGroups.map((compGroup) => {
+                          const compKey = `${group.sprintName}::${compGroup.componentName}`;
+                          const isCompCollapsed = Boolean(collapsedComponents[compKey]);
 
                           return (
-                            <React.Fragment key={task.key}>
+                            <React.Fragment key={compKey}>
+                              <tr
+                                onClick={() => toggleComponentCollapse(compKey)}
+                                className="bg-[#FAFBFD] hover:bg-[#F1F5F9] cursor-pointer text-[11px] font-semibold text-[#334155] border-b border-[#E2E8F0]"
+                              >
+                                <td colSpan={11} className="py-1 pl-6 pr-3">
+                                  <div className="flex items-center gap-2">
+                                    {isCompCollapsed ? (
+                                      <ChevronRight className="w-3.5 h-3.5 text-[#005BFF] shrink-0" />
+                                    ) : (
+                                      <ChevronDown className="w-3.5 h-3.5 text-[#005BFF] shrink-0" />
+                                    )}
+                                    <span className="text-[#64748B] font-medium">Компонент:</span>
+                                    <span className="font-bold text-[#071026]">
+                                      {compGroup.componentName}
+                                    </span>
+                                    <span className="font-mono text-[10.5px] font-semibold text-[#005BFF] bg-[#EBF3FF] px-1.5 py-0.2 rounded tabular-nums">
+                                      {compGroup.items.length} задач
+                                    </span>
+                                  </div>
+                                </td>
+                              </tr>
+                              {!isCompCollapsed &&
+                                compGroup.items.map((task) => {
+                                  const isSelected = selectedTaskKey === task.key;
+                                  const isRowExpanded = Boolean(expandedTaskRows[task.key]);
+                                  const totalLinks =
+                                    task.projectTaskLinks.length + task.inProjectLinks.length;
+
+                                  return (
+                                    <React.Fragment key={task.key}>
                               <tr
                                 tabIndex={0}
                                 onClick={() => setSelectedTaskKey(task.key)}
@@ -1570,6 +1626,9 @@ export default function App() {
                                   ))}
                                 </>
                               )}
+                                    </React.Fragment>
+                                  );
+                                })}
                             </React.Fragment>
                           );
                         })}
@@ -1875,6 +1934,52 @@ export default function App() {
                             ))}
                           </datalist>
                         </div>
+                      </div>
+
+                      {/* 6. Приоритет */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-4 text-[#64748B] font-medium">
+                          Приоритет
+                        </label>
+                        <div className="col-span-8">
+                          <select
+                            value={selectedTask.priority}
+                            onChange={(e) =>
+                              handleUpdateTask(selectedTask.key, (t) => ({
+                                ...t,
+                                priority: e.target.value as FcrmTask['priority'],
+                              }))
+                            }
+                            className="ozon-focusable w-full px-2.5 py-1 text-xs font-semibold text-[#071026] bg-[#F5F7FA] border border-[#CBD5E1] rounded-lg cursor-pointer"
+                          >
+                            <option value="Blocker">Blocker (Блокер)</option>
+                            <option value="High">High (Высокий)</option>
+                            <option value="Medium">Medium (Средний)</option>
+                            <option value="Low">Low (Низкий)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* 7. Описание задачи */}
+                      <div className="pt-1.5 border-t border-[#EEF2F6] space-y-1.5">
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-[#475569]">
+                          Описание задачи
+                        </label>
+                        <textarea
+                          rows={3}
+                          value={
+                            selectedTask.description ??
+                            `Реализация задачи ${selectedTask.key} (${selectedTask.summary}) в рамках компонента «${selectedTask.component}» и эпика ${selectedTask.epicKey}.`
+                          }
+                          onChange={(e) =>
+                            handleUpdateTask(selectedTask.key, (t) => ({
+                              ...t,
+                              description: e.target.value,
+                            }))
+                          }
+                          placeholder="Введите описание задачи..."
+                          className="ozon-focusable w-full px-2.5 py-1.5 text-xs text-[#071026] bg-[#F8FAFC] border border-[#CBD5E1] rounded-lg resize-y leading-relaxed"
+                        />
                       </div>
                     </div>
                   )}
