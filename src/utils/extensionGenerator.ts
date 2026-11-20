@@ -9,7 +9,7 @@ import { createStrategicDashboard } from '../services/strategicDashboard';
 import { createTaskDetailsSidebar } from '../services/taskDetailsSidebar';
 import { bindJiraLabelSuggestions } from '../services/jiraLabelSuggestions';
 
-export const EXTENSION_VERSION = '3.5.162';
+export const EXTENSION_VERSION = '3.5.163';
 
 export function generateManifestJson(config: ExtensionConfig): string {
   const manifest = {

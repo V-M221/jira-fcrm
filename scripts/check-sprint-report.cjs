@@ -135,6 +135,24 @@ assert.equal(edge.metrics.removed,3);
 assert.equal(edge.metrics.removedTasks,1);
 assert.equal(edge.days.at(-1).scope,11);
 
+const lateLaunch = {...sprint,startDate:'2026-10-18T22:00:00+03:00',activatedDate:'2026-10-19T13:51:12.006+03:00'};
+const plannedBeforeLaunch = issue('TEST-8',5,true,progress,[
+  day('2026-10-19T09:57:00+03:00',[sprintChange(null,'7')]),
+  day('2026-10-19T13:35:00+03:00',[{fieldId:'customfield_1',from:'3',to:'5'}])
+]);
+const addedAfterLaunch = issue('TEST-9',2,true,progress,[day('2026-10-19T14:11:00+03:00',[sprintChange(null,'7')])]);
+const launchScope = model.nativeScope({contents:{completedIssues:[],issuesNotCompletedInCurrentSprint:[plannedBeforeLaunch,addedAfterLaunch],puntedIssues:[],issueKeysAddedDuringSprint:{[addedAfterLaunch.key]:true}}});
+const launched = model.build({...input,sprint:lateLaunch,issues:[plannedBeforeLaunch,addedAfterLaunch],scope:launchScope});
+assert.equal(launched.start,Date.parse(lateLaunch.activatedDate));
+assert.equal(launched.days[0].date,'2026-10-19','Use the actual launch even if it is on a later day than the planned start');
+assert.equal(launched.metrics.planned,5);
+assert.equal(launched.metrics.plannedTasks,1);
+assert.equal(launched.metrics.added,2);
+assert.equal(launched.metrics.addedTasks,1);
+assert.equal(launched.metrics.estimateDelta,0);
+assert.equal(launched.events.length,1);
+assert.equal(launched.days[0].remaining,7);
+
 class ChartElement {
   children = new Map();
   childLists = new Map();
