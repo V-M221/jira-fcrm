@@ -211,7 +211,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
   const spinner = () => '<span class="ozon-ext-spinner" aria-hidden="true"></span>';
   const linkToJira = () => '/secure/RapidBoard.jspa?rapidView=' + encodeURIComponent(state.board) + '&view=reporting&chart=sprintRetrospective&sprint=' + encodeURIComponent(state.sprint);
   const sprintBadge = (status:string) => status === 'active' ? renderBadge('Активный','active') : status === 'closed' ? renderBadge('Закрытый','closed') : '';
-  const metric = (report:Report,value:number) => report.pointsField ? amount(value) + (/^(story points?|стори[ -]поинты)$/i.test(report.pointsName) ? ' SP' : '') : '—';
+  const metric = (report:Report,value:number,signed=false) => report.pointsField ? (signed ? positive(value) : amount(value)) + (/^(story points?|стори[ -]поинты)$/i.test(report.pointsName) ? ' SP' : '') : '—';
 
   type PickerOption = {id:string;name:string;badge?:string};
   function picker(id:string,label:string,selected:string,options:PickerOption[],empty='Нет вариантов') {
@@ -223,16 +223,43 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
         options.map(option=>'<button type="button" role="option" class="ozon-ext-combo-item ' + (option.id === selected ? 'active' : '') + '" data-report-choice="' + escape(option.id) + '" aria-selected="' + (option.id === selected) + '"><span>' + escape(option.name) + '</span>' + (option.badge || '') + '</button>').join('') + '</div>' : '') + '</div>';
   }
 
-  function overview(report:Report) {
-    const m = report.metrics;
-    const cards = [
-      ['План на старте',metric(report,m.planned),taskCount(m.plannedTasks) + ' · ' + m.unestimated + ' без оценки','start'],
-      ['Добавили',metric(report,m.added),taskCount(m.addedTasks),'scope'],
-      ['Убрали',metric(report,m.removed),taskCount(m.removedTasks),'scope'],
-      ['Сожгли за спринт',metric(report,m.burned),m.completed + ' завершено к концу периода','days'],
-      [report.closed ? 'Осталось к закрытию' : 'Осталось сейчас',metric(report,m.remaining),taskCount(m.remainingTasks),'finish']
+  function summaryFields(report:Report,m:Report['metrics']) {
+    return [
+      {label:'План на старте',points:m.planned,count:m.plannedTasks,unestimated:m.unestimated,section:'start',filter:'all'},
+      {label:'Добавили в спринт',points:m.added,count:m.addedTasks,section:'scope',filter:'added'},
+      {label:'Исключили из спринта',points:m.removed,count:m.removedTasks,section:'scope',filter:'removed'},
+      ...(report.pointsField ? [{label:'Переоценка',points:m.estimateDelta,count:m.estimatedTasks,section:'scope',filter:'estimate'}] : []),
+      {label:report.closed ? 'Завершили к закрытию' : 'Завершено сейчас',points:m.completedPoints,count:m.completed,unestimated:m.completedUnestimated,section:'finish',filter:'done'},
+      {label:report.closed ? 'Не завершили к закрытию' : 'Не завершено сейчас',points:m.remaining,count:m.remainingTasks,unestimated:m.remainingUnestimated,section:'finish',filter:'remaining'}
     ];
-    return '<div class="ozon-report-cards">' + cards.map(([label,value,detail,target]) => '<button type="button" class="ozon-report-card" data-report-section="' + target + '"><span>' + escape(label) + '</span><strong>' + escape(value) + '</strong><small>' + escape(detail) + '</small></button>').join('') + '</div>';
+  }
+
+  const countedTasks=(report:Report,count:number,unestimated=0)=>taskCount(count) + (report.pointsField && unestimated ? ' · ' + amount(unestimated) + ' без оценки' : '');
+  const finalTaskCount=(report:Report,m:Report['metrics'])=>countedTasks(report,m.completed+m.remainingTasks,m.completedUnestimated+m.remainingUnestimated);
+  const planCompletion=(m:Report['metrics'])=>amount(m.plannedCompleted) + ' из ' + amount(m.plannedTasks);
+
+  function overview(report:Report) {
+    const m=report.metrics;
+    const cards=summaryFields(report,m).map(item=>{
+      const count=countedTasks(report,item.count,item.unestimated);
+      const main=report.pointsField ? metric(report,item.points,item.filter==='estimate') : count;
+      return '<button type="button" class="ozon-report-card" data-report-section="' + item.section + '" data-report-target-filter="' + item.filter + '"><span>' + escape(item.label) + '</span><strong>' + escape(main) + '</strong>' +
+        (report.pointsField ? '<small>' + escape(count) + '</small>' : '') + '</button>';
+    }).join('');
+    const total=(report.pointsField ? metric(report,m.completedPoints+m.remaining) + ' · ' : '') + finalTaskCount(report,m);
+    return '<div class="ozon-report-cards">' + cards + '</div><div class="ozon-report-totals"><span>' + (report.closed ? 'В спринте к закрытию' : 'В спринте сейчас') + ' <strong>' + escape(total) + '</strong></span>' +
+      (m.plannedTasks ? '<span>Из первоначального плана завершили <strong>' + escape(planCompletion(m)) + (m.plannedTasks===1 ? ' задачи' : ' задач') + '</strong></span>' : '') + '</div>';
+  }
+
+  function definitions(report:Report) {
+    const cutoff=report.closed ? 'при закрытии спринта' : 'на момент обновления';
+    const plan=report.pointsField ? '<p>План использует оценки на старте. Добавления и исключения используют оценки на момент изменения. Переоценка показывает разницу оценок, пока задача была в спринте. Задачи без оценки учитываются в количестве.</p>' : '';
+    const m=report.metrics;
+    const scope=report.pointsField && Math.abs(m.planned+m.added-m.removed+m.estimateDelta-m.completedPoints-m.remaining)<0.001
+      ? '<p>Итоговый объём: план + добавили − исключили ± переоценка. Для этого отчёта <strong>' + escape([amount(m.planned),' + ',amount(m.added),' − ',amount(m.removed),m.estimateDelta<0 ? ' − ' : ' + ',amount(Math.abs(m.estimateDelta)),' = ',metric(report,m.completedPoints+m.remaining)].join('')) + '</strong>.</p>' : '';
+    return '<details class="ozon-report-method ozon-report-definitions"><summary>Как считаются показатели</summary>' + plan + scope +
+      '<p>В списках изменений каждая задача учитывается один раз в каждом показателе.' + (report.pointsField ? ' Если задачу добавили, исключили и снова добавили, баллы учитываются при каждом движении.' : '') + '</p>' +
+      '<p>В итогах «Завершили» и «Не завершили» используются состав, статусы' + (report.pointsField ? ' и оценки' : '') + ' ' + cutoff + '. ' + (report.closed ? 'Незавершённые задачи остались в спринте на момент закрытия. Исключённые раньше задачи видны в «Составе и оценках».' : '') + '</p></details>';
   }
 
   function projectFilter(report:Report) {
@@ -245,11 +272,12 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
 
   function projectBreakdown(report:Report) {
     if (report.byProject.size < 2) return '';
-    const cell=(points:number,tasks:string)=>'<td>' + (report.pointsField ? '<strong>' + escape(metric(report,points)) + '</strong><br>' : '') + '<small>' + escape(tasks) + '</small></td>';
-    return '<div class="ozon-report-table-wrap ozon-report-projects"><table aria-label="Показатели по проектам"><thead><tr><th>Проект</th><th>На старте</th><th>Добавили</th><th>Убрали</th><th>Сожгли</th><th>Осталось</th></tr></thead><tbody>' +
+    const headings=summaryFields(report,report.metrics).map(item=>'<th>' + escape(item.label) + '</th>').join('');
+    const cells=(m:Report['metrics'])=>summaryFields(report,m).map(item=>'<td>' + (report.pointsField ? '<strong>' + escape(metric(report,item.points,item.filter==='estimate')) + '</strong><br>' : '') + '<small>' + escape(countedTasks(report,item.count,item.unestimated)) + '</small></td>').join('');
+    return '<div class="ozon-report-table-wrap ozon-report-projects"><table aria-label="Показатели по проектам"><thead><tr><th>Проект</th>' + headings + '<th>' + (report.closed ? 'Всего к закрытию' : 'Всего сейчас') + '</th><th>Из плана завершили</th></tr></thead><tbody>' +
       [...report.byProject].map(([key,{metrics:m}])=>'<tr class="' + (key===state.project ? 'ozon-report-project-selected' : '') + '"><th scope="row"><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-report-project="' + escape(key) + '" aria-pressed="' + (key===state.project) + '">' + escape(key) + '</button></th>' +
-        cell(m.planned,taskCount(m.plannedTasks) + (m.unestimated ? ' · ' + m.unestimated + ' без оценки' : '')) + cell(m.added,taskCount(m.addedTasks)) +
-        cell(m.removed,taskCount(m.removedTasks)) + cell(m.burned,taskCount(m.completed) + ' завершено') + cell(m.remaining,taskCount(m.remainingTasks)) + '</tr>').join('') + '</tbody></table></div>';
+        cells(m) + '<td>' + (report.pointsField ? '<strong>' + escape(metric(report,m.completedPoints+m.remaining)) + '</strong><br>' : '') + '<small>' + escape(finalTaskCount(report,m)) + '</small></td><td><small>' +
+        (m.plannedTasks ? escape(planCompletion(m)) : '—') + '</small></td></tr>').join('') + '</tbody></table></div>';
   }
 
   const plot={width:960,height:232,left:58,right:40,top:35,bottom:57};
@@ -327,7 +355,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     const scale=chartViews(report);
     const mode=scale.canSplit ? '<div class="ozon-report-chart-modes" role="group" aria-label="Графики">' +
       [['total','Общий график'],['projects','По проектам']].map(([id,label])=>'<button type="button" class="ozon-ext-btn ' + (id===state.chartMode ? '' : 'ozon-ext-btn-surface') + '" data-report-chart-mode="' + id + '" aria-pressed="' + (id===state.chartMode) + '">' + label + '</button>').join('') + '</div>' : '';
-    return '<div class="ozon-report-chart-toolbar">' + mode + '<div class="ozon-report-legend"><span>Осталось работы</span><span>Объём спринта</span>' +
+    return '<div class="ozon-report-chart-toolbar">' + mode + '<div class="ozon-report-legend"><span>Незавершённые задачи</span><span>Все задачи в спринте</span>' +
       (scale.split ? '<small>Одинаковая шкала для всех проектов</small>' : '') + '</div></div>' +
       scale.views.map(view=>'<div class="ozon-report-chart">' + (scale.split ? '<h3>' + escape(view.key) + '</h3>' : '') + chart(view.report,view.key,scale) + '</div>').join('');
   }
@@ -337,6 +365,10 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     totals.reopened += Math.max(-change.burned,0);
     return totals;
   },{completed:0,reopened:0});
+
+  const dayCutoff = (report:Report,day:string) => day === report.days.at(-1)?.date
+    ? report.closed ? 'на момент закрытия' : 'на момент обновления'
+    : 'на конец дня';
 
   function bindChart(graph:HTMLElement, {key,report}:ReturnType<typeof chartViews>['views'][number], max:number, changeDay:(day:string)=>void) {
     const svg=graph.querySelector('svg');
@@ -366,10 +398,10 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
         const rest=day?.remaining ?? m.initialRemaining, volume=day?.scope ?? m.planned;
         line.setAttribute('x1',leftText); line.setAttribute('x2',leftText);
         [remaining,scope].forEach((dot,at)=>{dot.setAttribute('cx',leftText); dot.setAttribute('cy',String(y(at ? volume : rest)));});
-        values[0].textContent=day ? dayLabel(day.date) : 'Старт · ' + shortDate(report.start);
-        values[1].textContent='Осталось: ' + metric(report,rest);
-        values[2].textContent='В спринте: ' + metric(report,volume);
-        values[3].textContent=day ? 'Сожгли за день: ' + metric(report,burn.completed) : '';
+        values[0].textContent=day ? dayLabel(day.date) + ' · ' + dayCutoff(report,day.date) : 'Старт · ' + shortDate(report.start);
+        values[1].textContent='Незавершённые задачи: ' + metric(report,rest);
+        values[2].textContent='Все задачи в спринте: ' + metric(report,volume);
+        values[3].textContent=day ? 'Перешло в «Готово»: ' + metric(report,burn.completed) : '';
         values[4].textContent=burn.reopened ? 'Вернули при переоткрытии: ' + metric(report,burn.reopened) : '';
       }
       tip.hidden=false; hover.setAttribute('visibility','visible');
@@ -432,16 +464,22 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     return {html,visibleCount};
   }
 
-  const choices = [{id:'days',title:'По дням'},{id:'start',title:'На старте'},{id:'scope',title:'Изменения состава'},{id:'finish',title:'Итоги'}];
+  const choices = [{id:'days',title:'По дням'},{id:'start',title:'На старте'},{id:'scope',title:'Состав и оценки'},{id:'finish',title:'Итоги'}];
   const pointsCell = (value:number | null) => value == null ? '—' : escape(amount(value));
   function dayBreakdown(report:Report, index:number) {
     if (state.project || report.byProject.size < 2 || index < 0) return '';
-    return '<details class="ozon-report-method ozon-report-day-breakdown"><summary>Показатели дня по проектам</summary><div class="ozon-report-table-wrap"><table><thead><tr><th>Проект</th><th>События</th><th>Добавили</th><th>Убрали</th>' + (report.pointsField ? '<th>Сожгли</th><th>Осталось</th>' : '') + '</tr></thead><tbody>' +
+    return '<details class="ozon-report-method ozon-report-day-breakdown"><summary>Показатели дня по проектам</summary><div class="ozon-report-table-wrap"><table><thead><tr><th>Проект</th><th>События</th><th>Добавили</th><th>Исключили</th>' + (report.pointsField ? '<th>Переоценка</th><th>В «Готово»</th><th>Вернули при переоткрытии</th><th>Не завершено ' + dayCutoff(report,report.days[index].date) + '</th>' : '') + '</tr></thead><tbody>' +
       [...report.byProject].map(([key,project])=>{
         const day=project.days[index];
-        const tasks=(kind:'added'|'removed') => taskCount(new Set(day.changes.filter(change=>change[kind]).map(change=>change.key)).size);
-        return '<tr><th scope="row">' + escape(key) + '</th><td>' + escape(eventCount(day.changes.length)) + '</td><td>' + escape(tasks('added')) + '</td><td>' + escape(tasks('removed')) + '</td>' +
-          (report.pointsField ? '<td>' + escape(metric(report,day.burned)) + '</td><td>' + escape(metric(report,day.remaining)) + '</td>' : '') + '</tr>';
+        const moving=(kind:'added'|'removed')=>{
+          const movements=day.changes.filter(change=>change[kind]);
+          const points=movements.reduce((sum,change)=>sum + ((kind==='added' ? change.after.points : change.before.points) ?? 0),0);
+          return (report.pointsField ? metric(report,points) + ' · ' : '') + taskCount(new Set(movements.map(change=>change.key)).size);
+        };
+        const estimate=day.changes.reduce((sum,change)=>sum + (change.before.member && change.after.member ? (change.after.points ?? 0)-(change.before.points ?? 0) : 0),0);
+        const {completed,reopened}=dayBurn(day.changes);
+        const points=report.pointsField ? [metric(report,estimate,true),...[completed,reopened,day.remaining].map(value=>metric(report,value))].map(value=>'<td>' + escape(value) + '</td>').join('') : '';
+        return '<tr><th scope="row">' + escape(key) + '</th><td>' + escape(eventCount(day.changes.length)) + '</td><td>' + escape(moving('added')) + '</td><td>' + escape(moving('removed')) + '</td>' + points + '</tr>';
       }).join('') + '</tbody></table></div></details>';
   }
   function daily(report:Report) {
@@ -451,38 +489,49 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     const changes = selected?.changes || [];
     const row = (change:Report['events'][number]) => {
       const facts = [
-        change.added ? 'Добавлена' : change.removed ? 'Убрана' : '',
+        change.added ? 'Добавили в спринт' : change.removed ? 'Исключили из спринта' : '',
         change.statusChanged ? (change.before.status.name || '—') + ' → ' + (change.after.status.name || '—') : '',
         change.estimateChanged ? 'Оценка: ' + pointsCell(change.before.points) + ' → ' + pointsCell(change.after.points) : ''
       ].filter(Boolean);
+      const result=change.burned > 0 ? 'В «Готово» ' + metric(report,change.burned) : change.burned < 0 ? 'Вернули ' + metric(report,-change.burned) : '—';
       return '<tr><td>' + timeFormat.format(change.at) + '</td><td>' + issueLink(change.key) + '</td><td>' + escape(tasks.get(change.key)?.summary || '') + '</td><td>' + facts.map(escape).join('<br>') + '</td>' +
-        (report.pointsField ? '<td>' + (change.burned === 0 ? '—' : escape(positive(change.burned))) + '</td>' : '') + '</tr>';
+        (report.pointsField ? '<td>' + escape(result) + '</td>' : '') + '</tr>';
     };
     const {completed,reopened} = dayBurn(changes);
     const grouped = groupedRows(changes,change=>tasks.get(change.key),row,report.pointsField ? 5 : 4);
     const step = (delta:number,label:string,icon:string) => '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-report-day-step="' + delta + '" aria-label="' + label + '"' + (!report.days[dayIndex+delta] ? ' disabled' : '') + '>' + icon + '</button>';
     const dayOptions=report.days.map(day=>({id:day.date,name:dayLabel(day.date) + ' · ' + eventCount(day.changes.length)}));
     return '<section class="ozon-report-panel"><h2>Ход спринта</h2><div class="ozon-report-daybar"><span>Дата</span>' + step(-1,'Предыдущий день','‹') + picker('day','Дата',selected?.date || '',dayOptions) + step(1,'Следующий день','›') +
-      (selected && report.pointsField ? '<span>Сожгли за день: <strong>' + escape(amount(completed)) + '</strong>' + (reopened ? ' · Вернули при переоткрытии: <strong>' + escape(amount(reopened)) + '</strong>' : '') + ' · Остаток: <strong>' + escape(amount(selected.remaining)) + '</strong></span>' : '') + '</div>' + charts(report) +
+      (selected && report.pointsField ? '<span>Перешло в «Готово» <strong>' + escape(metric(report,completed)) + '</strong>' + (reopened ? ' · Вернули при переоткрытии <strong>' + escape(metric(report,reopened)) + '</strong>' : '') + ' · Не завершено ' + dayCutoff(report,selected.date) + ' <strong>' + escape(metric(report,selected.remaining)) + '</strong></span>' : '') + '</div>' + charts(report) +
       dayBreakdown(report,dayIndex) +
-      (changes.length ? '<div class="ozon-report-table-wrap"><table><thead><tr><th>МСК</th><th>Ключ</th><th>Задача</th><th>Что изменилось</th>' + (report.pointsField ? '<th>Сожгли</th>' : '') + '</tr></thead><tbody>' + grouped.html + '</tbody></table></div>' + more(grouped.visibleCount) : '<p class="ozon-report-empty">В этот день изменений не было.</p>') +
-      '<details class="ozon-report-method"><summary>Как читать цифры</summary><p>«Сожгли» — изменение при переходе в последнюю колонку доски. При переоткрытии баллы возвращаются в остаток. Добавление, исключение и переоценка задач влияют на объём. Задачи без оценки участвуют в списках.</p></details></section>';
+      (changes.length ? '<div class="ozon-report-table-wrap"><table><thead><tr><th>МСК</th><th>Ключ</th><th>Задача</th><th>Что изменилось</th>' + (report.pointsField ? '<th>Работа по статусам</th>' : '') + '</tr></thead><tbody>' + grouped.html + '</tbody></table></div>' + more(grouped.visibleCount) : '<p class="ozon-report-empty">В этот день изменений не было.</p>') +
+      (report.pointsField ? '<details class="ozon-report-method"><summary>Как читать график</summary><p>Точки показывают состояние на конец дня по МСК. Последняя точка показывает состояние ' + (report.closed ? 'на момент закрытия' : 'на момент обновления') + '. «Готово» означает последнюю колонку доски. При переоткрытии баллы возвращаются в незавершённые задачи.</p></details>' : '') + '</section>';
   }
 
   const more = (total:number) => total > state.limit ? '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-report-more>Показать ещё ' + Math.min(60,total-state.limit) + '</button>' : '';
   function taskList(report:Report) {
     const isStart=state.section === 'start', isScope=state.section === 'scope', isFinish=state.section === 'finish';
-    const filters = isScope ? [{id:'all',name:'Все изменения'},{id:'added',name:'Добавили'},{id:'removed',name:'Убрали'}]
-      : isFinish ? [{id:'all',name:'Остались'},{id:'done',name:'Завершены'}] : [];
-    const matches = report.rows.filter(row => isStart ? row.started : isScope ? (state.scopeFilter === 'added' ? row.added : state.scopeFilter === 'removed' ? row.removed : row.added || row.removed) : row.memberAtEnd && (state.scopeFilter === 'done' ? row.doneAtEnd : !row.doneAtEnd));
+    const filters = isScope ? [{id:'all',name:'Все изменения'},{id:'added',name:'Добавили'},{id:'removed',name:'Исключили'},...(report.pointsField ? [{id:'estimate',name:'Переоценили'}] : [])]
+      : isFinish ? [{id:'all',name:'Все задачи'},{id:'remaining',name:'Не завершены'},{id:'done',name:'Завершены'}] : [];
+    const matches = report.rows.filter(row => {
+      if (isStart) return row.started;
+      if (isFinish) return row.memberAtEnd && (state.scopeFilter==='all' || row.doneAtEnd === (state.scopeFilter==='done'));
+      const scopeChanges={added:row.added,removed:row.removed,estimate:row.estimateDates.length>0};
+      return state.scopeFilter==='all' ? Object.values(scopeChanges).some(Boolean) : scopeChanges[state.scopeFilter];
+    });
     const query = state.query.trim().toLowerCase();
     const filtered = matches.filter(row => !query || (row.key + ' ' + row.summary).toLowerCase().includes(query));
-    const title = isStart ? 'Задачи на старте' : isScope ? 'Добавления и исключения' : report.closed ? 'Задачи к закрытию спринта' : 'Состояние на сейчас';
-    const note = isFinish && report.closed ? '<p class="ozon-report-hint">В «Остались» входят задачи, которые были в спринте при закрытии и не были завершены к этому моменту.</p>' : '';
+    const title = isStart ? 'Задачи на старте' : isScope ? 'Изменения состава и оценок' : report.closed ? 'Задачи к закрытию спринта' : 'Задачи в спринте сейчас';
+    const note = isFinish && report.closed ? '<p class="ozon-report-hint">Статусы и оценки на момент закрытия. Исключённые раньше задачи видны в разделе «Состав и оценки».</p>' : '';
     const row = (task:any) => {
       const scopeLabel = (title:string, days:string[]) => title + (days.length ? ' ' + [...new Set(days)].map(dayLabel).join(', ') : ' · дата неизвестна');
-      const status = isScope ? [task.added ? scopeLabel('Добавили',task.addedDates) : '',task.removed ? scopeLabel('Убрали',task.removedDates) : ''].filter(Boolean).join(' · ') : isStart ? task.startStatus : task.endStatus;
-      const points = isScope ? [task.added ? '+' + pointsCell(task.addedPoints) : '',task.removed ? '−' + pointsCell(task.removedPoints) : ''].filter(Boolean).join(' / ') : pointsCell(isStart ? task.startPoints : task.endPoints);
+      const movements=[
+        {id:'added',visible:task.added,label:'Добавили',dates:task.addedDates,points:task.addedPoints},
+        {id:'removed',visible:task.removed,label:'Исключили',dates:task.removedDates,points:-task.removedPoints},
+        {id:'estimate',visible:task.estimateDates.length,label:'Переоценили',dates:task.estimateDates,points:task.estimateDelta}
+      ].filter(change=>change.visible && (state.scopeFilter==='all' || state.scopeFilter===change.id));
+      const status = isScope ? movements.map(change=>scopeLabel(change.label,change.dates)).join(' · ') : isStart ? task.startStatus : task.endStatus;
+      const points = isScope ? escape(movements.map(change=>positive(change.points)).join(' / ')) : pointsCell(isStart ? task.startPoints : task.endPoints);
       return '<tr><td>' + issueLink(task.key) + '</td><td>' + escape(task.summary) + (!task.completeHistory ? ' <small class="ozon-report-history-warning">История неполная</small>' : '') + '</td><td>' + escape(status || '—') + '</td>' +
         (report.pointsField ? '<td>' + points + '</td>' : '') + '</tr>';
     };
@@ -490,7 +539,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     return '<section class="ozon-report-panel"><h2>' + title + '</h2>' + note + '<div class="ozon-report-tools"><input id="ozon-report-search" type="search" placeholder="Ключ или название задачи" aria-label="Поиск задачи в списке" value="' + escape(state.query) + '">' +
       (filters.length ? picker('scope','Какие задачи показать',state.scopeFilter,filters) : '') + '<span>' + taskCount(filtered.length) + '</span></div>' +
       (filtered.length ? '<div class="ozon-report-table-wrap"><table><thead><tr><th>Ключ</th><th>Задача</th><th>' + (isScope ? 'Изменение' : 'Статус') + '</th>' +
-        (report.pointsField ? '<th>' + escape(report.pointsName || 'Оценка') + '</th>' : '') + '</tr></thead><tbody>' + grouped.html + '</tbody></table></div>' + more(grouped.visibleCount) : '<p class="ozon-report-empty">Задач нет.</p>') + '</section>';
+        (report.pointsField ? '<th>' + (isScope ? 'Изменение · ' : '') + escape(report.pointsName || 'Оценка') + '</th>' : '') + '</tr></thead><tbody>' + grouped.html + '</tbody></table></div>' + more(grouped.visibleCount) : '<p class="ozon-report-empty">Задач нет.</p>') + '</section>';
   }
 
   function html() {
@@ -505,9 +554,9 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
       (selected ? '<a class="ozon-ext-btn ozon-ext-btn-surface" href="' + escape(linkToJira()) + '" target="_blank" rel="noopener noreferrer">Отчёт в Jira ↗</a>' : '') + '</div>' +
       (state.loading ? '<div class="ozon-report-banner" role="status">' + spinner() + escape(state.loading) + '</div>' : '') +
       (state.error ? '<div class="ozon-report-banner ozon-report-warning" role="alert">' + escape(state.error) + '</div>' : '') +
-      (report && visible ? '<div class="ozon-report-period"><strong>' + escape(selected?.name || '') + '</strong>' + sprintBadge(report.closed ? 'closed' : 'active') + '<span>' + shortDate(report.start) + ' — ' + shortDate(report.end) + ' · МСК</span></div>' +
+      (report && visible ? '<div class="ozon-report-period"><strong>' + escape(selected?.name || '') + '</strong>' + sprintBadge(report.closed ? 'closed' : 'active') + '<span>Отчёт за ' + shortDate(report.start) + ' — ' + shortDate(report.end) + ' · МСК</span></div>' +
         (report.warnings.length ? '<ul class="ozon-report-warning">' + report.warnings.map(warning=>'<li>' + escape(warning) + '</li>').join('') + '</ul>' : '') +
-        projectFilter(report) + overview(visible) + projectBreakdown(report) + '<div class="ozon-report-sections" role="group" aria-label="Разделы отчёта">' + choices.map(choice=>'<button type="button" class="ozon-ext-btn ' + (state.section === choice.id ? '' : 'ozon-ext-btn-surface') + '" data-report-section="' + choice.id + '" aria-pressed="' + (state.section === choice.id) + '">' + choice.title + '</button>').join('') + '</div>' +
+        projectFilter(report) + overview(visible) + projectBreakdown(report) + definitions(visible) + '<div class="ozon-report-sections" role="group" aria-label="Разделы отчёта">' + choices.map(choice=>'<button type="button" class="ozon-ext-btn ' + (state.section === choice.id ? '' : 'ozon-ext-btn-surface') + '" data-report-section="' + choice.id + '" aria-pressed="' + (state.section === choice.id) + '">' + choice.title + '</button>').join('') + '</div>' +
         (state.section==='days' ? daily(visible) : taskList(visible)) : state.loading || state.error ? '' : '<p class="ozon-report-empty">На доске нет активных или закрытых спринтов.</p>') + '</div></div></section>';
   }
 
@@ -583,8 +632,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     section.querySelectorAll<HTMLButtonElement>('[data-report-section]').forEach(button => button.addEventListener('click',() => {
       const target=button.dataset.reportSection!;
       if (state.section===target && !button.classList.contains('ozon-report-card')) return;
-      state.section=target; state.query=''; state.limit=60; state.scopeFilter='all'; state.chartDay='';
-      if (button.classList.contains('ozon-report-card') && target === 'scope') state.scopeFilter=button.textContent?.startsWith('Добавили') ? 'added' : 'removed';
+      state.section=target; state.query=''; state.limit=60; state.scopeFilter=button.dataset.reportTargetFilter || 'all'; state.chartDay='';
       onRender();
       root.querySelector<HTMLButtonElement>('.ozon-report-sections [data-report-section="' + target + '"]')?.focus({preventScroll:true});
     }));

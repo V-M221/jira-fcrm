@@ -137,10 +137,10 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
   const fcrmActive = sprint(firstSprint);
   if (fcrmActive) Object.assign(fcrmActive,reportSprint(fcrmActive.id,Number(config.rapidViewId),fcrmActive.name,'active'));
   const fcrmClosed = reportSprint(99100,Number(config.rapidViewId),'FCRM · предыдущий спринт','closed');
-  const csActive = reportSprint(86053,6197,'CS #74 (03.11 – 16.11)','active');
-  const csClosed = reportSprint(85000,6197,'CS #73 (20.10 – 02.11)','closed');
-  reportSprint(99011,7180,'CRM_CORE #12 (03.11 – 16.11)','active');
-  reportSprint(99021,12696,'CRM_BO #12 (03.11 – 16.11)','active');
+  const csActive = reportSprint(86053,6197,'CS #74','active');
+  const csClosed = reportSprint(85000,6197,'CS #73','closed');
+  reportSprint(99011,7180,'CRM_CORE #12','active');
+  reportSprint(99021,12696,'CRM_BO #12','active');
 
   function previewSprintReport(selected:any) {
     const status = (from:keyof typeof reportStatus,to:keyof typeof reportStatus) => ({
