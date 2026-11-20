@@ -16,6 +16,7 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
   const firstNumber = Number(/Sprint\s+(\d+)/i.exec(firstSprint || '')?.[1] || 0);
   const user = { name: 'preview-user', displayName: 'Пользователь предпросмотра', active: true };
   const person = (value: any) => value ? { name: value.login || value.name || 'demo-user', displayName: value.name, active: true } : null;
+  const demoUsers = [...new Map([user,...tasks.map(task=>person(task.assignee)).filter(Boolean)].map(item=>[item.name,item])).values()];
   const componentId = (name: string) => {
     if (!componentMap.has(name)) componentMap.set(name, String(100 + componentMap.size));
     return componentMap.get(name)!;
@@ -161,7 +162,7 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
       const project=range[number % 2];
       const key = project + '-' + (base+number);
       const history=reportHistory.get(key) || {key,fields:{summary:'[Демо] ' + summary,created:new Date(Date.parse(selected.startDate)-86400000).toISOString(),issuetype:{name:'Задача',subtask:false},
-        status:reportStatus[finalStatus],project:{key:project},[config.epicFieldId]:number===6 ? null : epics[number % 2],customfield_10002:points,[config.sprintFieldId]:member ? [selected] : [],sprint:member && selected.state === 'active' ? selected : null,
+        status:reportStatus[finalStatus],assignee:number%2 ? demoUsers[1] || user : null,project:{key:project},[config.epicFieldId]:number===6 ? null : epics[number % 2],customfield_10002:points,[config.sprintFieldId]:member ? [selected] : [],sprint:member && selected.state === 'active' ? selected : null,
         closedSprints:member && selected.state === 'closed' ? [selected] : []},changelog:{histories,startAt:0,total:histories.length}};
       reportHistory.set(key,history);
       return {key,summary:history.fields.summary,statusId:history.fields.status.id,statusName:history.fields.status.name};
@@ -230,6 +231,13 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
         return removed ? new Response(null,{status:204}) : json({errorMessages:['Связь не найдена']},404);
       }
       const target = match && (issues.get(match[1]) || reportHistory.get(match[1]));
+      if (method === 'PUT' && target && match[2]==='assignee') {
+        const {name} = JSON.parse(String(options.body || '{}'));
+        const assignee = name===null ? null : demoUsers.find(user=>user.name===name);
+        if (assignee===undefined) return json({errors:{assignee:'Исполнителя нет в списке доступных пользователей'}},400);
+        target.fields.assignee=assignee;
+        return new Response(null,{status:204});
+      }
       if (method === 'PUT' && target) {
         const data = JSON.parse(String(options.body || '{}'));
         const priorities = ['Критический','Высокий','Средний','Низкий'].map((name,index) => ({id:String(index+1),name}));
@@ -354,7 +362,11 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
       ], url, 'values');
       return page(types, url, 'values');
     }
-    if (path.includes('/user/')) return json([user, ...tasks.map(task => person(task.assignee)).filter(Boolean)]);
+    if (path === '/rest/api/2/user/assignable/search' || path === '/rest/api/2/user/search') {
+      const query = (url.searchParams.get('query') || url.searchParams.get('username') || '').toLowerCase();
+      return json(demoUsers.filter(user=>!query || [user.name,user.displayName].some(value=>value.toLowerCase().includes(query))));
+    }
+    if (path.includes('/user/')) return json(demoUsers);
     if (path === '/rest/api/2/issueLinkType') return json({ issueLinkTypes: [{id:'0',name:'Задача проекта',inward:'Задача проекта',outward:'В проекте'},{id:'1',name:'Связанная задача',inward:'Связанная задача',outward:'Связанная задача'},{id:'2',name:'Дубликат',inward:'Дублировано с',outward:'Дубликат'}] });
     if (match) {
       if (match[2] === 'editmeta') return json({fields:{priority:{allowedValues:['Критический','Высокий','Средний','Низкий'].map((name,index) => ({id:String(index+1),name}))},customfield_24000:{required:false,schema:{type:'option'},allowedValues:[1,2,3,4,5].map(id => ({id:String(id),value:'Стрим ' + id}))}}});

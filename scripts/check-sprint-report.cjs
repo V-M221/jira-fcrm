@@ -43,6 +43,7 @@ const issues = [
 ];
 issues[0].fields.project = {key:'OB'};
 issues[0].fields.issuetype = {name:'Задача'};
+issues[0].fields.assignee = {name:'old-user',displayName:'Первый исполнитель'};
 issues[0].fields.customfield_3 = 'OBPROJECT-1';
 issues[0].fields.customfield_24000 = {value:'Стрим 2'};
 issues[1].fields.project = {key:'OBFRONT'};
@@ -238,13 +239,20 @@ assert.match(dashboard.html(),/План на старте<\/span><strong>3 за�
 Object.assign(dashboard.getState(),{report,section:'start',project:'OB'});
 assert.match(dashboard.html(),/data-report-action="edit-epic" data-key="TEST-1"/);
 assert.doesNotMatch(dashboard.html(),/data-report-action="edit-epic" data-key="TEST-3"/);
-dashboard.applyEpic('TEST-1',{id:'OBPROJECT-3',name:'Эпик назначения',fields:{customfield_24000:{value:'Стрим 5'}}});
+dashboard.updateTask('TEST-1',{epic:{id:'OBPROJECT-3',name:'Эпик назначения',fields:{customfield_24000:{value:'Стрим 5'}}}});
 assert.match(dashboard.html(),/Стрим 5/);
 assert.match(dashboard.html(),/Эпик назначения/);
 assert.equal(ob.rows[0].epicKey,'OBPROJECT-3');
 assert.equal(report.metrics.planned,9);
-dashboard.applyEpic('TEST-1',{id:'',name:'Без эпика'});
+dashboard.updateTask('TEST-1',{epic:{id:'',name:'Без эпика'}});
 assert.equal(ob.rows[0].epicKey,'');
 assert.equal(ob.rows[0].stream,'Стрим 2');
+assert.match(dashboard.html(),/<th>Исполнитель<\/th>/);
+assert.match(dashboard.html(),/title="Первый исполнитель"><span>Первый исполнитель/);
+dashboard.updateTask('TEST-1',{assigneeName:'Новый исполнитель'});
+assert.match(dashboard.html(),/title="Новый исполнитель"><span>Новый исполнитель/);
+assert.equal(ob.rows[0].epicKey,'');
+dashboard.updateTask('TEST-1',{assigneeName:''});
+assert.match(dashboard.html(),/title="Не назначен"><span>Не назначен/);
 
 console.log('Sprint report checks passed: scope reconciliation, closing transfer, repeated moves, re-estimates, unestimated work, chart hover and project breakdown.');

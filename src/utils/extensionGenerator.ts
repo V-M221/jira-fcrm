@@ -9,7 +9,7 @@ import { createStrategicDashboard } from '../services/strategicDashboard';
 import { createTaskDetailsSidebar } from '../services/taskDetailsSidebar';
 import { bindJiraLabelSuggestions } from '../services/jiraLabelSuggestions';
 
-export const EXTENSION_VERSION = '3.5.165';
+export const EXTENSION_VERSION = '3.5.166';
 
 export function generateManifestJson(config: ExtensionConfig): string {
   const manifest = {
@@ -599,6 +599,9 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-report-group-1 th {background:#f5f8fd}.ozon-report-group-2 th {background:#f8fafd}
 .ozon-report-task-key {display:flex;align-items:center;gap:7px;white-space:nowrap}
 .ozon-report-task-key .ozon-report-epic-edit {font-size:11px;line-height:1.2;padding:3px 6px}
+.ozon-report-table-wrap .ozon-report-assignee {display:inline-flex;align-items:center;gap:6px;max-width:200px;text-align:left;font-size:11px;line-height:1.2;padding:3px 6px}
+.ozon-report-assignee>span:first-child {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ozon-report-assignee.is-empty {color:#536682}
 .ozon-report-empty,.ozon-report-banner,.ozon-report-warning {padding:10px 12px;border-radius:8px;background:#eef4fb;color:#334155}.ozon-report-banner {display:flex;align-items:center;gap:8px;margin:0 0 12px}.ozon-report-warning {background:#fff4dc;color:#774600;margin:8px 0 12px}.ozon-report-warning:is(ul) {padding-left:28px}.ozon-report-history-warning {color:#884c06;display:inline-block}.ozon-report-method {margin-top:12px}.ozon-report-method summary {cursor:pointer}.ozon-report-method p {margin:6px 0 0}.ozon-report-panel [data-report-more] {margin-top:10px}
 @media(max-width:950px){.ozon-report-cards{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:700px){.ozon-report-inner{padding:12px}.ozon-report-panel{padding:10px}.ozon-report-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.ozon-report-sprint-field .ozon-report-options{width:100%}.ozon-report-legend>small{margin-left:0}}
@@ -4469,6 +4472,17 @@ export function generateContentScriptJs(
     }
   }
 
+  async function requestAssignableJiraUsers(query, issueKey, signal) {
+    const params = new URLSearchParams(issueKey ? {issueKey} : {project:CONFIG.projectKey});
+    if (query) { params.set('username',query); params.set('query',query); }
+    params.set('maxResults','25');
+    const response = await fetch('/rest/api/2/user/assignable/search?' + params, {credentials:'same-origin',headers:{Accept:'application/json'},signal});
+    if (!response.ok) throw new Error('Не удалось найти исполнителей в Jira (HTTP ' + response.status + ')');
+    const users = await response.json();
+    if (!Array.isArray(users)) throw new Error('Jira не вернула список исполнителей');
+    return users;
+  }
+
   // Живой поиск пользователей в Jira по ФИО или логину (отфильтровывая технические аккаунты с $)
   async function searchJiraUsers(query, issueKey) {
     const q = String(query || '').trim();
@@ -4490,27 +4504,16 @@ export function generateContentScriptJs(
     localMatches.forEach((u) => mergedMap.set(u.name, u));
 
     try {
-      const issueParam = issueKey ? 'issueKey=' + encodeURIComponent(issueKey) + '&' : 'project=' + encodeURIComponent(CONFIG.projectKey) + '&';
-      const res1 = await fetch(
-        '/rest/api/2/user/assignable/search?' + issueParam + 'username=' + encodeURIComponent(q) + '&query=' + encodeURIComponent(q) + '&maxResults=25',
-        { credentials: 'same-origin', headers: { Accept: 'application/json' } }
-      );
-      if (res1.ok) {
-        const arr1 = await res1.json();
-        if (Array.isArray(arr1)) {
-          arr1.forEach((u) => {
-            if (!isRealHumanJiraUser(u)) return;
-            const login = u.name || u.key || u.displayName;
-            if (login && u.displayName) {
-              const item = { name: login, displayName: u.displayName, email: u.emailAddress || '' };
-              mergedMap.set(login, item);
-              if (!assignableUsersList.some((ex) => ex.name === login)) {
-                assignableUsersList.push(item);
-              }
-            }
-          });
+      const users = await requestAssignableJiraUsers(q, issueKey);
+      users.forEach((u) => {
+        if (!isRealHumanJiraUser(u)) return;
+        const login = u.name || u.key || u.displayName;
+        if (login && u.displayName) {
+          const item = { name: login, displayName: u.displayName, email: u.emailAddress || '' };
+          mergedMap.set(login, item);
+          if (!assignableUsersList.some((ex) => ex.name === login)) assignableUsersList.push(item);
         }
-      }
+      });
     } catch (e) {}
 
     if (mergedMap.size < 5) {
@@ -4734,6 +4737,15 @@ export function generateContentScriptJs(
     } catch (e) {}
   }
 
+  function putIssueAssignee(issueKey, loginName) {
+    return fetch('/rest/api/2/issue/' + encodeURIComponent(issueKey) + '/assignee', {
+      method: 'PUT',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: loginName })
+    });
+  }
+
   async function updateIssueAssigneeInJira(issueKey, displayNameOrLogin, explicitLogin) {
     try {
       const foundUser = assignableUsersList.find(
@@ -4744,12 +4756,7 @@ export function generateContentScriptJs(
           ? null
           : explicitLogin || (foundUser && foundUser.name) || displayNameOrLogin;
 
-      const res = await fetch('/rest/api/2/issue/' + encodeURIComponent(issueKey) + '/assignee', {
-        method: 'PUT',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: loginName })
-      });
+      const res = await putIssueAssignee(issueKey, loginName);
 
       if (!res.ok && loginName) {
         await fetch('/rest/api/2/issue/' + encodeURIComponent(issueKey), {
@@ -10548,7 +10555,7 @@ export function generateContentScriptJs(
       '[data-action="toggle-search-select"][data-select-id="sidebar-sprint"]',
       '[data-action="toggle-search-select"][data-select-id^="table-sprint-"]', '[data-action="open-ip-sprint-combo"]',
       '[data-strategy-action="edit-sprint"]', '[data-strategy-action="edit-epic"]',
-      '[data-dev-action="edit-sprint"]', '[data-dev-action="edit-epic"]', '[data-report-action="edit-epic"]'
+      '[data-dev-action="edit-sprint"]', '[data-dev-action="edit-epic"]', '[data-report-action="edit-epic"]', '[data-report-action="edit-assignee"]'
     ].join(',');
 
     function planningFields() {
@@ -10644,7 +10651,42 @@ export function generateContentScriptJs(
         .map(issue => ({id:issue.key,name:issue.fields.summary || issue.key,fields:issue.fields}));
     }
 
+    async function savePlanningAssignee(key, option) {
+      const response = await putIssueAssignee(key,option.id || null);
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        const errors = [...(Array.isArray(body?.errorMessages) ? body.errorMessages : []),...Object.values(body?.errors || {})];
+        throw new Error(errors.filter(Boolean).join(' · ') || 'Jira не сохранила исполнителя (HTTP ' + response.status + ')');
+      }
+
+      let fresh;
+      try {
+        fresh = await readPlanningIssue(key,['assignee']);
+        if (!fresh.fields || !Object.hasOwn(fresh.fields,'assignee')) throw new Error();
+        const actual = fresh.fields.assignee;
+        const confirmed = option.id ? [actual?.name,actual?.key].includes(option.id) : actual === null;
+        if (!confirmed) throw new Error();
+      } catch (_) {
+        throw new Error('Jira приняла изменение, но пока не подтвердила исполнителя. Обновите задачу перед повторной попыткой.');
+      }
+      const actual = fresh.fields.assignee;
+      const name = actual?.displayName || actual?.name || actual?.key || '';
+      const assignee = {name:name || 'Не назначен',login:actual?.name || actual?.key || '',role:actual?.emailAddress || 'Ozon Банк'};
+      tasks = tasks.map(task => {
+        let updated = task.key === key ? Object.assign({},task,{assignee}) : task;
+        for (const type of ['inProjectLinks','projectTaskLinks','otherLinks']) {
+          if (task[type]?.some(link => link.key === key)) updated = Object.assign({},updated,{[type]:task[type].map(link => link.key === key ? Object.assign({},link,{assigneeName:assignee.name}) : link)});
+        }
+        return updated;
+      });
+      if (tasks.some(task => task.key === key)) saveTaskOverride(key,{assignee});
+      syncStrategyIssue({key,fields:fresh.fields});
+      sprintReport.updateTask(key,{assigneeName:name});
+      return key + ' → ' + assignee.name + '. Сохранено в Jira.';
+    }
+
     async function savePlanningField(key, kind, option, fields) {
+      if (kind === 'assignee') return savePlanningAssignee(key,option);
       const isSprint = kind === 'sprint';
       const url = isSprint
         ? (option.id ? '/rest/agile/1.0/sprint/' + encodeURIComponent(option.id) + '/issue' : '/rest/agile/1.0/backlog/issue')
@@ -10694,7 +10736,7 @@ export function generateContentScriptJs(
       if (!isSprint) fresh.fields.epic = option.id ? {key:option.id,summary:option.fields?.summary || option.name} : null;
       syncStrategyIssue({key,fields:fresh.fields});
       const outsideDevelopment = developmentDashboard.applyPlanningField(key,kind,option);
-      if (!isSprint) sprintReport.applyEpic(key,option);
+      if (!isSprint) sprintReport.updateTask(key,{epic:option});
       if (!isSprint && option.id) void loadTableObprojectMetadata(new Set([option.id])).then(() => renderStructure());
 
       const outsideProduct = isSprint && activeDashboardView === 'product' && !matchesSprintState(option.id ? option.state.toUpperCase() : 'BACKLOG');
@@ -10705,17 +10747,21 @@ export function generateContentScriptJs(
 
     function openPlanningEditor(key, kind, trigger) {
       if (!key || planningEditor?.dataset.busy === 'true') return;
-      planningEditor?.remove();
+      planningEditor?.closePlanningEditor(false);
       const panel = document.createElement('aside');
       planningEditor = panel;
       const isSprint = kind === 'sprint';
-      const fromReport = trigger?.matches('[data-report-action="edit-epic"]');
-      const title = isSprint ? 'Спринт задачи' : 'Epic Link';
+      const isAssignee = kind === 'assignee';
+      const reportAction = trigger?.getAttribute('data-report-action');
+      const title = isSprint ? 'Спринт задачи' : isAssignee ? 'Исполнитель' : 'Epic Link';
+      const currentLabel = isSprint ? 'Текущий спринт' : isAssignee ? 'Текущий исполнитель' : 'Текущий Epic Link';
+      const searchLabel = isSprint ? 'Поиск спринта' : isAssignee ? 'Поиск исполнителя' : 'Поиск эпика';
+      const placeholder = isSprint ? 'Поиск спринта…' : isAssignee ? 'Имя или логин…' : 'Ключ, название или метка эпика…';
       panel.className = 'ozon-component-editor ozon-planning-editor';
       panel.setAttribute('role','dialog');
       panel.setAttribute('aria-label',title + ' · ' + key);
       panel.style.cssText = 'position:fixed;z-index:2147483646;right:0;top:0;bottom:0;width:min(500px,100vw);background:#fff;box-shadow:-8px 0 24px #0f172a22;padding:20px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box';
-      panel.innerHTML = '<div class="component-editor-head"><strong>' + title + ' · ' + escapeHtml(key) + '</strong><button type="button" class="component-editor-close" data-close aria-label="Закрыть">✕</button></div><div data-context class="component-editor-context" hidden></div><div class="ozon-sprint-current"><span>' + (isSprint ? 'Текущий спринт' : 'Текущий Epic Link') + '</span><strong data-current>Загрузка…</strong></div><div class="component-editor-search"><input type="search" data-search placeholder="' + (isSprint ? 'Поиск спринта…' : 'Ключ, название или метка эпика…') + '" aria-label="' + (isSprint ? 'Поиск спринта' : 'Поиск эпика') + '" style="padding-left:10px" disabled></div><div data-message role="status"></div><div data-list class="component-editor-list"></div>';
+      panel.innerHTML = '<div class="component-editor-head"><strong>' + title + ' · ' + escapeHtml(key) + '</strong><button type="button" class="component-editor-close" data-close aria-label="Закрыть">✕</button></div><div data-context class="component-editor-context" hidden></div><div class="ozon-sprint-current"><span>' + currentLabel + '</span><strong data-current>Загрузка…</strong></div><div class="component-editor-search"><input type="search" data-search placeholder="' + placeholder + '" aria-label="' + searchLabel + '" style="padding-left:10px" disabled></div><div data-message role="status"></div><div data-list class="component-editor-list"></div>';
       document.body.appendChild(panel);
       const closeButton = panel.querySelector('[data-close]');
       const search = panel.querySelector('[data-search]');
@@ -10723,7 +10769,7 @@ export function generateContentScriptJs(
       const message = panel.querySelector('[data-message]');
       const currentCell = panel.querySelector('[data-current]');
       const fields = planningFields();
-      const empty = {id:'', name:isSprint ? 'Бэклог' : 'Без эпика'};
+      const empty = {id:'', name:isSprint ? 'Бэклог' : isAssignee ? 'Не назначен' : 'Без эпика'};
       let options = [], displayed = [], current = null, timer, searchController, busy = false;
       const lifetime = new AbortController();
       const setMessage = (text,error=false) => { message.setAttribute('role',error ? 'alert' : 'status'); message.textContent = text; };
@@ -10746,24 +10792,34 @@ export function generateContentScriptJs(
         list.innerHTML = displayed.length ? displayed.map((option,index) => {
           const selected = option.id === current?.id;
           const details = isSprint ? (option.state ? ' ' + getSprintStateBadgeHtml(option.name) : '') : (option.fields?.status?.name ? getStatusBadgeHtml(option.fields.status.name) : '');
-          const keyAndComponent = !isSprint && option.id ? '<small class="ozon-planning-option-key">' + escapeHtml([option.id,...(option.fields?.components || []).map(component => component.name)].filter(Boolean).join(' · ')) + '</small>' : '';
-          return '<button type="button" class="component-editor-option' + (selected ? ' is-selected' : '') + '" aria-pressed="' + selected + '" data-option="' + index + '"' + (busy ? ' disabled' : '') + '><span class="ozon-planning-option-text">' + keyAndComponent + '<span>' + escapeHtml(option.name) + '</span></span>' + details + '</button>';
+          const secondaryText = !isSprint && option.id && (!isAssignee || option.id !== option.name) ? '<small class="ozon-planning-option-key">' + escapeHtml([option.id,...(option.fields?.components || []).map(component => component.name)].filter(Boolean).join(' · ')) + '</small>' : '';
+          return '<button type="button" class="component-editor-option' + (selected ? ' is-selected' : '') + '" aria-pressed="' + selected + '" data-option="' + index + '"' + (busy ? ' disabled' : '') + '><span class="ozon-planning-option-text">' + secondaryText + '<span>' + escapeHtml(option.name) + '</span></span>' + details + '</button>';
         }).join('') : '<p>Ничего не найдено</p>';
       }
 
-      async function loadEpics() {
+      const searchStatus = isAssignee ? 'Ищем исполнителей…' : 'Ищем эпики…';
+      const baseOptions = () => [...(current?.id ? [current] : []),empty];
+      async function loadSearchOptions() {
         searchController?.abort();
         const controller = new AbortController();
         searchController = controller;
         list.replaceChildren();
-        setMessage('Ищем эпики…');
+        setMessage(searchStatus);
         try {
-          const found = await searchPlanningEpics(key,search.value,fields.epicName,controller.signal,fromReport);
+          const query = search.value.trim();
+          const found = isAssignee
+            ? (await requestAssignableJiraUsers(query,key,controller.signal)).filter(user=>user.active!==false && (user.name || user.key) && isRealHumanJiraUser(user))
+              .map(user=>({id:user.name || user.key,name:user.displayName || user.name || user.key}))
+            : await searchPlanningEpics(key,query,fields.epicName,controller.signal,Boolean(reportAction));
           if (controller.signal.aborted || !panel.isConnected) return;
-          options = search.value.trim() ? found : [...(current?.id ? [current] : []),empty,...found.filter(option => option.id !== current?.id)];
+          options = query ? found : [...baseOptions(),...found.filter(option => option.id !== current?.id)];
           setMessage('');
           renderOptions();
-        } catch (error) { if (!controller.signal.aborted && panel.isConnected) setMessage(error.message,true); }
+        } catch (error) {
+          if (controller.signal.aborted || !panel.isConnected) return;
+          if (isAssignee && !search.value.trim()) { options = baseOptions(); renderOptions(); }
+          setMessage(error.message,true);
+        }
       }
 
       search.addEventListener('input', () => {
@@ -10771,8 +10827,8 @@ export function generateContentScriptJs(
         clearTimeout(timer);
         searchController?.abort();
         list.replaceChildren();
-        setMessage('Ищем эпики…');
-        timer = setTimeout(loadEpics,220);
+        setMessage(searchStatus);
+        timer = setTimeout(loadSearchOptions,220);
       });
       search.addEventListener('keydown', event => {
         if (event.key === 'Enter' && displayed.length === 1 && list.firstElementChild?.matches('button')) {
@@ -10796,7 +10852,7 @@ export function generateContentScriptJs(
           close(false);
           renderStructure();
           showSaveToast(notice);
-          if (fromReport && activeDashboardView === 'report') document.querySelector('[data-report-action="edit-epic"][data-key="' + CSS.escape(key) + '"]')?.focus({preventScroll:true});
+          if (reportAction && activeDashboardView === 'report') document.querySelector('[data-report-action="' + CSS.escape(reportAction) + '"][data-key="' + CSS.escape(key) + '"]')?.focus({preventScroll:true});
         } catch (error) {
           busy = false;
           panel.dataset.busy = 'false';
@@ -10808,7 +10864,7 @@ export function generateContentScriptJs(
       });
 
       void (async () => {
-        const fieldList = isSprint ? ['summary','issuetype','components','sprint','closedSprints',fields.sprint] : ['summary','epic',fields.epic];
+        const fieldList = isSprint ? ['summary','issuetype','components','sprint','closedSprints',fields.sprint] : isAssignee ? ['summary','assignee'] : ['summary','epic',fields.epic];
         try {
           const issue = await readPlanningIssue(key,fieldList,lifetime.signal);
           if (!panel.isConnected) return;
@@ -10831,11 +10887,17 @@ export function generateContentScriptJs(
             options = [...(current.id ? [current] : []),empty,...found.filter(option => option.id !== current.id)];
             setMessage('');
             renderOptions();
+          } else if (isAssignee) {
+            if (!Object.hasOwn(issue.fields || {},'assignee')) throw new Error('Не удалось прочитать исполнителя из Jira.');
+            const user = issue.fields.assignee;
+            current = user ? {id:user.name || user.key,name:user.displayName || user.name || user.key} : empty;
+            currentCell.textContent = current.name;
+            void loadSearchOptions();
           } else {
             const id = planningEpicKey(issue.fields || {},fields.epic);
             current = id ? {id,name:issue.fields?.epic?.summary || epicNameByKey[id] || id} : empty;
             currentCell.textContent = current.id && current.name !== current.id ? current.id + ' · ' + current.name : current.name;
-            void loadEpics();
+            void loadSearchOptions();
             if (id && current.name === id) {
               void readPlanningIssue(id,['summary','status','components'],lifetime.signal).then(epic => {
                 if (!panel.isConnected) return;
@@ -10864,7 +10926,8 @@ export function generateContentScriptJs(
       if (action === 'open-ip-sprint-combo') key = tasks.find(task => task.key === selectedTaskKey)?.inProjectLinks?.[Number(trigger.getAttribute('data-link-idx'))]?.key || '';
       event.preventDefault();
       event.stopImmediatePropagation();
-      openPlanningEditor(key,trigger.id === 'ozon-sb-epic-trigger' || action.includes('epic') ? 'epic' : 'sprint',trigger);
+      const kind = action === 'edit-assignee' ? 'assignee' : trigger.id === 'ozon-sb-epic-trigger' || action.includes('epic') ? 'epic' : 'sprint';
+      openPlanningEditor(key,kind,trigger);
     },true);
     document.addEventListener('pointerdown', event => {
       if (planningEditor?.isConnected && event.target instanceof Element && !planningEditor.contains(event.target)) planningEditor.closePlanningEditor(false);
