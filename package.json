@@ -1,11 +1,14 @@
 {
   "name": "ozon-bank-fcrm-jira-extension",
   "private": true,
-  "version": "1.0.0",
+  "version": "3.5.158",
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
+    "build:extension": "node scripts/build-extension.mjs",
+    "build:local": "node scripts/build-local.mjs",
+    "build:all": "npm run build:extension && npm run build:local",
     "preview": "vite preview --port=3000 --host=0.0.0.0",
     "lint": "tsc --noEmit"
   },

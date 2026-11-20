@@ -1,23 +1,44 @@
+import { createJiraPriorityService } from '../services/jiraPriority';
 import { ExtensionConfig, FcrmTask, LinkedIssueItem } from '../types/jira';
+import { structuredAnswer } from './structuredAnswer';
+import { answerMarkup } from './answerMarkup';
+import { createDevelopmentDashboard, renderJiraBadge } from '../services/developmentDashboard';
+import { createStrategicDashboard } from '../services/strategicDashboard';
+import { createTaskDetailsSidebar } from '../services/taskDetailsSidebar';
+import { bindJiraLabelSuggestions } from '../services/jiraLabelSuggestions';
+
+export const EXTENSION_VERSION = '3.5.158';
 
 export function generateManifestJson(config: ExtensionConfig): string {
   const manifest = {
     manifest_version: 3,
-    name: `Ozon Bank · Jira FCRM Structure (#${config.rapidViewId})`,
+    name: `Ozon Bank В· Jira FCRM Structure (#${config.rapidViewId})`,
     short_name: 'Ozon Structure',
-    version: '3.1.0',
-    description: `Компактный реестр Jira Structure (v3.1): свернутые по умолчанию спринты и компоненты, Input-Select поиск для Эпиков (FCRM) и Компонентов (по проекту задачи), группировка связей OB/OBFRONT/FTD с иконками, SVG-иконки приоритетов Jira, сворачиваемые аккордеоны и чипсы спринтов.`,
+    version: EXTENSION_VERSION,
+    description: `Компактный реестр Jira Structure (v3.2): свернутые по умолчанию спринты и компоненты, Input-Select поиск для Эпиков (FCRM) и Компонентов (по проекту задачи), группировка связей OB/OBFRONT/FTD, кнопка «Улучшить» у заголовка задачи через DeepSeek и MCP jit.`,
     permissions: ['storage', 'activeTab'],
-    host_permissions: ['https://jit.o3.ru/*'],
+    host_permissions: ['https://jit.o3.ru/*', 'https://deepseek.o3t.ru/*'],
     action: {
-      default_title: 'Ozon Bank · FCRM Structure',
+      default_title: 'Ozon Bank В· FCRM Structure',
       default_popup: 'popup.html',
+    },
+    background: {
+      service_worker: 'background.js',
+    },
+    options_ui: {
+      page: 'options.html',
+      open_in_tab: true,
     },
     content_scripts: [
       {
         matches: ['https://jit.o3.ru/secure/RapidBoard.jspa*'],
         css: ['styles.css'],
         js: ['content.js'],
+        run_at: 'document_idle',
+      },
+      {
+        matches: ['https://jit.o3.ru/*'],
+        js: ['issue-enhance.js'],
         run_at: 'document_idle',
       },
     ],
@@ -57,6 +78,11 @@ export function generateStylesCss(config: ExtensionConfig): string {
 
 @keyframes ozon-spin {
   to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ozon-ext-section-head { transition: background-color 140ms ease, color 140ms ease; }
+  .ozon-ext-btn, .ozon-ext-search-select-trigger, .ozon-ext-toolbar-trigger { transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease; }
 }
 
 .ozon-ext-skeleton {
@@ -195,7 +221,57 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-ext-filter-select:focus {
   border-color: #005BFF !important;
   background-color: #FFFFFF !important;
+  box-shadow: 0 0 0 3px rgba(0,91,255,.10) !important;
 }
+.ozon-ext-toolbar-combo { position:relative; min-width:142px; max-width:245px; }
+.ozon-ext-toolbar-trigger { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; height:30px; padding:5px 10px; border:1px solid #E2E8F0; border-radius:9px; background:#fff; color:#071026; box-shadow:0 1px 2px rgba(7,16,38,.04); font:500 11.5px var(--ozon-font-sans); cursor:pointer; }
+.ozon-ext-toolbar-trigger:hover,.ozon-ext-toolbar-trigger[aria-expanded="true"] { border-color:#a8bbd2; background:#f8fbff; }
+.ozon-ext-toolbar-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ozon-ext-toolbar-chevron,.ozon-ext-search-select-caret { position:relative; display:inline-flex; align-items:center; justify-content:center; align-self:center; width:14px; height:20px; flex:0 0 14px; color:#64748b; line-height:0; font-size:0; }
+.ozon-ext-toolbar-chevron::before,.ozon-ext-search-select-caret::before { content:""; width:7px; height:7px; border-right:1.8px solid currentColor; border-bottom:1.8px solid currentColor; transform:translateY(-1px) rotate(45deg); }
+.ozon-ext-toolbar-popover { z-index:10030; left:0; right:auto; top:calc(100% + 4px); min-width:100%; width:max-content; max-width:340px; padding:5px; }
+.ozon-ext-toolbar-popover input { width:100%; margin-bottom:4px; }
+.ozon-ext-toolbar-popover .ozon-ext-combo-item { display:block !important; width:100%; border:0; background:transparent; text-align:left; }
+#ozon-structure-root .ozon-ext-toolbar-popover .ozon-dev-filter-list { scrollbar-width:thin;scrollbar-color:#A8B5C5 transparent; }
+#ozon-structure-root .ozon-ext-toolbar-popover .ozon-dev-filter-list::-webkit-scrollbar { width:6px;height:6px; }
+#ozon-structure-root .ozon-ext-toolbar-popover .ozon-dev-filter-list::-webkit-scrollbar-track { background:transparent; }
+#ozon-structure-root .ozon-ext-toolbar-popover .ozon-dev-filter-list::-webkit-scrollbar-thumb { background:#A8B5C5;border-radius:8px; }
+.ozon-ext-epic-filter-popover { width:440px!important;max-width:calc(100vw - 32px)!important; }
+.ozon-ext-epic-filter-popover .ozon-ext-combo-item { height:auto!important;min-height:30px;white-space:normal!important;overflow:visible!important;text-overflow:clip!important;overflow-wrap:anywhere;line-height:1.45!important; }
+.ozon-ext-epic-picker-popover { width:440px!important;max-width:calc(100vw - 32px)!important; }
+.ozon-ext-combo-item.ozon-ext-epic-option { display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:4px!important;height:auto!important;white-space:normal!important; }
+.ozon-ext-epic-option .ozon-ext-epic-option-title { white-space:normal!important;overflow:visible!important;overflow-wrap:anywhere;line-height:1.45;color:#071026; }
+.ozon-ext-toolbar-empty { padding:8px 10px; color:#64748b; font-size:11px; }
+.ozon-ext-search-select { position:relative; width:100%; min-width:0; }
+.ozon-ext-search-select-trigger { display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; min-width:0; height:30px; padding:5px 10px; border:1px solid #CBD5E1; border-radius:8px; background:#F8FAFC; color:#071026; font:500 11.5px var(--ozon-font-sans); text-align:left; cursor:pointer; }
+.ozon-ext-search-select-trigger:hover,.ozon-ext-search-select-trigger[aria-expanded="true"] { border-color:#005BFF; background:#fff; box-shadow:0 0 0 2px rgba(0,91,255,.08); }
+.ozon-ext-field-grid .ozon-ext-search-select-trigger,.ozon-ext-field-grid .ozon-ext-sb-combo-trigger { height:30px!important; min-height:30px!important; padding:5px 10px!important; border:1px solid #E2E8F0!important; border-radius:9px!important; background:#fff!important; color:#071026!important; box-shadow:0 1px 2px rgba(7,16,38,.04)!important; font:500 11.5px var(--ozon-font-sans)!important; }
+.ozon-ext-field-grid .ozon-ext-search-select-trigger:hover,.ozon-ext-field-grid .ozon-ext-search-select-trigger[aria-expanded="true"],.ozon-ext-field-grid .ozon-ext-sb-combo-trigger:hover { border-color:#a8bbd2!important; background:#f8fbff!important; box-shadow:0 0 0 2px rgba(0,91,255,.08)!important; }
+.ozon-ext-field-grid input[type="text"] { min-height:30px!important; border:1px solid #E2E8F0!important; border-radius:9px!important; background:#fff!important; box-shadow:0 1px 2px rgba(7,16,38,.04)!important; font:500 11.5px var(--ozon-font-sans)!important; }
+.ozon-ext-search-select.workflow { width:auto; min-width:115px; flex:none; }
+.ozon-ext-search-select.workflow .ozon-ext-search-select-trigger { width:auto; min-width:115px; height:26px; border-radius:999px; padding:3px 10px; background:#F8FAFC; }
+.ozon-ext-search-select-value { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.ozon-ext-search-select-popover { width:100% !important; min-width:220px !important; max-width:min(380px,calc(100vw - 24px)) !important; max-height:320px !important; padding:6px !important; }
+.ozon-ext-search-select-popover .ozon-ext-combo-list { max-height:260px !important; }
+.ozon-ext-search-select.compact { width:100%; }
+.ozon-ext-search-select.compact .ozon-ext-search-select-trigger { height:22px; padding:1px 6px; border-color:transparent; border-radius:5px; background:transparent; font-size:10.5px; }
+.ozon-ext-search-select.compact .ozon-ext-search-select-trigger:hover,.ozon-ext-search-select.compact .ozon-ext-search-select-trigger[aria-expanded="true"] { border-color:rgba(0,91,255,.3); background:#fff; }
+.ozon-ext-search-select.compact .ozon-ext-search-select-popover { width:280px !important; min-width:250px !important; }
+.ozon-ext-search-select-option { display:flex !important; width:100%; border:0; background:transparent; text-align:left; }
+.ozon-ext-search-select-empty { padding:8px 10px; color:#64748b; font-size:11px; }
+.ozon-ext-load-progress { min-width:220px; flex:1; max-width:520px; }
+.ozon-ext-load-progress-track { height:6px; margin-top:6px; overflow:hidden; border-radius:99px; background:#E8EEF7; }
+.ozon-ext-load-progress-fill { height:100%; width:var(--load-progress,5%); border-radius:99px; background:linear-gradient(90deg,#005BFF,#60A5FA); transition:width .35s ease; }
+.ozon-ext-sprint-progress-cell { padding:5px 12px 7px !important; }
+.ozon-ext-cell-singleline:has(.ozon-ext-search-select) { overflow:visible !important; }
+.ozon-ext-filter-bar > div:first-child { gap:7px !important; }
+.ozon-ext-filter-select { min-width:132px !important; height:30px !important; padding:5px 30px 5px 10px !important; border-radius:9px !important; background-color:#fff !important; box-shadow:0 1px 2px rgba(7,16,38,.04); transition:border-color .15s,box-shadow .15s,background-color .15s; }
+.ozon-ext-filter-select:hover { border-color:#a8bbd2 !important; background-color:#f8fbff !important; }
+.ozon-ext-filter-bar input[type="text"] { height:30px !important; border-radius:9px !important; background:#fff !important; box-shadow:0 1px 2px rgba(7,16,38,.04); }
+.ozon-ext-filter-bar .ozon-ext-btn { min-height:30px !important; border-radius:9px !important; box-shadow:0 1px 2px rgba(7,16,38,.04); }
+.ozon-ext-sprint-load { padding:7px 9px 9px; color:#64748b; font-size:10px; }
+.ozon-ext-sprint-load-track { height:4px; margin-top:5px; overflow:hidden; border-radius:9px; background:#e8eef7; }
+.ozon-ext-sprint-load-fill { height:100%; width:var(--sprint-load,12%); border-radius:9px; background:linear-gradient(90deg,#005bff,#60a5fa); transition:width .25s ease; }
 
 #ozon-structure-root input[type="text"],
 #ozon-structure-root input[type="search"],
@@ -246,6 +322,26 @@ export function generateStylesCss(config: ExtensionConfig): string {
   overflow: auto !important;
   overflow-anchor: none !important;
   background: #FFFFFF !important;
+}
+
+#ozon-ext-table-pane {
+  scrollbar-width: auto !important;
+  scrollbar-color: auto !important;
+}
+#ozon-ext-table-pane::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+#ozon-ext-table-pane::-webkit-scrollbar-track,
+#ozon-ext-table-pane::-webkit-scrollbar-corner {
+  background: transparent;
+}
+#ozon-ext-table-pane::-webkit-scrollbar-thumb {
+  background: rgba(7, 16, 38, 0.14);
+  border-radius: 3px;
+}
+#ozon-ext-table-pane::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 91, 255, 0.45);
 }
 
 .ozon-ext-table {
@@ -341,6 +437,231 @@ export function generateStylesCss(config: ExtensionConfig): string {
   background: #FFFFFF !important;
   transition: background-color 100ms ease;
 }
+.ozon-ext-task-row.completed:not(.selected) > td,.ozon-ext-subrow.completed > td { background-color:#EFFBF3!important; }
+.ozon-ext-task-row.completed:not(.selected):hover > td,.ozon-ext-subrow.completed:hover > td { background-color:#E0F5E8!important; }
+.ozon-ext-task-row.completed.selected > td { background-color:#DDF4E5!important; }
+.ozon-ext-status-summary { display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap; }
+.ozon-ext-status-count { color:#64748B;font-size:10px;font-weight:400;white-space:nowrap; }
+.ozon-ext-status-count + .ozon-ext-status-count::before { content:'·';margin-right:8px;color:#CBD5E1; }
+.ozon-ext-view-tabs { display:flex;gap:6px;align-items:center;padding:8px 12px;border-bottom:1px solid #E2E8F0;background:#fff;flex-shrink:0; }
+.ozon-ext-view-tabs button { border:1px solid transparent;border-radius:8px;padding:6px 12px;background:transparent;color:#64748B;font:600 12px var(--ozon-font-sans);cursor:pointer; }
+.ozon-ext-view-tabs button[aria-selected="true"] { color:#005BFF;background:#E5F0FF; }
+.ozon-product-filter-hint {font-size:11px;color:#64748b;} .ozon-strategy-dashboard { display:flex;flex-direction:column;flex:1;min-height:0;min-width:0;background:#fff;color:#071026;font:400 11.5px var(--ozon-font-sans); }
+.ozon-strategy-actions { display:flex;align-items:center;gap:10px; }
+.ozon-strategy-description { padding:8px 12px;color:#64748b;border-bottom:1px solid #e2e8f0; }
+.ozon-strategy-scroll { flex:1;min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:#A8B5C5 transparent; }
+.ozon-strategy-table { width:100%;min-width:0;table-layout:fixed;border-collapse:collapse;font:inherit; }
+.ozon-strategy-table th,.ozon-strategy-table td { height:28px;padding:0 6px;text-align:left;border-bottom:1px solid #e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.ozon-strategy-table th { position:sticky;top:0;z-index:2;background:#eef3f8;color:#475569;font-weight:600; }
+
+.ozon-strategy-table th .ozon-dev-col-resizer {position:absolute;right:0;top:0;bottom:0;width:8px;cursor:col-resize;z-index:3}.ozon-strategy-filters {flex-wrap:wrap}.ozon-strategy-table tbody tr:hover td { background:#f5f9ff; }.ozon-strategy-table .ozon-strategy-group td { background:#f1f5f9;font-weight:700; }
+.ozon-strategy-table a { color:#005bff;text-decoration:none; }.ozon-strategy-type,.ozon-strategy-key { display:flex;align-items:center;gap:5px;min-width:0; }.ozon-strategy-type span { overflow:hidden;text-overflow:ellipsis; }
+.ozon-strategy-table tbody tr.ozon-strategy-depth-1 td {background:#edf4ff;}
+#ozon-ext-tbody tr.ozon-tree-depth-1:not(.completed):not(.selected) > td,.ozon-dev-table tbody tr.ozon-tree-depth-1:not(.ozon-dev-completed):not(.ozon-dev-no-epic) > td {background-color:#edf4ff;}
+#ozon-ext-tbody tr.ozon-tree-depth-1:not(.completed):not(.selected):hover > td,.ozon-dev-table tbody tr.ozon-tree-depth-1:not(.ozon-dev-completed):not(.ozon-dev-no-epic):hover > td {background-color:#e4efff;}
+.ozon-strategy-indent {display:inline-block;box-sizing:border-box;color:#7692b7;text-align:right;padding-right:4px;vertical-align:middle;overflow:hidden;white-space:nowrap;}
+.ozon-strategy-epic-relation {display:inline-flex;align-items:center;border-radius:4px;padding:1px 4px;background:#edf2ff;color:#526ab2;font-size:10px;line-height:16px;}
+.ozon-strategy-copy-key,.ozon-strategy-link-button {display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;min-width:19px;padding:0;border:0;border-radius:5px;background:transparent;color:#71849d;cursor:pointer;font-size:13px;line-height:1;}
+.ozon-strategy-copy-key:hover,.ozon-strategy-link-button:hover {background:#e4efff;color:#005bff;}
+.ozon-strategy-unlink {float:right;border:0;border-radius:5px;background:#fff0ee;color:#d92d20;cursor:pointer;padding:3px 7px;line-height:1.3;}
+.ozon-strategy-unlink:hover {background:#ffded9;}
+.ozon-strategy-sprint-edit {cursor:pointer;padding:4px 2px;border-radius:5px}.ozon-strategy-sprint-edit:hover {background:#eaf3ff}.ozon-strategy-sprint-edit:focus-visible {outline:2px solid #005bff;outline-offset:-2px}.ozon-strategy-sprint-locked {color:#94a3b8}
+.ozon-strategy-toggle,.ozon-strategy-toggle-spacer { display:inline-flex;align-items:center;justify-content:center;flex:0 0 18px;width:18px;height:20px;border:0;background:transparent;color:#005bff;cursor:pointer; }
+.ozon-strategy-descendant-count {flex:none;display:inline-flex;align-items:center;justify-content:center;min-width:18px;padding:1px 5px;border-radius:9px;background:#e8f0fc;color:#526b8c;font-size:10px;line-height:16px;font-weight:600;}
+.ozon-strategy-warning { color:#b45309;font-size:10px;margin-left:6px; }
+.ozon-strategy-type img {width:14px;height:14px;object-fit:contain;flex:none}.ozon-strategy-type .ozon-ext-type-pill {min-width:0}.ozon-strategy-sprint {display:flex;align-items:center;gap:4px;min-width:0}.ozon-strategy-sprint > span:first-child {overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ozon-strategy-sprint .ozon-ext-badge {margin-left:auto;flex:none}.ozon-strategy-linked-themes {flex:none;padding:12px 0;color:#071026}.ozon-strategy-linked-themes strong {font-size:12px}.ozon-strategy-linked-themes p {margin:8px 0;color:#71839b}.ozon-strategy-linked-list {max-height:180px;overflow:auto;margin-top:8px}.ozon-strategy-linked-item {padding:7px 8px;border-bottom:1px solid #e3eaf2}.ozon-strategy-linked-title {margin-top:4px;line-height:1.4;overflow-wrap:anywhere}.ozon-strategy-component-edit {display:flex;align-items:center;gap:6px;width:100%;min-width:0;border:0;background:transparent;color:#071026;font:inherit;text-align:left;cursor:pointer;padding:4px 2px}.ozon-strategy-component-edit span:first-child {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}.ozon-strategy-component-edit span:last-child {color:#90a2b8}.ozon-strategy-component-edit:hover {background:#eaf3ff;border-radius:5px}.ozon-strategy-component-edit:focus-visible {outline:2px solid #005bff;outline-offset:-2px;border-radius:5px}.ozon-strategy-epic-value {min-width:0;overflow:hidden;flex:1}.ozon-strategy-editor-options {overflow:auto;min-height:0}.ozon-strategy-editor-options button {display:flex;gap:8px;align-items:center;width:100%;text-align:left}.ozon-strategy-notice {display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 12px;padding:7px 10px;border:1px solid #dbe4ef;border-radius:8px;color:#334155;background:#f7faff}.ozon-strategy-message { padding:20px;color:#64748b; }
+
+.ozon-strategy-filters { display:flex;gap:8px;padding:8px 12px; }.ozon-strategy-filters input,.ozon-strategy-filters select,#ozon-strategy-label-input { border:1px solid #d5e1ef;border-radius:8px;background:white;color:#071026;padding:7px 10px;font:inherit;min-width:180px; }
+.ozon-strategy-labels { display:flex;align-items:center;gap:4px;overflow:auto;scrollbar-width:thin; }.ozon-strategy-label { display:inline-flex;align-items:center;gap:3px;padding:2px 5px;border-radius:5px;background:#eff4f9;color:#475569; }.ozon-strategy-label button { border:0;background:transparent;color:#64748b;cursor:pointer; }.ozon-strategy-table tr[data-strategy-expandable="true"] { cursor:pointer; }
+.ozon-strategy-table {border-collapse:separate;border-spacing:0}.ozon-strategy-table .ozon-strategy-task-header {position:sticky;left:0;z-index:5}.ozon-strategy-table .ozon-strategy-task-cell {position:sticky;left:0;z-index:1;background:#fff;overflow:visible;box-shadow:3px 0 6px #0710260d}.ozon-strategy-table tbody tr.ozon-strategy-depth-1 .ozon-strategy-task-cell {background:#edf4ff}.ozon-strategy-table tbody tr:hover .ozon-strategy-task-cell {background:#f5f9ff}.ozon-strategy-task-line {display:flex;align-items:center;gap:6px;min-width:0}.ozon-strategy-task-line .ozon-strategy-type,.ozon-strategy-task-line .ozon-strategy-key {flex:none}.ozon-strategy-task-summary {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ozon-strategy-context td {color:#8190a3}.ozon-strategy-context-label,.ozon-strategy-legend {font-size:10px;color:#71839b}.ozon-strategy-relation {font-size:10px;padding:2px 4px;border-radius:4px;background:#e7effb;color:#526b8c}.ozon-strategy-copy-menu {position:relative;flex:none}.ozon-strategy-copy-menu summary {display:flex;align-items:center;cursor:pointer;color:#71849d;list-style:none}.ozon-strategy-copy-menu summary::-webkit-details-marker {display:none}.ozon-strategy-copy-options {position:absolute;top:100%;left:0;z-index:10;width:150px;padding:4px;background:#fff;border:1px solid #dbe4ef;border-radius:8px;box-shadow:0 5px 18px #07102626}.ozon-strategy-copy-options button {display:block;width:100%;padding:7px;border:0;border-radius:4px;background:#fff;color:#071026;text-align:left;cursor:pointer}.ozon-strategy-copy-options button:hover {background:#eaf3ff}.ozon-strategy-theme-scope {display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;color:#64748b}.ozon-strategy-theme-row {display:flex;align-items:flex-start}.ozon-strategy-theme-toggle,.ozon-strategy-theme-toggle-space {flex:none;width:20px;height:28px;border:0;background:transparent;color:#005bff;cursor:pointer}.ozon-strategy-theme-row .ozon-strategy-theme-option {min-width:0;flex:1}
+.ozon-strategy-table td:has(.ozon-strategy-copy-menu[open]) {overflow:visible;z-index:20}.ozon-strategy-copy-menu .ozon-strategy-copy-options {position:fixed;z-index:100;box-sizing:border-box}
+.ozon-dev-priority-edit { border:1px solid transparent;border-radius:5px;padding:2px;background:transparent;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto; }
+.ozon-dev-priority-edit:hover,.ozon-dev-priority-edit:focus-visible { background:#e5f0ff;border-color:#80adff;outline:none; }
+
+.ozon-dev-dashboard { display:flex;flex-direction:column;flex:1;min-height:0;min-width:0;background:#fff;color:#071026;font:400 11.5px var(--ozon-font-sans); }
+.ozon-dev-dashboard a { color:#005BFF;text-decoration:none; }
+.ozon-dev-controls { display:flex;align-items:center;justify-content:flex-start!important;flex-wrap:wrap;gap:6px!important;padding:6px 12px;border-bottom:1px solid #E2E8F0; }
+.ozon-dev-controls .ozon-ext-toolbar-combo { min-width:142px;max-width:245px; }
+.ozon-dev-controls .ozon-dev-grouping-control { width:142px;max-width:142px; }
+.ozon-dev-header-actions { display:flex;align-items:center;gap:10px;margin-left:auto; }
+.ozon-dev-help { position:relative; }
+.ozon-dev-help>button { width:26px;height:26px;padding:4px!important;display:flex;align-items:center;justify-content:center; }
+.ozon-dev-help>button svg { display:block;width:18px!important;height:18px!important;min-width:18px;flex-shrink:0; }
+.ozon-dev-help [role="tooltip"] { display:none;position:absolute;right:0;top:calc(100% + 6px);width:390px;max-width:calc(100vw - 32px);max-height:calc(100vh - 160px);overflow:auto;padding:12px 14px;border:1px solid #E2E8F0;border-radius:10px;background:#fff;color:#475569;box-shadow:0 4px 18px rgba(25,47,68,.12);font:400 11px/1.5 var(--ozon-font-sans);z-index:120; }
+.ozon-dev-help:hover [role="tooltip"],.ozon-dev-help:focus-within [role="tooltip"] { display:block; }
+.ozon-dev-help [role="tooltip"] p { margin:8px 0 0; }
+.ozon-dev-popover { top:calc(100% + 6px);left:0;right:auto;padding:8px;min-width:100%; }
+.ozon-dev-popover .ozon-ext-combo-item { display:block;width:100%;text-align:left;cursor:pointer; }
+#ozon-structure-root .ozon-dev-popover, #ozon-structure-root .ozon-dev-popover * { scrollbar-width:thin;scrollbar-color:#A8B5C5 transparent; }
+#ozon-structure-root .ozon-dev-popover::-webkit-scrollbar, #ozon-structure-root .ozon-dev-popover *::-webkit-scrollbar { width:6px;height:6px; }
+#ozon-structure-root .ozon-dev-popover::-webkit-scrollbar-thumb, #ozon-structure-root .ozon-dev-popover *::-webkit-scrollbar-thumb { background:#A8B5C5;border-radius:8px; }
+#ozon-structure-root .ozon-ext-epic-picker-popover { position:fixed!important;top:0!important;right:0!important;left:auto!important;bottom:0!important;width:min(560px,100vw)!important;min-width:0!important;max-width:100vw!important;height:100vh!important;max-height:100vh!important;z-index:2147483001!important;border-radius:0!important;padding:20px!important;box-shadow:-8px 0 28px #07102633!important;overflow:hidden!important; }
+#ozon-structure-root .ozon-ext-epic-picker-popover #ozon-table-combo-list { flex:1 1 0!important;min-height:0!important;max-height:none!important;overflow:auto;scrollbar-width:thin;scrollbar-color:#A8B5C5 transparent; }
+#ozon-structure-root .ozon-dev-popover button.ozon-ext-combo-item { appearance:none;border:0!important;box-shadow:none!important;background:transparent;color:#071026;border-radius:6px!important;font:400 11.5px var(--ozon-font-sans);padding:6px 8px;min-height:30px; }
+#ozon-structure-root .ozon-dev-popover button.ozon-ext-combo-item:hover,#ozon-structure-root .ozon-dev-popover button.ozon-ext-combo-item.active { background:#E5F0FF;color:#005BFF; }
+#ozon-structure-root .ozon-dev-team-popover { width:180px!important;min-width:180px!important;max-width:180px!important; }
+.ozon-dev-column-menu { width:340px;max-height:65vh;overflow:auto; }
+.ozon-dev-column-label { flex:1; }
+.ozon-dev-column-child { padding-left:20px;border-left:2px solid #E2E8F0;margin-left:8px; }
+.ozon-dev-col-resizer { position:absolute;right:-3px;top:0;bottom:0;width:7px;cursor:col-resize;touch-action:none;z-index:4; }
+.ozon-dev-col-resizer:hover,.ozon-dev-col-resizer:focus-visible { background:#005BFF;outline:0; }
+.ozon-dev-table thead tr:nth-child(2) th { top:30px; }
+.ozon-dev-table th { padding-right:12px; }
+.ozon-dev-sp-parent { text-align:center!important;border-bottom:1px solid #CBD5E1!important; }
+.ozon-dev-point-pair { white-space:nowrap; }
+.ozon-dev-points-divider { color:#94A3B8;font-weight:400; }
+.ozon-dev-point-percent { color:#64748B;font-size:10px;font-weight:400;margin-left:3px; }
+.ozon-dev-burned { color:#039855; }
+.ozon-dev-sprints { width:440px;max-width:calc(100vw - 32px); }
+.ozon-dev-sprints input[type="search"] { width:100%;margin-bottom:8px; }
+.ozon-dev-sprint-list { max-height:300px;overflow:auto; }
+.ozon-dev-sprint-option { display:flex;gap:8px;align-items:center;padding:6px;border-radius:6px;cursor:pointer; }
+.ozon-dev-sprint-option:hover { background:#F1F6FF; }
+.ozon-dev-sprint-option > span:not(.ozon-ext-badge) { flex:1;white-space:normal; }
+.ozon-dev-sprint-option input { accent-color:#005BFF;flex-shrink:0; }
+.ozon-sprint-current {display:flex;flex-direction:column;gap:5px;padding:12px;margin:0 0 12px;border-radius:8px;background:#f3f7fc;color:#667b93}.ozon-sprint-current strong {color:#071026;font-weight:600}.ozon-component-editor {font:400 12px/1.4 var(--ozon-font-sans,Arial,sans-serif)!important;color:#071026!important;gap:0!important;padding:20px!important}
+.ozon-component-editor .component-editor-head {display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
+.ozon-component-editor .component-editor-head strong {font-size:13px;font-weight:700}
+.ozon-component-editor .component-editor-context {margin:-10px 0 14px;color:#64748b;font-size:12px;line-height:1.4;overflow-wrap:anywhere}
+.ozon-component-editor .component-editor-close {display:grid;place-items:center;width:30px;height:30px;padding:0;border:0;border-radius:8px;background:#f0f3f8;color:#41566f;cursor:pointer;font-size:15px}
+.ozon-component-editor .component-editor-close:hover {background:#e5f0ff;color:#005bff}
+.ozon-component-editor .component-editor-search {position:relative;display:flex;align-items:center;margin-bottom:14px}
+.ozon-component-editor .component-editor-search svg {position:absolute;left:11px;width:16px;height:16px;color:#93a4b8;pointer-events:none}
+.ozon-component-editor .component-editor-search input {box-sizing:border-box;width:100%;height:36px;padding:0 10px 0 34px;border:1px solid #d6e0ec;border-radius:8px;background:#fff;color:#071026;font:inherit;outline:none}
+.ozon-component-editor .component-editor-search input:focus {border-color:#005bff;box-shadow:0 0 0 1px #005bff}
+.ozon-component-editor .component-editor-caption {display:flex;justify-content:space-between;align-items:center;margin:0 0 8px;color:#64748b;font-size:11px}
+.ozon-component-editor .component-editor-list {overflow:auto;flex:1;min-height:0;scrollbar-width:thin;scrollbar-color:#a8b5c5 transparent}
+.ozon-component-editor .component-editor-list::-webkit-scrollbar {width:6px}.ozon-component-editor .component-editor-list::-webkit-scrollbar-thumb {background:#a8b5c5;border-radius:8px}
+.ozon-component-editor .component-editor-option {display:flex;align-items:center;gap:10px;min-height:38px;box-sizing:border-box;padding:8px 10px;margin:2px 4px 2px 0;border-radius:7px;cursor:pointer;color:#071026;transition:background .15s}
+.ozon-component-editor .component-editor-option:hover {background:#f1f6ff}.ozon-component-editor .component-editor-option.is-selected {background:#eaf3ff;color:#005bff;font-weight:600}
+.ozon-component-editor button.component-editor-option {width:calc(100% - 4px);border:0;background:transparent;text-align:left;font:inherit}.ozon-component-editor button.component-editor-option:hover {background:#f1f6ff}.ozon-component-editor button.component-editor-option.is-selected {background:#eaf3ff;color:#005bff;font-weight:600}.ozon-component-editor button.component-editor-option:focus-visible {outline:2px solid #005bff;outline-offset:-2px}.ozon-component-editor button.component-editor-option > span:first-child {flex:1;min-width:0}.ozon-component-editor .component-editor-list {overflow-x:hidden}.ozon-component-editor .component-editor-option input {appearance:none;-webkit-appearance:none;display:grid;place-content:center;width:16px;height:16px;min-width:16px;margin:0;padding:0;border:1px solid #a8b5c5;border-radius:4px;background:#fff;cursor:pointer}
+.ozon-priority-editor button.component-editor-option {justify-content:flex-start}.ozon-priority-editor button.component-editor-option > span.ozon-dev-priority:first-child {flex:0 0 auto}
+.ozon-strategy-table tbody tr.ozon-strategy-exact-match td {background:#dcecff}
+.ozon-strategy-table tbody tr.ozon-strategy-exact-match .ozon-strategy-task-cell {box-shadow:inset 3px 0 #005bff,3px 0 6px #0710260d}
+.ozon-planning-editor .ozon-planning-option-text {display:flex;flex-direction:column;gap:3px;overflow-wrap:anywhere}
+.ozon-planning-editor .ozon-planning-option-key {font-size:11px;color:#526b8c}
+.ozon-planning-editor [data-message] {min-height:1em;font-size:12px;color:#64748b;overflow-wrap:anywhere}
+.ozon-planning-editor [data-message][role="alert"] {color:#b42318}
+.ozon-component-editor .component-editor-option input:checked {border-color:#005bff;background:#005bff}.ozon-component-editor .component-editor-option input:checked::after {content:"";width:7px;height:4px;border-left:2px solid #fff;border-bottom:2px solid #fff;transform:rotate(-45deg) translate(1px,-1px)}
+.ozon-component-editor .component-editor-option input:focus-visible {outline:2px solid #005bff;outline-offset:2px}
+.ozon-component-editor .component-editor-footer {display:flex;justify-content:flex-end;gap:8px;padding-top:14px;margin-top:12px;border-top:1px solid #e4ebf3}
+.ozon-component-editor .component-editor-button {min-height:32px;padding:0 13px;border:1px solid #d6e0ec;border-radius:8px;background:#fff;color:#005bff;font:600 12px var(--ozon-font-sans,Arial,sans-serif);cursor:pointer}
+.ozon-component-editor .component-editor-button:hover {background:#f1f6ff}.ozon-component-editor .component-editor-button.primary {border-color:#005bff;background:#005bff;color:#fff}.ozon-component-editor .component-editor-button.primary:hover {background:#004dd6}.ozon-component-editor .component-editor-button:disabled {opacity:.55;cursor:wait}
+.ozon-dev-popover-footer { display:flex;justify-content:space-between;gap:8px;border-top:1px solid #EEF2F6;padding-top:8px; }
+.ozon-dev-content,.ozon-dev-table-scroll { flex:1;min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:#A8B5C5 transparent; }
+.ozon-dev-content { display:flex;min-width:0;overflow:hidden; }
+.ozon-dev-table-scroll { min-width:0;width:100%; }
+.ozon-dev-table { max-width:none!important; }
+.ozon-dev-table tfoot td { position:sticky;bottom:0;z-index:3;background:#eef3fa;border-top:1px solid #cad7e7;font-weight:600; }
+.ozon-dev-table .ozon-dev-filler td { padding:0!important;border:0!important;background:#fff!important; }
+.ozon-dev-settings .ozon-dev-column-child { margin-left:20px;padding-left:12px;border-left:2px solid #d6e3f3; }
+.ozon-dev-content>.ozon-dev-empty { flex:1;min-width:0; }
+.ozon-dev-empty { padding:28px 20px;color:#64748B; }
+.ozon-dev-empty strong { color:#334155; }
+.ozon-dev-error { margin:10px 16px;padding:10px 12px;background:#FFF0EE;color:#B42318;border-radius:8px; }
+.ozon-dev-filter-list { max-height:280px;overflow:auto; }
+.ozon-dev-filter-list .ozon-ext-combo-item { white-space:normal;text-align:left;height:auto;overflow-wrap:anywhere; }
+#ozon-structure-root .ozon-dev-sprints, #ozon-structure-root .ozon-dev-epic-filter-sidebar { min-width:0!important;transform:none!important;position:fixed!important;top:0!important;right:0!important;left:auto!important;bottom:0!important;width:min(560px,100vw)!important;max-width:100vw!important;height:100vh!important;max-height:100vh!important;z-index:2147483001!important;border-radius:0!important;padding:20px!important;display:flex!important;flex-direction:column!important;gap:8px;box-sizing:border-box;box-shadow:-8px 0 28px #07102633!important; }
+#ozon-structure-root .ozon-dev-epic-filter-sidebar .ozon-dev-filter-list { flex:1;min-height:0;max-height:none;overflow:auto;scrollbar-width:thin;scrollbar-color:#A8B5C5 transparent; }
+#ozon-structure-root .ozon-dev-sprints .ozon-dev-sprint-list { flex:1;min-height:0;max-height:none;overflow:auto;scrollbar-width:thin;scrollbar-color:#A8B5C5 transparent; }
+#ozon-structure-root .ozon-dev-epic-filter-sidebar .ozon-dev-filter-list .ozon-ext-combo-item:has(.ozon-dev-option-title) { display:grid!important;grid-template-columns:max-content max-content minmax(0,1fr);gap:4px 8px!important;align-items:center;padding:9px 10px!important; }
+#ozon-structure-root .ozon-dev-epic-filter-sidebar .ozon-dev-option-title { grid-column:1 / -1;white-space:normal;overflow-wrap:anywhere;line-height:1.4; }
+#ozon-structure-root .ozon-dev-epic-filter-sidebar .ozon-dev-option-components { justify-self:start;padding:2px 6px;border-radius:5px;background:#F1F5F9;color:#52647A;font-size:10.5px; }
+#ozon-structure-root .ozon-dev-epic-filter-sidebar .ozon-ext-badge { justify-self:start;width:max-content; }
+#ozon-structure-root .ozon-dev-filter-list .ozon-ext-combo-item { white-space:normal!important;overflow-wrap:anywhere;height:auto!important; }
+#ozon-structure-root .ozon-dev-controls .ozon-dev-popover { max-width:calc(100vw - 24px)!important; }
+#ozon-structure-root aside.ozon-dev-editor { position:fixed!important;top:50%!important;left:50%!important;right:auto!important;bottom:auto!important;transform:translate(-50%,-50%)!important;width:min(980px,calc(100vw - 32px))!important;min-width:0!important;max-width:calc(100vw - 32px)!important;max-height:84vh!important;overflow:hidden!important;display:flex!important;flex-direction:column!important;z-index:10100!important;box-sizing:border-box!important; }
+#ozon-structure-root aside.ozon-dev-editor { top:0!important;right:0!important;bottom:0!important;left:auto!important;transform:none!important;width:min(560px,100vw)!important;max-height:100vh!important;height:100vh!important;border-radius:0!important;padding:20px!important;box-shadow:-8px 0 28px #07102633!important; }
+#ozon-structure-root aside.ozon-dev-editor { z-index:2147483001!important; }
+#ozon-structure-root .ozon-dev-editor-options { flex:1;max-height:none;min-height:0; }
+#ozon-structure-root .ozon-dev-editor:has(.ozon-dev-link-sprint-picker) .ozon-dev-editor-head { order:0; }
+#ozon-structure-root .ozon-dev-editor:has(.ozon-dev-link-sprint-picker) .ozon-dev-link-sprint-picker { order:1; }
+#ozon-structure-root .ozon-dev-editor:has(.ozon-dev-link-sprint-picker) #ozon-dev-editor-search { order:2; margin-top:8px; }
+#ozon-structure-root .ozon-dev-editor:has(.ozon-dev-link-sprint-picker) #ozon-dev-editor-message { order:3; }
+#ozon-structure-root .ozon-dev-editor:has(.ozon-dev-link-sprint-picker) .ozon-dev-menu-hint { order:4; }
+#ozon-structure-root .ozon-dev-editor:has(.ozon-dev-link-sprint-picker) #ozon-dev-editor-results { order:5; }
+#ozon-structure-root .ozon-dev-editor:has(.ozon-dev-link-sprint-picker) #ozon-dev-editor-busy { order:6; }
+#ozon-structure-root .ozon-dev-link-sprint-picker .ozon-dev-editor-options { max-height:220px; flex:none; }
+
+#ozon-structure-root .ozon-dev-editor-options .ozon-ext-combo-item { display:flex;align-items:center;gap:7px;padding:7px 8px!important; }
+#ozon-structure-root .ozon-dev-editor-options .ozon-mono,#ozon-structure-root .ozon-dev-editor-options .ozon-ext-badge { flex:0 0 auto;white-space:nowrap!important; }
+#ozon-structure-root .ozon-dev-option-title { flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap!important; }
+#ozon-structure-root .ozon-dev-editor-options .ozon-ext-combo-item { flex-wrap:nowrap; }
+#ozon-structure-root .ozon-dev-epic-options .ozon-ext-combo-item:has(.ozon-dev-option-title) { display:grid!important;grid-template-columns:max-content max-content minmax(0,1fr);gap:4px 8px!important;align-items:center!important;padding:9px 10px!important; }
+#ozon-structure-root .ozon-dev-epic-options .ozon-ext-combo-item > .ozon-ext-badge { justify-self:start;align-self:center;width:max-content; }
+#ozon-structure-root .ozon-dev-epic-options .ozon-dev-option-title { grid-column:1 / -1;white-space:normal!important;overflow:visible!important;overflow-wrap:anywhere;line-height:1.4; }
+#ozon-structure-root .ozon-dev-epic-options .ozon-dev-option-components { grid-column:3;grid-row:1;justify-self:start;align-self:center;max-width:100%;padding:2px 6px;border-radius:5px;background:#F1F5F9;color:#52647A;font-size:10.5px;white-space:normal;overflow-wrap:anywhere; }
+#ozon-structure-root .ozon-dev-team-option { display:grid!important;grid-template-columns:16px minmax(0,1fr)!important;align-items:center;gap:9px;min-height:34px;padding:6px 10px;border-bottom:1px solid #EEF2F6;color:#071026;cursor:pointer;box-sizing:border-box;width:100%; }
+#ozon-structure-root .ozon-dev-team-option:hover { background:#F1F6FF; }
+#ozon-structure-root .ozon-dev-team-option>input[type="checkbox"] { display:block!important;width:16px!important;min-width:16px!important;max-width:16px!important;height:16px!important;margin:0!important;padding:0!important;justify-self:start;flex:none!important; }
+#ozon-structure-root .ozon-dev-team-name { display:block;min-width:0;width:100%;color:#071026!important;font-size:12px!important;line-height:18px!important;white-space:nowrap!important; }
+#ozon-structure-root #ozon-dev-editor-search,#ozon-structure-root #ozon-dev-link-sprint-search { direction:ltr;text-align:left; }
+
+.ozon-dev-editor-head { display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px; }
+.ozon-dev-editor-options { max-height:min(480px,60vh);overflow:auto;overscroll-behavior:contain;margin-top:6px; }
+#ozon-structure-root .ozon-dev-editor-options button { width:100%;border:0;background:transparent;text-align:left;white-space:normal!important;height:auto!important;font:400 11.5px var(--ozon-font-sans); }
+#ozon-structure-root .ozon-strategy-editor-options button.ozon-ext-combo-item {appearance:none!important;border:0!important;box-shadow:none!important;background:transparent!important;color:#071026!important;cursor:pointer!important;}
+#ozon-structure-root .ozon-strategy-editor-options button.ozon-ext-combo-item:hover,#ozon-structure-root .ozon-strategy-editor-options button.ozon-ext-combo-item:focus-visible {background:#E5F0FF!important;color:#005BFF!important;}
+#ozon-structure-root .ozon-strategy-editor-options button.ozon-ext-combo-item.active {background:#E5F0FF!important;color:#005BFF!important;box-shadow:inset 3px 0 #005bff!important;font-weight:600;}
+#ozon-structure-root .ozon-strategy-editor-options .ozon-strategy-theme-option {border-left:2px solid #dbe7f6!important;border-radius:0!important;}
+.ozon-dev-cell-edit { display:flex!important;align-items:center;gap:5px;width:100%;max-width:100%;min-width:0;cursor:pointer;border-radius:6px; }
+.ozon-dev-cell-edit:hover { background:#E5F0FF; }
+.ozon-dev-cell-edit>.ozon-ext-toolbar-chevron { flex-shrink:0;margin-left:auto; }
+.ozon-dev-cell-edit>.ozon-dev-epic-inline { flex:1;min-width:0; }
+.ozon-dev-stream-edit { display:inline-flex!important;align-items:center;gap:8px;border:1px solid #DCE3EB!important;border-radius:6px;padding:1px 6px!important;color:#005BFF!important;background:#fff!important;font-size:10px!important;flex-shrink:0; }
+.ozon-dev-stream-edit.is-empty { color:#D92D20!important;border-color:#F5B8B3!important;background:#FFF3F2!important; }
+.ozon-dev-stream-edit.is-empty .ozon-ext-toolbar-chevron { border-color:#D92D20!important; }
+.ozon-dev-header-settings { display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;margin-left:4px;padding:0;border:0;border-radius:6px;background:transparent;color:#708198;cursor:pointer;vertical-align:middle; }
+.ozon-dev-header-settings:hover,.ozon-dev-header-settings:focus-visible { color:#005BFF;background:#E5F0FF; }
+.ozon-dev-group-option { display:flex;align-items:center;gap:6px;padding:6px 0; }
+.ozon-dev-group-option label { display:flex;align-items:center;gap:8px;flex:1; }
+.ozon-dev-menu-hint { color:#64748B;font-size:11px;margin:4px 0 8px; }
+.ozon-dev-epic-inline,.ozon-dev-task-key,.ozon-dev-task-title,.ozon-dev-indicators { display:flex;align-items:center;gap:5px;min-width:0; }
+.ozon-dev-epic-inline { width:100%; }
+.ozon-dev-epic-inline a,.ozon-dev-epic-inline .ozon-ext-badge,.ozon-dev-task-key a { flex-shrink:0;white-space:nowrap!important; }
+.ozon-dev-ellipsis { min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.ozon-dev-task-title>.ozon-dev-ellipsis { flex:1; }
+.ozon-dev-indicators,.ozon-dev-priority { flex-shrink:0; }
+.ozon-dev-indicator { display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:6px;flex-shrink:0; }
+.ozon-dev-indicator.absent { color:#94A3B8;background:#F1F5F9; }
+.ozon-dev-indicator.done { color:#039855;background:#DCFCE7; }
+.ozon-dev-indicator.active { color:#005BFF;background:#E5F0FF; }
+.ozon-dev-indicator.missing { color:#D92D20;background:#FFF0EE; }
+#ozon-structure-root .ozon-ext-ip-table-row > .ozon-ext-ip-table-secondary[hidden] { display:none!important; }
+.ozon-dev-table { width:100%;min-width:1985px;border-collapse:collapse;table-layout:fixed;font:400 11.5px var(--ozon-font-sans); }
+.ozon-dev-table th { position:sticky;top:0;z-index:2;background:#F1F5F9;text-align:left;font-size:11px;color:#475569;height:30px; }
+.ozon-dev-table th,.ozon-dev-table td { border-bottom:1px solid #E2E8F0;border-right:1px solid #EEF2F6;padding:0 6px;vertical-align:middle;white-space:nowrap;height:28px;overflow:hidden;text-overflow:ellipsis; }
+.ozon-dev-table td>div { max-width:100%;overflow:hidden; }
+.ozon-dev-table .ozon-ext-badge { white-space:nowrap; }
+.ozon-dev-table .ozon-dev-sprint td { background:#F8FAFC;font-weight:600;height:30px;padding:4px 10px; }
+.ozon-dev-table .ozon-dev-group-line { display:flex;align-items:center;gap:6px;min-height:22px; }
+.ozon-dev-table .ozon-dev-group .ozon-ext-badge { flex-shrink:0; }
+.ozon-dev-table .ozon-dev-group .ozon-ext-status-summary { flex-wrap:nowrap; }
+.ozon-dev-table .ozon-dev-epic td { background:#FAFBFD;font-size:11px;height:26px; }
+.ozon-dev-table .ozon-dev-completed td { background:#EFFBF3; }
+.ozon-dev-table .ozon-dev-no-epic td { background:#FFF1F0; }
+.ozon-dev-table .ozon-dev-project td { background:#FAFBFD;font-weight:600;height:26px; }
+.ozon-dev-table .ozon-dev-related td { background:#F8FAFC;font-size:11px;height:28px; }
+.ozon-dev-table [data-dev-row] { cursor:pointer;transition:background-color 110ms ease; }
+.ozon-dev-table .ozon-dev-group:hover>td { background:#F1F5F9; }
+.ozon-dev-table .ozon-dev-task:hover>td { background:#F2F4F8; }
+.ozon-dev-table .ozon-dev-completed:hover>td { background:#E0F5E8; }
+.ozon-dev-table .ozon-dev-no-epic:hover>td { background:#FFE4E2; }
+.ozon-dev-table .ozon-dev-group .ozon-ext-status-summary { margin-left:10px;font-weight:400; }
+.ozon-dev-table .ozon-dev-link-toggle { width:16px;flex-shrink:0;color:#005BFF; }
+.ozon-dev-table button { border:0;background:transparent;color:inherit;font:inherit;cursor:pointer;padding:0 5px 0 0;text-align:left; }
+#ozon-structure-root .ozon-dev-table .ozon-dev-link-toggle[aria-expanded="true"] { box-shadow:none!important;border-color:transparent!important; }
+.ozon-dev-sprint .ozon-ext-group-total { margin-left:10px; }
+.ozon-dev-points { font-variant-numeric:tabular-nums; }
+.ozon-ext-group-total { color:#64748B;font-size:10px;font-weight:400;white-space:nowrap; }
+.ozon-ext-table-epic-line { display:flex;align-items:center;gap:5px;min-width:0;font-size:10px; }
+.ozon-ext-table-epic-line a { color:#005BFF;text-decoration:none;flex-shrink:0; }
+.ozon-ext-table-epic-line .ozon-ext-badge { flex:0 0 auto!important;max-width:none!important;overflow:visible!important;text-overflow:clip!important;white-space:nowrap;font-size:9px;padding:0 4px; }
+.ozon-ext-table-epic-line .epic-title { flex:1 1 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0; }
+#ozon-structure-root .ozon-ext-cell-combo-trigger[data-action="open-table-epic-combo"] { border:0!important;box-shadow:none!important;background:transparent!important;border-radius:6px!important;padding:0 4px!important; }
+#ozon-structure-root .ozon-ext-cell-combo-trigger[data-action="open-table-epic-combo"]:hover { background:#E5F0FF!important; }
+.ozon-ext-epic-project-tag { flex-shrink:0;color:#64748B;border:1px solid #E2E8F0;border-radius:4px;padding:0 3px;font-size:9px;line-height:16px; }
+.ozon-ext-sprint-row > td > div > div:first-child,.ozon-ext-comp-group-row > td > div > div:first-child { flex-wrap:wrap;min-width:0; }
 
 .ozon-ext-task-row:hover:not(:has(.ozon-ext-inner-ctrl:hover)) {
   background: #F2F4F8 !important;
@@ -537,7 +858,7 @@ export function generateStylesCss(config: ExtensionConfig): string {
   white-space: normal !important;
 }
 
-.ozon-ext-combo-popover input[type="text"] {
+.ozon-ext-combo-popover input:is([type="text"],[type="search"]) {
   width: 100% !important;
   height: 30px !important;
   padding: 5px 10px !important;
@@ -551,7 +872,7 @@ export function generateStylesCss(config: ExtensionConfig): string {
   box-shadow: none !important;
 }
 
-.ozon-ext-combo-popover input[type="text"]:focus {
+.ozon-ext-combo-popover input:is([type="text"],[type="search"]):focus {
   background: #FFFFFF !important;
   border-color: #005BFF !important;
   box-shadow: 0 0 0 2px rgba(0, 91, 255, 0.15) !important;
@@ -777,6 +1098,27 @@ export function generateStylesCss(config: ExtensionConfig): string {
   background-color: #F7D8D2;
 }
 
+.ozon-ext-status-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  padding: 3px 11px;
+  border: 1px solid #DCE4F0;
+  border-radius: 999px;
+  background: #FFFFFF;
+  color: #005BFF;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.ozon-ext-status-chip:hover {
+  border-color: #93C5FD;
+  background: #F4F8FF;
+}
+
 .ozon-ext-badge {
   display: inline-flex;
   align-items: center;
@@ -842,6 +1184,8 @@ export function generateStylesCss(config: ExtensionConfig): string {
   flex-shrink: 0 !important;
   box-shadow: -4px 0 16px rgba(7, 16, 38, 0.05) !important;
 }
+#ozon-structure-root #ozon-ext-sidebar-panel { position:fixed!important;right:0!important;top:0!important;bottom:0!important;height:100vh!important;max-height:100vh!important;z-index:100000!important; }
+#ozon-structure-root #ozon-ext-sidebar-resizer { position:fixed!important;top:0;bottom:0;height:100vh;z-index:100001; }
 
 .ozon-ext-sidebar-header {
   position: sticky;
@@ -904,6 +1248,8 @@ export function generateStylesCss(config: ExtensionConfig): string {
 }
 
 .ozon-ext-section-head {
+  box-sizing: border-box;
+  min-height: 40px;
   padding: 8px 12px;
   background: #F8FAFC;
   border-bottom: 1px solid #E2E8F0;
@@ -927,6 +1273,10 @@ export function generateStylesCss(config: ExtensionConfig): string {
   border-bottom: none;
   border-radius: 10px;
 }
+#ozon-structure-root .ozon-sb-description-preview.is-compact {max-height:132px;overflow:hidden;position:relative}
+#ozon-structure-root .ozon-sb-description-preview.is-compact::after {content:'';position:absolute;left:0;right:0;bottom:0;height:24px;background:linear-gradient(transparent,#fff);pointer-events:none}
+#ozon-structure-root .ozon-sb-description-more {margin:0 12px 10px}
+#ozon-structure-root .ozon-sb-link-add {height:24px;padding:2px 8px;font-size:10px;white-space:nowrap}
 
 /* Форматированное описание задачи (Jira Wiki / Markdown) */
 .ozon-ext-desc-rendered {
@@ -1078,6 +1428,96 @@ export function generateStylesCss(config: ExtensionConfig): string {
   border-left: 3px solid #CBD5E1;
 }
 
+.ozon-ext-sidebar { scrollbar-width:thin!important; scrollbar-color:#a8b5c5 transparent!important; container-type:inline-size; }
+.ozon-ext-ip-row .ozon-ext-ip-fields { display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px!important;padding-left:22px!important;align-items:center;margin-top:6px; }
+.ozon-ext-ip-row .ozon-ext-sb-combo-trigger > span:first-child { white-space:normal!important;overflow-wrap:anywhere; }
+.ozon-ip-column-resizer { position:absolute;right:0;top:0;bottom:0;width:7px;cursor:col-resize;touch-action:none; }
+.ozon-ext-ip-table-head>span { position:relative; }
+#ozon-structure-root .ozon-dev-table button.ozon-ext-btn { border:1px solid #D5E0EF;background:#fff;color:#005BFF;border-radius:8px;padding:4px 10px;font:500 11px var(--ozon-font-body,sans-serif);min-height:26px;text-align:center; }
+#ozon-structure-root .ozon-ext-search-select-caret,#ozon-structure-root .ozon-ext-toolbar-chevron { width:18px;min-width:18px;height:18px; }
+#ozon-structure-root .ozon-ext-sb-combo svg { width:16px;min-width:16px;height:16px; }
+.ozon-ext-product-settings { position:fixed!important;top:0!important;right:0!important;bottom:0!important;left:auto!important;width:390px!important;max-width:100vw!important;height:100vh!important;z-index:2147483645!important;box-sizing:border-box!important;display:flex!important;flex-direction:column;gap:16px;padding:20px;background:#fff;box-shadow:-8px 0 32px #07102620;overflow:auto; }
+.ozon-ext-product-settings .ozon-ext-toolbar-combo { width:100%; }
+.ozon-ext-product-settings .ozon-ext-toolbar-trigger { width:100%; }
+.ozon-dev-settings { position:fixed;right:0;top:0;bottom:0;width:390px;max-width:100vw;background:#fff;box-shadow:-8px 0 32px #07102620;z-index:2147483645;display:flex;flex-direction:column;padding:20px;gap:16px;overflow:auto;animation:ozon-settings-enter .18s ease-out; }
+.ozon-dev-settings footer { margin-top:auto;display:flex;gap:8px;position:sticky;bottom:-20px;background:#fff;padding:12px 0; }
+.ozon-dev-settings .ozon-dev-group-option { display:flex;align-items:center;gap:8px;min-height:34px; }
+.ozon-dev-settings .ozon-dev-group-option label,.ozon-dev-settings .ozon-dev-column-label { flex:1; }
+.ozon-dev-settings select { width:100%;height:32px;border:1px solid #D5E0EF;border-radius:8px;padding:0 10px;color:#071026;background:#fff;font:inherit; }
+#ozon-structure-root .ozon-dev-settings .ozon-ext-combo-popover { padding:6px!important;background:#fff!important;border:1px solid #dbe4ef!important;border-radius:10px!important;box-shadow:0 8px 24px #0710261c!important; }
+#ozon-structure-root .ozon-dev-settings .ozon-ext-combo-popover button.ozon-ext-combo-item { appearance:none!important;display:block!important;width:100%!important;min-height:32px!important;height:auto!important;padding:7px 10px!important;border:0!important;border-radius:6px!important;background:transparent!important;box-shadow:none!important;color:#071026!important;text-align:left!important;font:400 12px var(--ozon-font-sans)!important;cursor:pointer; }
+#ozon-structure-root .ozon-dev-settings .ozon-ext-combo-popover button.ozon-ext-combo-item:hover,#ozon-structure-root .ozon-dev-settings .ozon-ext-combo-popover button.ozon-ext-combo-item:focus-visible,#ozon-structure-root .ozon-dev-settings .ozon-ext-combo-popover button.ozon-ext-combo-item.active { background:#E5F0FF!important;color:#005BFF!important; }
+@keyframes ozon-settings-enter { from { transform:translateX(100%); } to { transform:translateX(0); } }
+
+#ozon-structure-root .ozon-ext-ip-table-row { min-height:36px!important; }
+#ozon-structure-root .ozon-ext-ip-table-row>div { height:36px;justify-content:flex-start; }
+#ozon-structure-root .ozon-ext-ip-table-row .ozon-ext-search-select-trigger { height:28px!important;min-height:28px!important;max-height:28px!important;padding:2px 8px!important;line-height:20px!important;box-sizing:border-box; }
+#ozon-structure-root .ozon-ext-ip-task-cell { justify-content:flex-start!important;gap:5px!important;flex-wrap:nowrap!important; }
+#ozon-structure-root .ozon-ext-ip-task-cell>.ozon-ext-type-pill,#ozon-structure-root .ozon-ext-ip-task-cell>span[title^="Приоритет"] { flex:0 0 auto!important; }
+#ozon-structure-root .ozon-ext-ip-task-cell>.ozon-ip-summary { flex:1 1 auto;min-width:0; }
+.ozon-ext-ip-epic-cell { overflow:hidden;white-space:nowrap;text-overflow:ellipsis; }
+#ozon-structure-root #ozon-sb-comp-trigger svg,#ozon-structure-root #ozon-sb-epic-trigger svg { width:18px!important;height:18px!important;min-width:18px!important;flex:0 0 18px!important; }
+[data-ticket-search-run] { margin-left:8px!important; }
+.ozon-dev-settings.ozon-dev-settings-stable { animation:none!important; }
+
+
+#ozon-structure-root .ozon-dev-team-popover { min-width:240px!important;width:260px!important;max-width:calc(100vw - 24px)!important; }
+#ozon-structure-root .ozon-dev-sprint-option { display:flex!important;justify-content:flex-start!important;gap:9px!important;width:100%;box-sizing:border-box; }
+#ozon-structure-root .ozon-dev-sprint-option input { width:16px!important;min-width:16px!important;height:16px!important;margin:0!important;flex:0 0 16px!important; }
+#ozon-structure-root .ozon-dev-sprint-option>span:not(.ozon-ext-badge) { display:block;min-width:0;flex:1;white-space:normal; }
+#ozon-structure-root .ozon-dev-editor,#ozon-structure-root .ozon-dev-editor-options { scrollbar-width:thin;scrollbar-color:#A8B5C5 transparent; }
+#ozon-structure-root .ozon-dev-editor::-webkit-scrollbar,#ozon-structure-root .ozon-dev-editor-options::-webkit-scrollbar { width:6px;height:6px; }
+#ozon-structure-root .ozon-dev-editor::-webkit-scrollbar-thumb,#ozon-structure-root .ozon-dev-editor-options::-webkit-scrollbar-thumb { background:#A8B5C5;border-radius:8px;border:0; }
+#ozon-structure-root .ozon-ext-ip-table-viewport { overflow-x:clip!important;overflow-y:visible;max-width:100%;min-width:0; }
+#ozon-structure-root .ozon-ext-ip-table-body { min-width:0!important;width:100%;max-width:100%; }
+#ozon-structure-root .ozon-ext-ip-table-head>span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0; }
+#ozon-structure-root .ozon-ext-ip-table-row>div { padding-left:4px;padding-right:4px;overflow:hidden; }
+#ozon-structure-root .ozon-ext-ip-table-row>.ozon-ext-sb-combo { overflow:visible; }
+#ozon-structure-root .ozon-ext-ip-table-row .ozon-ext-search-select-trigger { width:100%;min-width:0!important;gap:3px;padding-left:5px!important;padding-right:5px!important; }
+#ozon-structure-root .ozon-ext-ip-table-row .ozon-ext-search-select-trigger > .ozon-ext-badge { margin-left:auto;flex-shrink:0; }
+#ozon-structure-root .ozon-ext-ip-task-cell { flex-wrap:nowrap!important;height:36px!important;min-height:36px;padding-top:0;padding-bottom:0; }
+#ozon-structure-root .ozon-ext-ip-task-cell>.ozon-ip-summary { flex:1 1 auto;min-width:0;white-space:nowrap!important;display:block;overflow:hidden;text-overflow:ellipsis;line-height:20px; }
+#ozon-structure-root #ozon-ext-sidebar-panel .ozon-ext-ip-table-row { min-height:36px!important; }
+#ozon-structure-root .ozon-ext-ip-action-cell { flex-wrap:wrap;gap:2px!important; }
+#ozon-structure-root .ozon-link-actions { position:relative;display:inline-flex;flex-shrink:0; }
+#ozon-structure-root .ozon-link-actions summary { list-style:none;cursor:pointer;color:#005BFF;padding:2px 6px;border-radius:6px;background:#E5F0FF; }
+#ozon-structure-root .ozon-link-actions summary::-webkit-details-marker { display:none; }
+#ozon-structure-root .ozon-link-actions-menu { position:fixed;z-index:2147483647;right:20px;min-width:170px;padding:6px;background:white;border:1px solid #D5E0EF;border-radius:8px;box-shadow:0 8px 24px #07102633; }
+#ozon-structure-root .ozon-link-actions-menu button { display:block;width:100%;border:0!important;background:#fff!important;color:#071026!important;text-align:left;padding:7px;border-radius:5px;cursor:pointer;font:inherit; }
+#ozon-structure-root .ozon-link-actions-menu button:hover { background:#E5F0FF!important;color:#005BFF!important; }
+#ozon-structure-root .ozon-link-actions-menu button[data-action="delete-link"] { color:#D92D20!important; }
+#ozon-structure-root .ozon-link-actions-menu button[data-action="delete-link"]:hover { background:#FFF1EF!important; }
+#ozon-structure-root .ozon-ext-ip-table-row .ozon-ext-ip-action-cell .ozon-ext-btn { min-width:18px!important;width:18px!important;padding:0!important; }
+#ozon-structure-root .ozon-ext-ip-table-body input { min-width:0!important; }
+#ozon-structure-root .ozon-ext-attributes-columns { display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;gap:12px 18px!important; }
+#ozon-structure-root .ozon-ext-attribute-field { display:grid;grid-template-columns:112px minmax(0,1fr);align-items:center;gap:8px;min-width:0; }
+#ozon-structure-root .ozon-ext-attribute-field>.ozon-ext-field-label { margin:0;min-width:0; }
+#ozon-structure-root .ozon-ext-attribute-field>div { min-width:0; }
+#ozon-structure-root .ozon-ext-attribute-labels { grid-column:1/-1; }
+#ozon-structure-root .ozon-sb-labels { display:flex;align-items:center;gap:5px;flex-wrap:wrap;min-height:30px;min-width:0; }
+#ozon-structure-root .ozon-sb-label-chip { display:inline-flex;align-items:center;gap:4px;max-width:100%;overflow-wrap:anywhere; }
+#ozon-structure-root .ozon-sb-label-remove { border:0;background:transparent;color:#64748b;cursor:pointer;font-size:15px;line-height:1;padding:0 2px; }
+#ozon-structure-root .ozon-sb-label-form { display:inline-flex;align-items:center;gap:5px;max-width:100%; }
+#ozon-structure-root .ozon-sb-label-form input { width:165px;min-width:80px; }
+#ozon-structure-root .ozon-sb-label-error { flex-basis:100%;color:#d92d20;font-size:11px; }
+
+.ozon-ext-ip-table-viewport { overflow:auto;scrollbar-width:thin;scrollbar-color:#A8B5C5 transparent; }
+.ozon-ext-ip-table-body { min-width:var(--ozon-ip-width,1220px); }
+.ozon-ext-ip-table-head,.ozon-ext-ip-table-row { display:grid!important;grid-template-columns:var(--ozon-ip-columns,360px 240px 125px 200px 245px 70px);align-items:center;gap:0!important; }
+.ozon-ext-ip-table-head { background:#F1F5F9;color:#475569;font-size:10px;font-weight:600;min-height:28px;position:sticky;top:0;z-index:1; }
+.ozon-ext-ip-table-head>span { padding:4px 6px;border-right:1px solid #E2E8F0; }
+#ozon-structure-root .ozon-ext-ip-table-row { padding:0!important;border:0!important;border-bottom:1px solid #E2E8F0!important;border-radius:0!important;background:#fff;min-height:28px; }
+.ozon-ext-ip-table-row:hover { background:#F2F4F8; }
+.ozon-ext-ip-table-row.completed { background:#EFFBF3!important; }
+.ozon-ext-ip-table-row>div { min-width:0;padding:0 6px;height:28px;display:flex;align-items:center;border-right:1px solid #EEF2F6; }
+.ozon-ext-ip-table-row .ozon-ext-search-select-trigger { height:24px!important;min-height:24px!important;font-size:11px!important;border-radius:6px!important; }
+.ozon-ext-ip-task-cell>.ozon-ip-summary { min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap!important; }
+.ozon-ext-ip-table-row>.ozon-ext-ip-table-secondary { grid-column:1/-1;height:auto;min-height:20px;border-top:1px solid #EEF2F6;padding-left:28px!important; }
+#ozon-structure-root button.ozon-ext-copy-ref { display:inline-flex;align-items:center;justify-content:center;flex:0 0 18px;width:18px;height:20px;border:0;background:transparent;color:#64748B;padding:2px;cursor:pointer;vertical-align:middle;border-radius:4px; }
+#ozon-structure-root button.ozon-ext-copy-ref:hover { color:#005BFF;background:#E5F0FF; }
+.ozon-ext-select-content { display:flex;align-items:center;gap:7px;min-width:0;flex:1; }
+.ozon-ext-select-content > .ozon-ext-select-text { min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1; }
+.ozon-ext-search-select-value:has(.ozon-ext-select-content) { flex:1; }
 .ozon-ext-link-compact-row:hover {
   background: #FAFBFD;
 }
@@ -1125,6 +1565,160 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-ext-user-option:hover {
   background: #E5F0FF !important;
 }
+
+.ozon-ext-type-pill { display:inline-flex;align-items:center;gap:5px;flex:none;white-space:nowrap;border:1px solid #dbe4ef;border-radius:5px;padding:1px 6px;background:white;color:#334155;font-size:10px;font-weight:600; }
+.ozon-ext-type-pill i { width:6px;height:6px;border-radius:50%; }
+.ozon-ext-status-trigger { display:flex;align-items:center;justify-content:space-between;gap:4px;position:relative;cursor:pointer;color:#475569; }
+.ozon-ext-status-trigger.status-progress { color:#005bff; }
+.ozon-ext-status-trigger.status-review { color:#b45309; }
+.ozon-ext-status-trigger.status-testing { color:#7c3aed; }
+.ozon-ext-status-trigger.status-done { color:#15803d; }
+.ozon-ext-header-bar > div:first-child { flex:1;flex-wrap:wrap; }
+.ozon-ext-header-bar strong { margin-right:auto; }
+.ozon-ext-header-bar #ozon-ext-show-all-sprints { margin-left:auto; }
+#ozon-structure-root .ozon-ext-sidebar { max-width:calc(100vw - 12px)!important; }
+.ozon-ext-sidebar-header { flex-wrap:wrap; }
+.ozon-ext-title-line { flex:0 0 100%;display:flex;align-items:center;gap:6px; }
+.ozon-ext-title-line #ozon-sb-summary:not(:focus) { background:transparent!important;border-color:transparent!important; }
+.ozon-ext-title-line #ozon-sb-summary { min-width:0;font-size:15px!important; }
+.ozon-ext-workflow { display:flex;align-items:center;gap:5px;flex-wrap:wrap; }
+.ozon-ext-workflow-label {font-size:11px;color:#64748b;font-weight:600;margin-right:2px}
+.ozon-ext-workflow-current {display:flex;align-items:center;gap:6px;margin-right:10px}
+.ozon-sidebar-draft-overlay {position:fixed;inset:0;z-index:2147483646;display:grid;place-items:center;background:#07102680;font:12px/1.5 Arial,sans-serif}
+.ozon-sidebar-draft-dialog {width:min(470px,calc(100vw - 32px));box-sizing:border-box;padding:20px;background:#fff;border-radius:12px;box-shadow:0 10px 40px #07102640;color:#071026}
+.ozon-sidebar-draft-dialog strong {font-size:15px}.ozon-sidebar-draft-dialog p {color:#526b8c}.ozon-sidebar-draft-dialog div {display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.ozon-sidebar-draft-dialog button {padding:8px 12px;border:1px solid #dbe4ef;border-radius:8px;color:#005bff;background:#fff;cursor:pointer}.ozon-sidebar-draft-dialog button.primary {background:#005bff;color:#fff;border-color:#005bff}
+.ozon-sidebar-more {position:relative}.ozon-sidebar-more summary {list-style:none;cursor:pointer;padding:4px 9px;border-radius:6px;background:#f0f3f8;color:#005bff;font-weight:700}.ozon-sidebar-more summary::-webkit-details-marker {display:none}.ozon-sidebar-more-menu {position:absolute;right:0;top:100%;z-index:20;min-width:180px;display:flex;flex-direction:column;gap:4px;padding:8px;background:#fff;border:1px solid #dbe4ef;border-radius:8px;box-shadow:0 8px 24px #07102626}.ozon-sidebar-more-menu button,.ozon-sidebar-more-menu a {width:auto!important;text-align:left!important}
+#ozon-ext-sidebar-panel {container-type:inline-size}
+@container (max-width: 720px) {
+  #ozon-ext-sidebar-panel .ozon-ext-ip-table-head {display:none!important}
+  #ozon-ext-sidebar-panel .ozon-ext-ip-table-row {display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;grid-auto-rows:auto;gap:2px!important;padding:6px!important;height:auto!important}
+  #ozon-ext-sidebar-panel .ozon-ext-ip-table-row>div {height:auto!important;min-height:26px;border:0;min-width:0}
+  #ozon-ext-sidebar-panel .ozon-ext-ip-table-row>.ozon-ext-ip-task-cell {grid-column:1;grid-row:1}
+  #ozon-ext-sidebar-panel .ozon-ext-ip-table-row>.ozon-ext-ip-action-cell {grid-column:2;grid-row:1}
+  #ozon-ext-sidebar-panel .ozon-ext-ip-table-row>.ozon-ext-sb-combo {grid-column:1/-1}
+  #ozon-ext-sidebar-panel .ozon-ext-ip-table-row>.ozon-ext-ip-table-secondary {grid-column:1/-1}
+}
+.ozon-ext-workflow > div { margin:0!important; }
+#ozon-sb-params-card { border-radius:12px; }
+#ozon-sb-description-card { margin:0 12px 12px;border:0;border-top:1px solid #e2e8f0; }
+#ozon-sb-description-card .ozon-ext-section-head { background:white;font-size:11px; }
+#ozon-sb-desc-preview { background:#f8fafc;border:1px solid #dbe4ef;border-radius:9px; }
+.ozon-ext-field-grid { grid-template-columns:minmax(100px,32%) minmax(0,1fr);align-items:center; }
+.ozon-ext-field-grid > .ozon-ext-field-label { padding-top:0;align-self:center; }
+.ozon-ext-obproject-value { padding:5px 10px;border:1px solid #E2E8F0;border-radius:9px;background:#fff; }
+.ozon-ext-obproject-value > a,.ozon-ext-obproject-value > .ozon-ext-badge { flex-shrink:0; }
+.ozon-ext-obproject-value > span:not(.ozon-ext-badge) { flex:1; }
+.ozon-ext-delivery-indicators { display:inline-flex;align-items:center;gap:3px;flex-shrink:0; }
+.ozon-ext-delivery-indicator { display:inline-flex;align-items:center;justify-content:center;width:21px;height:22px;border-radius:6px;flex-shrink:0; }
+.ozon-ext-delivery-indicator.absent { color:#94A3B8;background:#F1F5F9; }
+.ozon-ext-delivery-indicator.done { color:#008A52;background:#DCFCE7; }
+.ozon-ext-delivery-indicator.active { color:#005BFF;background:#E5F0FF; }
+#ozon-structure-root .ozon-ext-btn.ozon-ext-project-generation { width:24px;height:24px;padding:4px;flex-shrink:0; }
+#ozon-structure-root .ozon-ext-btn.ozon-ext-project-generation.linked { color:#008A52!important;background:#DCFCE7!important;border-color:#B5E8CA!important; }
+#ozon-structure-root .ozon-ext-btn.ozon-ext-project-generation.missing { color:#D92D20!important;background:#FFF0EE!important;border-color:#FFCCC7!important; }
+.ozon-ext-field-grid details summary { cursor:pointer;color:#005bff;font-size:10px; }
+.ozon-ext-sidebar-header .ozon-ext-btn-surface,.ozon-ext-filter-bar .ozon-ext-btn-surface { background:white!important;color:#005bff!important;border:1px solid #dbe4ef!important; }
+.ozon-ext-open-sb-btn:not(.active) { background:white!important;color:#475569!important;border-radius:6px!important; }
+.ozon-ext-create-overlay { position:fixed;inset:0;z-index:2147482000;background:rgba(15,23,42,.38);display:flex;align-items:center;justify-content:center;padding:18px; }
+.ozon-ext-create-dialog { width:min(520px,94vw);max-height:min(82vh,760px);overflow:auto;background:#fff;border:1px solid #dbe4ef;border-radius:12px;box-shadow:0 20px 55px rgba(7,16,38,.24);padding:18px;display:flex;flex-direction:column;gap:12px;color:#071026;font:13px Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+.ozon-ext-create-dialog strong { font-size:15px; }
+.ozon-ext-create-dialog label { display:flex;flex-direction:column;gap:5px;color:#334155;font-size:11px;font-weight:650; }
+.ozon-ext-create-dialog input,.ozon-ext-create-dialog textarea { width:100%;box-sizing:border-box;min-height:34px;padding:7px 9px;border:1px solid #cbd5e1;border-radius:7px;background:#f8fafc;color:#071026;font:inherit;font-size:13px; }
+.ozon-ext-create-dialog textarea { resize:vertical;min-height:88px; }
+.ozon-ext-create-components { max-height:190px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;padding:5px;display:flex;flex-wrap:wrap;gap:5px; }
+.ozon-ext-create-caption { flex:0 0 100%;padding:4px 3px 1px;color:#64748b;font-size:10px;font-weight:700; }
+.ozon-ext-create-component { border:1px solid #dbe4ef;border-radius:999px;background:#fff;color:#334155;padding:5px 9px;font:inherit;font-size:11px;font-weight:600;cursor:pointer; }
+.ozon-ext-create-component.active { color:#005bff;border-color:#8cb8ff;background:#eaf2ff; }
+.ozon-ext-create-note { color:#64748b;font-size:11px; }
+.ozon-ext-create-error { border-radius:7px;background:#fff1f0;color:#b42318;padding:8px 10px;font-size:11px; }
+.ozon-ext-create-actions { display:flex;justify-content:flex-end;gap:7px;margin-top:2px; }
+.ozon-ext-create-menu { position:absolute!important;top:calc(100% + 5px)!important;right:0!important;z-index:10040!important;width:204px!important;max-width:min(204px,calc(100vw - 24px))!important;padding:6px!important;display:flex!important;flex-direction:column!important;gap:5px!important;background:#fff!important;border:1px solid #dbe4ef!important;border-radius:10px!important;box-shadow:0 8px 24px rgba(7,16,38,.16)!important; }
+.ozon-ext-create-menu button { display:flex!important;align-items:center!important;width:100%!important;min-height:32px!important;padding:6px 9px!important;border:1px solid #dbe4ef!important;border-radius:7px!important;background:#fff!important;color:#005bff!important;text-align:left!important;font:600 11px Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif!important;white-space:normal!important;cursor:pointer!important; }
+.ozon-ext-create-menu button:hover { background:#eaf2ff!important;border-color:#a8c7ff!important; }
+
+
+#ozon-structure-root #ozon-ext-sidebar-panel .ozon-ext-link-compact-row :is(.ozon-ext-search-select-trigger,.ozon-ext-sb-combo-trigger) {
+  height:30px!important;min-height:30px!important;padding:5px 10px!important;
+  border:1px solid #dce3eb!important;border-radius:9px!important;background:#fff!important;
+  box-shadow:none!important;font:500 11.5px var(--ozon-font-sans)!important;
+}
+#ozon-structure-root #ozon-ext-sidebar-panel .ozon-ext-link-compact-row [aria-expanded="true"] {border-color:#005bff!important;box-shadow:inset 0 0 0 1px #005bff!important;}
+#ozon-structure-root #ozon-ext-sidebar-panel .ozon-ext-link-compact-row .ozon-ext-search-select-trigger > span:first-child {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
+#ozon-structure-root #ozon-ext-sidebar-panel :is(input[type="text"],input[type="search"]) {
+  min-height:30px!important;border-radius:9px!important;border-color:#dce3eb!important;background-color:white!important;
+}
+/* OBI size 400 badges and dense board controls. */
+#ozon-structure-root :is(.ozon-ext-badge,.ozon-ext-type-pill) {
+  box-sizing:border-box; min-height:20px; min-width:20px; justify-content:center;
+  padding:2px 6px!important; border:0; border-radius:8px;
+  font:600 12px/16px Onest,var(--ozon-font-sans)!important;
+}
+#ozon-structure-root .ozon-ext-type-pill {background:#f2f4f7;}
+#ozon-structure-root .ozon-ext-badge-progress {background:rgba(0,150,255,.08);color:#005bff;}
+#ozon-structure-root :is(.ozon-ext-btn,.ozon-ext-open-sb-btn) {
+  border-radius:10px!important; font-weight:600; box-shadow:none!important;
+}
+#ozon-structure-root .ozon-ext-btn:not(.ozon-ext-btn-negative):not(.ozon-ext-btn-surface) {background-color:#e5f2ff;color:#005bff;}
+#ozon-structure-root :is(.ozon-ext-btn,.ozon-ext-open-sb-btn):hover:enabled {filter:brightness(.96);}
+#ozon-structure-root :is(.ozon-ext-btn,.ozon-ext-open-sb-btn):active:enabled {filter:brightness(.91);}
+#ozon-structure-root .ozon-ext-filter-bar button[aria-pressed] {border-radius:999px!important;padding-inline:12px;}
+#ozon-structure-root .ozon-ext-filter-bar button[aria-pressed="true"] {color:#005bff;background:#e5f2ff;box-shadow:inset 0 0 0 1px #a4ccff!important;}
+#ozon-structure-root :is(.ozon-ext-field-grid,.ozon-ext-create-dialog) :is(input[type="text"],textarea) {
+  box-sizing:border-box;border:1px solid #dce3eb!important;border-radius:10px!important;background-color:#fff!important;
+  padding:6px 10px; min-width:0; caret-color:#005bff;
+}
+#ozon-structure-root :is(.ozon-ext-field-grid,.ozon-ext-create-dialog) :is(input,textarea):focus {
+  border-color:#005bff!important;box-shadow:inset 0 0 0 1px #005bff!important;
+}
+#ozon-structure-root :is(button,input,textarea):focus-visible {outline:2px solid #ff007a!important;outline-offset:2px;}
+#ozon-structure-root .ozon-ext-btn:disabled {opacity:.45;cursor:default;}
+/* Compact density for the Jira board, with the states from the field spec. */
+#ozon-structure-root :is(.ozon-ext-toolbar-trigger,.ozon-ext-search-select-trigger,.ozon-ext-sb-combo-trigger,.ozon-ext-cell-combo-trigger,input[type="search"]) {
+  box-sizing:border-box; background-color:white!important; border:1px solid #dce3eb!important;
+  border-radius:9px!important; box-shadow:none!important;
+}
+#ozon-structure-root :is(.ozon-ext-toolbar-trigger,.ozon-ext-search-select-trigger,.ozon-ext-sb-combo-trigger,.ozon-ext-cell-combo-trigger,input[type="search"]):hover {border-color:#b8c4d0!important;}
+#ozon-structure-root :is([aria-expanded="true"],input[type="search"]:focus,.ozon-ext-sb-combo-trigger:has(~ .ozon-ext-combo-popover),.ozon-ext-cell-combo-trigger:has(~ .ozon-ext-combo-popover)) {border-color:#005bff!important;box-shadow:inset 0 0 0 1px #005bff!important;}
+#ozon-structure-root :is(.ozon-ext-toolbar-trigger,.ozon-ext-search-select-trigger,.ozon-ext-sb-combo-trigger,.ozon-ext-cell-combo-trigger):focus-visible {outline:2px solid #ff007a!important;outline-offset:2px;}
+/* Table cells are editable, but their controls share the borderless table appearance. */
+#ozon-structure-root .ozon-ext-table :is(.ozon-ext-search-select-trigger,.ozon-ext-cell-combo-trigger,.ozon-ext-sb-combo-trigger) { border-color:transparent!important;border-radius:5px!important;box-shadow:none!important;background:transparent!important; }
+#ozon-structure-root .ozon-ext-table :is(.ozon-ext-search-select-trigger,.ozon-ext-cell-combo-trigger,.ozon-ext-sb-combo-trigger):hover { background:#e5f0ff!important; }
+#ozon-structure-root .ozon-dev-sprint-value > .ozon-dev-ellipsis,#ozon-structure-root .ozon-ext-sprint-value > span:first-child { flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+#ozon-structure-root :is(.ozon-dev-sprint-value,.ozon-ext-sprint-value,.ozon-ext-sprint-select .ozon-ext-select-content) > .ozon-ext-badge { margin-left:auto;flex:0 0 auto; }
+#ozon-structure-root [data-action="pick-ip-sprint"],#ozon-structure-root [data-dev-action="link-sprint-pick"] { display:flex!important;align-items:center;gap:8px; }
+#ozon-structure-root [data-action="pick-ip-sprint"] > .ozon-ext-badge,#ozon-structure-root [data-dev-action="link-sprint-pick"] > .ozon-ext-badge { margin-left:auto;flex:0 0 auto; }
+#ozon-structure-root #ozon-dev-editor-panel[aria-label="Спринт задачи"] .ozon-dev-editor-options > button { display:flex!important;align-items:center;gap:8px; }
+#ozon-structure-root #ozon-dev-editor-panel[aria-label="Спринт задачи"] .ozon-dev-editor-options > button > .ozon-ext-badge { margin-left:auto;flex:0 0 auto; }
+#ozon-structure-root input[type="search"] {
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%239aa6b2' stroke-width='2'%3E%3Ccircle cx='6.5' cy='6.5' r='4.5'/%3E%3Cpath d='m10 10 4 4'/%3E%3C/svg%3E")!important;
+  background-position:left 9px center!important;background-repeat:no-repeat!important;padding-left:32px!important;caret-color:#005bff;
+}
+#ozon-structure-root input[type="search"]::placeholder {color:#98a5b3;}
+#ozon-structure-root input[type="search"]::-webkit-search-cancel-button {cursor:pointer;}
+#ozon-structure-root [aria-expanded="true"] :is(.ozon-ext-toolbar-chevron,.ozon-ext-search-select-caret)::before {transform:translateY(1px) rotate(225deg);}
+#ozon-structure-root .ozon-ext-combo-popover {border-color:#edf1f5!important;box-shadow:0 4px 18px rgba(25,47,68,.09)!important;}
+#ozon-structure-root :is(input[type="search"],.ozon-ext-search-select-trigger,.ozon-ext-toolbar-trigger):disabled {opacity:.45;cursor:default;}
+#ozon-structure-root .ozon-ext-ip-row :is(input[type="text"],input[type="search"],.ozon-ext-sb-combo-trigger) {min-height:30px!important;border:1px solid #dce3eb!important;border-radius:9px!important;background:#fff!important;font:500 11.5px var(--ozon-font-sans)!important;}
+#ozon-structure-root .ozon-ext-ip-row :is(input[type="text"],input[type="search"]):focus {border-color:#005bff!important;box-shadow:inset 0 0 0 1px #005bff!important;}
+#ozon-structure-root .ozon-ext-ip-row :is(input[type="text"],input[type="search"])::placeholder {color:#98a5b3!important;}
+
+/* The development view keeps its team links and build version visible regardless of the selected tab. */
+#ozon-structure-root .ozon-dev-header-actions { display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px; }
+#ozon-structure-root .ozon-dev-header-actions a { display:inline-flex;align-items:center;min-height:26px;padding:3px 8px;border-radius:7px;background:#F2F7FF;color:#005BFF;text-decoration:none;font:500 11px var(--ozon-font-sans);white-space:nowrap; }
+#ozon-structure-root .ozon-dev-header-actions a:hover { background:#E5F0FF;text-decoration:none; }
+#ozon-structure-root .ozon-dev-version { color:#64748B;font:500 10px var(--ozon-font-sans);white-space:nowrap; }
+#ozon-structure-root .ozon-dev-team-popover { min-width:240px!important;width:260px!important;max-width:calc(100vw - 24px)!important;padding:6px!important; }
+#ozon-structure-root .ozon-dev-team-option { display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:10px!important;min-height:38px!important;width:100%!important;padding:7px 10px!important;box-sizing:border-box!important;overflow:hidden!important; }
+#ozon-structure-root .ozon-dev-team-option input[type="checkbox"],#ozon-structure-root .ozon-dev-sprint-option input[type="checkbox"],#ozon-structure-root .ozon-dev-settings input[type="checkbox"] { appearance:none!important;-webkit-appearance:none!important;display:inline-grid!important;place-content:center!important;width:16px!important;height:16px!important;min-width:16px!important;max-width:16px!important;margin:0!important;padding:0!important;border:1px solid #A8B5C5!important;border-radius:4px!important;background:#fff!important;flex:0 0 16px!important;cursor:pointer!important; }
+#ozon-structure-root .ozon-dev-team-option input[type="checkbox"]:checked,#ozon-structure-root .ozon-dev-sprint-option input[type="checkbox"]:checked,#ozon-structure-root .ozon-dev-settings input[type="checkbox"]:checked { border-color:#005BFF!important;background:#005BFF!important; }
+#ozon-structure-root .ozon-dev-team-option input[type="checkbox"]:checked::after,#ozon-structure-root .ozon-dev-sprint-option input[type="checkbox"]:checked::after,#ozon-structure-root .ozon-dev-settings input[type="checkbox"]:checked::after { content:"";width:7px;height:4px;border-left:2px solid #fff;border-bottom:2px solid #fff;transform:rotate(-45deg) translate(1px,-1px); }
+#ozon-structure-root .ozon-dev-team-option>.ozon-dev-team-name { display:block!important;position:static!important;inset:auto!important;flex:1 1 auto!important;min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;line-height:20px!important;text-align:left!important; }
+#ozon-structure-root .ozon-dev-team-popover>.ozon-ext-btn { display:flex!important;width:100%!important;justify-content:center!important;margin-top:6px!important; }
+#ozon-structure-root .ozon-dev-sprint-option { display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:9px!important;width:100%;box-sizing:border-box; }
+#ozon-structure-root .ozon-dev-settings label { display:flex;align-items:center;gap:8px; }
+#ozon-structure-root .ozon-dev-settings input[type="checkbox"] { flex:0 0 16px!important; }
+
 `;
 }
 
@@ -1148,6 +1742,8 @@ export function generateContentScriptJs(
   'use strict';
 
   const CONFIG = ${JSON.stringify(config, null, 2)};
+  const renderStructuredAnswer = ${structuredAnswer.toString()};
+  const renderAnswerMarkup = ${answerMarkup.toString()};
 
   function isTargetBoardPage() {
     const path = window.location.pathname || '';
@@ -1157,7 +1753,7 @@ export function generateContentScriptJs(
     const params = new URLSearchParams(window.location.search);
     const rv = params.get('rapidView');
     const pk = params.get('projectKey');
-    if (rv && String(rv) !== String(CONFIG.rapidViewId)) {
+    if (rv && String(rv) !== String(CONFIG.rapidViewId) && String(rv) !== '6197') {
       return false;
     }
     if (!rv && pk && String(pk).toUpperCase() !== String(CONFIG.projectKey).toUpperCase()) {
@@ -1191,23 +1787,632 @@ export function generateContentScriptJs(
   }
   ensureGoogleFontsLoaded();
 
-  const STORAGE_KEY_OVERRIDES = 'ozon_fcrm_task_overrides_v31';
   const STORAGE_KEY_COL_WIDTHS = 'ozon_fcrm_col_widths_v31';
   const STORAGE_KEY_COL_ORDER = 'ozon_fcrm_col_order_v31';
   const STORAGE_KEY_SIDEBAR_W = 'ozon_fcrm_sidebar_width_v31';
 
   let tasks = ${JSON.stringify(initialTasks, null, 2)};
   let umbCatalog = ${JSON.stringify(umbEpicCatalog, null, 2)};
+  let umbCatalogReady = false;
+  let umbCatalogRequest = null;
   let isStructureVisible = true;
-  let isInitialBoardLoading = true;
+  let activeDashboardView = new URLSearchParams(window.location.search).get('rapidView') === '6197' ? 'development' : 'product';
+  let productDashboardLoaded = false;
+  const renderBadge = (${renderJiraBadge.toString()});
+  const jiraPriorityService = (${createJiraPriorityService.toString()})();
+  const bindLabelSuggestions = (${bindJiraLabelSuggestions.toString()});
+  const strategicDashboard = (${createStrategicDashboard.toString()})(() => { if (activeDashboardView === 'strategy') renderStructure(); }, renderBadge, ${JSON.stringify(EXTENSION_VERSION)}, jiraPriorityService, CONFIG.sprintFieldId, { boardId:CONFIG.rapidViewId, components:()=>loadIssueCreateComponents(CONFIG.projectKey), create:(summary,componentId)=>createIssueFromSidebar({kind:'epic',projectKey:CONFIG.projectKey,summary,componentId}), link:(source,target)=>createIssueLinkInJira(source,target,'projectTask',true,true), notify:(message)=>{ const update=showLinksSnackbar(message); update(message); }, details:openSharedFcrmDetails, bindLabelSuggestions });
+  async function openSharedFcrmDetails(link) {
+    if (!/^FCRM-[0-9]+$/i.test(link.key)) return;
+    if (isSidebarOpen && selectedTaskKey !== link.key && !await confirmSidebarExit()) return;
+    if (!tasks.some(task => task.key === link.key)) tasks.push({
+      key:link.key,summary:link.summary || link.key,description:'',status:link.status || 'todo',priority:link.priority || 'Средний',issueTypeName:link.issueType || 'Задача',
+      component:'Без компонента',sprint:link.sprint?.name || 'Бэклог FCRM',epicKey:'',epicName:'',
+      assignee:{name:'Не назначен'},customer:{name:'Не указан'},projectTaskLinks:[],inProjectLinks:[],otherLinks:[]
+    });
+    developmentDashboard.dismissEditor();
+    selectedTaskKey = link.key; isSidebarOpen = true; isEditingDescription = false; collapsedSidebarSections.pt = true;
+    reloadSingleTaskFromJira(link.key,true,true);
+  }
+  const developmentDashboard = (${createDevelopmentDashboard.toString()})(() => renderStructure(), openSharedFcrmDetails,()=>{sbEpicComboOpen=false;sbCompComboOpen=false;sbIpCompOpenIdx=null;sbIpSprintOpenIdx=null;activeSearchSelectId='';}, renderBadge, getStatusCategoryClass, ${JSON.stringify(EXTENSION_VERSION)}, jiraPriorityService);
+  const generatingLinkKeys = new Set();
+  const ticketSearchStates = new Map();
+  let draggedThreadChannel = null;
+
+  function getTicketSearchState(key, kind) {
+    const id = key + ':' + kind;
+    if (!ticketSearchStates.has(id)) ticketSearchStates.set(id, {
+      open: false, loading: false, channels: '', items: null, errors: [], error: '', raw: '', message: '', reply: '',
+      choices: ['bank-crm-dev', 'cs_incident_techsup', 'crmcs', 'quality_cs', 'bank_cs_team', 'bank_cs_team_public', 'crm_bo_team_public', 'crm_bo_team_dev', 'crm_dev_team', 'bank_crm_core_team', 'trs', 'ob_trs_public', 'cs_fcrm_changes', 'crm-vs-srm', 'tmp_db2c', 'case-study', 'case-study-b2b', 'suppproduct_b2c', 'bi-weekly--support'].map(name => ({ url: 'https://chatzone.o3t.ru/ozon/channels/' + name, checked: false })),
+      queue: [], index: -1, history: []
+    });
+    return ticketSearchStates.get(id);
+  }
+
+  function parseTicketSearchResponse(text, kind, issueKey) {
+    const block = /<search_results>([\\s\\S]*?)<\\/search_results>/i.exec(String(text));
+    const raw = block ? block[1] : String(text).trim().replace(/^\\x60\\x60\\x60(?:json)?\\s*/i, '').replace(/\\x60\\x60\\x60\\s*$/, '');
+    const data = JSON.parse(raw);
+    if (!data || !Array.isArray(data.items) || (data.errors != null && !Array.isArray(data.errors))) throw new Error('DeepSeek вернул ответ без списка результатов. Повторите поиск.');
+    const errors = [];
+    const noMatchNotes = [];
+    (data.errors || []).map(String).forEach(note => {
+      // Some responses put a successful empty search in errors. Only reclassify
+      // explicit no-match messages; access and partial-search failures stay errors.
+      if (kind === 'threads' && !data.items.length && /не найден[оы]?\\s+(?:обсуждений|совпадений|сообщений|результатов)/i.test(note) && !/(?:недоступ|не удалось|ошибк|не выполнен|не проверен|нет доступа)/i.test(note)) noMatchNotes.push(note);
+      else errors.push(note);
+    });
+    const items = [];
+    const seen = new Set();
+    for (const item of data.items) {
+      if (!item || typeof item !== 'object') { errors.push('Пропущен некорректный результат поиска.'); continue; }
+      if (kind === 'fcrm') {
+        const key = String(item.key || '').trim().toUpperCase();
+        if (key === issueKey || seen.has(key)) continue;
+        if (!/^FCRM-[0-9]+$/.test(key) || typeof item.title !== 'string' || !item.title.trim() || typeof item.status !== 'string' || !item.status.trim()) {
+          errors.push('Пропущена задача без корректного ключа, названия или статуса.');
+          continue;
+        }
+        seen.add(key);
+        items.push({ key, title: item.title.trim(), status: item.status.trim() });
+      } else {
+        try {
+          const url = new URL(String(item.url || ''));
+          if (url.protocol !== 'https:' || url.username || url.password || !['chatzone.o3t.ru', 'chatzone.o3.ru'].includes(url.hostname) || !/\\/pl\\/[^/]+\\/?$/.test(url.pathname) || typeof item.text !== 'string' || !item.text.trim()) throw new Error('invalid');
+          if (seen.has(url.href)) continue;
+          seen.add(url.href);
+          items.push({ url: url.href, text: item.text.trim().slice(0, 300) });
+        } catch (_) { errors.push('Пропущено сообщение без корректной ссылки chatZone или текста.'); }
+      }
+    }
+    return { items: items.slice(0, 10), errors: Array.from(new Set(errors)), message: [typeof data.message === 'string' ? data.message : '', ...noMatchNotes].filter(Boolean).join(' ') };
+  }
+
+  function addThreadChannels(state) {
+    const urls = state.channels.trim().split(/[\\s,;]+/).filter(Boolean).map(value => {
+      let url;
+      try { url = new URL(value); } catch (_) { throw new Error('Некорректная ссылка на канал: ' + value); }
+      if (url.protocol !== 'https:' || url.username || url.password || !['chatzone.o3t.ru', 'chatzone.o3.ru'].includes(url.hostname) || !/^\\/[^/]+\\/channels\\/[^/]+\\/?$/.test(url.pathname)) throw new Error('Некорректная ссылка на канал: ' + value);
+      return url.origin + url.pathname.replace(/\\/$/, '');
+    });
+    urls.forEach(url => { if (!state.choices.some(choice => choice.url === url)) state.choices.push({ url, checked: true }); });
+    state.channels = '';
+  }
+
+  async function runThreadChannelStep(key, reply = '', retryIndex = -1) {
+    const state = getTicketSearchState(key, 'threads');
+    const previous = retryIndex >= 0 ? state.history[retryIndex] : null;
+    if (state.loading || (retryIndex >= 0 && (!previous || (!previous.error && !previous.errors.length))) || (retryIndex < 0 && !state.queue[state.index])) return;
+    const channel = previous ? previous.channel : state.queue[state.index];
+    if (previous) reply = previous.reply || '';
+    const conversation = state.history.filter((step, index) => step.channel === channel && (retryIndex < 0 || index < retryIndex) && !step.error && !step.errors.length).map(step => ({ reply: step.reply, response: step.response }));
+    state.loading = true;
+    state.retryIndex = retryIndex;
+    state.error = '';
+    renderStructure();
+    let step = { channel, reply, response: '', items: null, errors: [], error: '', raw: '', message: '' };
+    try {
+      const text = await new Promise((resolve, reject) => {
+        if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) { reject(new Error('Поиск доступен в установленном расширении Chrome')); return; }
+        chrome.runtime.sendMessage({type:'o3ds:chat',mode:'search_threads',issueKey:key,approvedDescription:JSON.stringify({channels:[channel],reply,conversation})}, response => {
+          const error = chrome.runtime.lastError;
+          if (error || !response?.ok) reject(new Error(error?.message || response?.error || 'Нет ответа DeepSeek'));
+          else resolve(response.text || '');
+        });
+      });
+      step.response = String(text);
+      try { Object.assign(step, parseTicketSearchResponse(step.response, 'threads', key)); }
+      catch (error) { step.error = String(error.message || error); step.raw = step.response; }
+    } catch (error) {
+      step.error = String(error.message || error);
+      step.response = step.error;
+    } finally {
+      if (retryIndex >= 0) state.history[retryIndex] = step;
+      else { state.history.push(step); state.reply = ''; }
+      state.loading = false;
+      state.retryIndex = -1;
+      if (selectedTaskKey === key) renderStructure();
+    }
+  }
+
+  function renderThreadChannelControls(key, state) {
+    const locked = state.queue.length > 0 || state.loading;
+    const disabled = locked ? ' disabled' : '';
+    let html = '<div style="font-size:11px;color:#64748b;margin-bottom:8px;">Последние 30 дней. Выберите каналы и перетащите их в нужном порядке. Проверяется один канал за шаг.</div>';
+    html += '<div style="max-height:260px;overflow:auto;margin-bottom:10px;">' + state.choices.map((choice, index) =>
+      '<div data-thread-channel-row="' + index + '" data-issue-key="' + escapeHtml(key) + '" draggable="' + !locked + '" style="display:flex;align-items:center;gap:6px;padding:6px;border-bottom:1px solid #e2e8f0;">' +
+      '<span aria-hidden="true" style="color:#94a3b8;cursor:grab;">⠿</span><label style="display:flex;gap:6px;align-items:center;min-width:0;flex:1;"><input type="checkbox" data-thread-channel-check="' + index + '" data-issue-key="' + escapeHtml(key) + '"' + (choice.checked ? ' checked' : '') + disabled + '><span style="overflow-wrap:anywhere;">' + escapeHtml(new URL(choice.url).pathname.split('/').pop()) + '</span></label>' +
+      '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-thread-channel-move="' + index + '" data-direction="-1" data-issue-key="' + escapeHtml(key) + '" aria-label="Канал выше"' + (locked || index === 0 ? ' disabled' : '') + '>↑</button>' +
+      '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-thread-channel-move="' + index + '" data-direction="1" data-issue-key="' + escapeHtml(key) + '" aria-label="Канал ниже"' + (locked || index === state.choices.length - 1 ? ' disabled' : '') + '>↓</button></div>').join('') + '</div>';
+    if (!locked) html += '<label>Дополнительные каналы<textarea data-ticket-search-channels="' + escapeHtml(key) + '" rows="2" placeholder="Ссылки на каналы, каждая с новой строки" style="width:100%;box-sizing:border-box;resize:vertical;">' + escapeHtml(state.channels) + '</textarea></label><button type="button" class="ozon-ext-btn" data-thread-channels-add data-issue-key="' + escapeHtml(key) + '" style="margin:6px 0;">Добавить каналы</button>';
+    if (state.queue.length) html += '<div style="font-weight:600;margin:8px 0;">Канал ' + (state.index + 1) + ' из ' + state.queue.length + ': ' + escapeHtml(new URL(state.queue[state.index]).pathname.split('/').pop()) + '</div>';
+    return html;
+  }
+
+  function renderThreadSearchResult(key, item) {
+    return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid #e2e8f0;"><div style="white-space:pre-wrap;overflow-wrap:anywhere;min-width:0;flex:1;">' + escapeHtml(item.text) + '</div><div style="display:flex;gap:6px;flex-shrink:0;"><a class="ozon-ext-btn ozon-ext-btn-surface" href="' + escapeHtml(item.url) + '" target="_blank" rel="noopener noreferrer">Открыть сообщение</a><button type="button" class="ozon-ext-btn" data-thread-link-url="' + escapeHtml(item.url) + '" data-issue-key="' + escapeHtml(key) + '">Связать</button></div></div>';
+  }
+
+  function renderThreadSearchHistory(key, state) {
+    let html = state.history.map((step, index) => '<details' + (index === state.history.length - 1 || step.error || step.errors.length || state.retryIndex === index ? ' open' : '') + ' style="margin:10px 0;"><summary style="font-weight:600;">' + escapeHtml(new URL(step.channel).pathname.split('/').pop()) + (step.reply ? ' · уточнение' : '') + '</summary><div style="padding-top:8px;">' +
+      (step.error ? '<div role="alert" style="color:#b42318;">' + escapeHtml(step.error) + '</div>' : '') +
+      (step.message ? '<p>' + escapeHtml(step.message) + '</p>' : '') +
+      (step.items && !step.items.length ? '<p>' + (step.errors.length ? 'Нет подтверждённых результатов. Есть ошибки поиска.' : 'Совпадений не найдено.') + '</p>' : '') +
+      (step.items || []).map(item => renderThreadSearchResult(key, item)).join('') +
+      step.errors.map(error => '<div style="color:#b42318;">' + escapeHtml(error) + '</div>').join('') +
+      ((step.error || step.errors.length) ? '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-thread-search-retry="' + index + '" data-issue-key="' + escapeHtml(key) + '"' + (state.loading ? ' disabled' : '') + '>' + (state.loading && state.retryIndex === index ? 'Повторный поиск…' : 'Повторить поиск') + '</button>' : '') +
+      (step.raw ? '<details><summary>Ответ DeepSeek</summary>' + renderAnswerMarkup(step.raw) + '</details>' : '') + '</div></details>').join('');
+    if (state.queue.length && !state.loading && state.history.length) {
+      html += '<div style="display:flex;gap:8px;margin-top:12px;"><button type="button" class="ozon-ext-btn" data-thread-search-next data-issue-key="' + escapeHtml(key) + '"' + (state.index + 1 >= state.queue.length ? ' disabled' : '') + '>Продолжить</button><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-thread-search-reset data-issue-key="' + escapeHtml(key) + '">Изменить каналы</button></div>';
+      if (state.index + 1 >= state.queue.length) html += '<p>' + (state.history.some(step => step.error || step.errors.length) ? 'Поиск завершён с ошибками. Можно повторить поиск в нужном канале.' : 'Все выбранные каналы проверены. Можно уточнить последний результат.') + '</p>';
+      html += '<textarea data-thread-search-reply="' + escapeHtml(key) + '" rows="3" placeholder="Уточнение по текущему каналу" style="width:100%;box-sizing:border-box;margin-top:10px;resize:vertical;">' + escapeHtml(state.reply) + '</textarea><button type="button" class="ozon-ext-btn" data-thread-search-answer data-issue-key="' + escapeHtml(key) + '"' + (!state.reply.trim() ? ' disabled' : '') + '>Ответить</button>';
+    }
+    return html;
+  }
+
+  function renderTicketSearchSection(key, kind) {
+    const state = getTicketSearchState(key, kind);
+    const title = kind === 'fcrm' ? 'Похожие задачи FCRM' : 'Обсуждения chatZone';
+    const button = kind === 'fcrm' ? 'Искать похожие в FCRM' : 'Искать по тредам';
+    let body = '';
+    if (state.open) {
+      if (kind === 'threads') body += renderThreadChannelControls(key, state);
+      if (kind === 'fcrm' || !state.queue.length) body += '<button type="button" class="ozon-ext-btn" data-ticket-search-run="' + kind + '" data-issue-key="' + escapeHtml(key) + '"' + (state.loading ? ' disabled' : '') + '>' + button + '</button>';
+      if (kind === 'threads') body += renderThreadSearchHistory(key, state);
+      if (state.loading) {
+        body += '<div role="status" aria-label="Поиск выполняется" style="padding-top:10px;">' + [90, 65, 80].map(width => '<div class="ozon-ext-skeleton" style="display:block;height:18px;margin:10px 0;width:' + width + '%;"></div>').join('') + '</div>';
+      } else {
+        if (state.error) body += '<div role="alert" style="margin-top:10px;color:#b42318;">' + escapeHtml(state.error) + '</div>';
+        if (state.items) {
+          if (!state.items.length) body += '<p>' + (state.errors.length ? 'Подтверждённых результатов нет. Поиск выполнен с ошибками.' : 'Совпадений не найдено.') + '</p>';
+          body += state.items.map(item => kind === 'fcrm'
+            ? '<div style="display:flex;align-items:flex-start;gap:8px;padding:10px 0;border-bottom:1px solid #e2e8f0;"><div style="min-width:0;flex:1;"><a href="/browse/' + encodeURIComponent(item.key) + '" target="_blank" rel="noopener noreferrer" style="color:#005bff;font-weight:700;">' + escapeHtml(item.key) + '</a><div style="overflow-wrap:anywhere;">' + escapeHtml(item.title) + '</div></div>' + getStatusBadgeHtml(item.status) + '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-similar-link="' + escapeHtml(item.key) + '" data-issue-key="' + escapeHtml(key) + '">Связать</button></div>'
+            : renderThreadSearchResult(key, item)).join('');
+        }
+        if (state.errors.length) body += '<div role="alert" style="margin-top:10px;color:#b42318;">' + state.errors.map(error => '<div>' + escapeHtml(error) + '</div>').join('') + '</div>';
+        if (state.raw) body += '<details style="margin-top:10px;"><summary>Ответ DeepSeek</summary><div>' + renderAnswerMarkup(state.raw) + '</div></details>';
+      }
+    }
+    return '<div class="ozon-ext-section-card"><button type="button" class="ozon-ext-section-head ' + (state.open ? '' : 'collapsed') + '" data-ticket-search-toggle="' + kind + '" data-issue-key="' + escapeHtml(key) + '" aria-expanded="' + state.open + '" style="width:100%;border:0;text-align:left;"><span style="display:flex;align-items:center;gap:6px;"><span style="color:#005BFF;font-size:10px;">▾</span><span>' + title + '</span></span></button>' + (state.open ? '<div aria-live="polite" aria-busy="' + state.loading + '" style="padding:12px;">' + body + '</div>' : '') + '</div>';
+  }
+
+  function showLinksSnackbar(message) {
+    let stack = document.getElementById('ozon-links-snackbars');
+    if (!stack) {
+      stack = document.createElement('div');
+      stack.id = 'ozon-links-snackbars';
+      stack.style.cssText = 'position:fixed;bottom:24px;left:24px;z-index:100100;width:min(560px,calc(100vw - 48px));max-height:calc(100vh - 48px);overflow-y:auto;display:flex;flex-direction:column;gap:10px;pointer-events:none;';
+      document.body.appendChild(stack);
+    }
+    const bar = document.createElement('div');
+    {
+      bar.className = 'ozon-links-snackbar';
+      bar.setAttribute('role', 'status');
+      bar.setAttribute('aria-live', 'polite');
+      bar.style.cssText = 'position:relative;overflow:hidden;padding:14px 16px 18px;border-radius:12px;background:#071026;color:white;box-shadow:0 8px 28px #07102633;font:13px/1.5 sans-serif;display:flex;align-items:flex-start;gap:12px;flex-shrink:0;pointer-events:auto;';
+      const text = document.createElement('div');
+      text.style.cssText = 'white-space:normal;overflow:auto;max-height:140px;min-width:0;flex:1;';
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.textContent = 'Закрыть';
+      close.style.cssText = 'border:0;background:transparent;color:#a9d2ff;cursor:pointer;padding:0;font:inherit;';
+      close.onclick = () => bar.remove();
+      const progress = document.createElement('div');
+      progress.style.cssText = 'position:absolute;bottom:0;left:0;height:3px;width:100%;background:#459bff;transform-origin:left;display:none;';
+      bar.append(text, close, progress);
+      stack.appendChild(bar);
+    }
+    bar.firstChild.textContent = message;
+    let timer = null, startedAt = 0, remaining = 5000;
+    const progress = bar.lastChild;
+    const resume = () => {
+      if (!bar.isConnected || remaining <= 0) return;
+      startedAt = Date.now();
+      progress.style.display = 'block';
+      progress.style.transition = 'none';
+      progress.style.transform = 'scaleX(' + (remaining / 5000) + ')';
+      requestAnimationFrame(() => { progress.style.transition = 'transform ' + remaining + 'ms linear'; progress.style.transform = 'scaleX(0)'; });
+      timer = setTimeout(() => bar.remove(), remaining);
+    };
+    bar.addEventListener('mouseenter', () => { if (!timer) return; clearTimeout(timer); timer = null; remaining = Math.max(0, remaining - (Date.now() - startedAt)); progress.style.transition = 'none'; progress.style.transform = 'scaleX(' + (remaining / 5000) + ')'; });
+    bar.addEventListener('mouseleave', () => { if (progress.style.display !== 'none' && !timer) resume(); });
+    return (nextMessage, html = false) => {
+      if (!bar.isConnected) return;
+      if (html) {
+        const tmp = document.createElement('div'); tmp.innerHTML = nextMessage;
+        bar.firstChild.textContent = (tmp.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 240);
+      } else bar.firstChild.textContent = nextMessage;
+      clearTimeout(timer); timer = null; remaining = 5000;
+      if (!bar.matches(':hover')) resume(); else progress.style.display = 'block';
+    };
+  }
+
+  let threadCreationBusy = false;
+  async function openThreadCreationSidebar() {
+    const existing = document.getElementById('ozon-thread-sidebar');
+    if (existing) { existing.hidden = false; return; }
+    const panel = document.createElement('aside');
+    panel.id = 'ozon-thread-sidebar';
+    panel.setAttribute('aria-label', 'Создать FCRM из треда');
+    panel.style.cssText = 'position:fixed;right:0;top:40px;bottom:0;width:min(480px,100vw);z-index:100050;background:white;box-shadow:-8px 0 28px #07102622;padding:20px;overflow:auto;font:13px/1.5 sans-serif;color:#071026;';
+    panel.innerHTML = '<div style="display:flex;justify-content:space-between;gap:12px"><strong>Создать FCRM из треда</strong><button type="button" data-thread-close>Закрыть</button></div><form style="display:flex;flex-direction:column;gap:14px;margin-top:20px;"><label>Ссылки на треды chatZone<textarea name="urls" rows="5" required placeholder="https://chatzone.o3t.ru/pl/…"></textarea></label><label>Тип задачи<input name="issueType" list="ozon-thread-types" placeholder="Поиск типа задачи" required autocomplete="off"><datalist id="ozon-thread-types"></datalist></label><label>Компонент FCRM<input name="component" list="ozon-thread-components" placeholder="Поиск компонента" required autocomplete="off"><datalist id="ozon-thread-components"></datalist></label><button type="submit" disabled>Создать задачу</button><div role="status" aria-live="polite">Загружаю типы задач и компоненты…</div><a data-thread-result target="_blank" rel="noopener noreferrer" hidden></a></form>';
+    panel.querySelectorAll('input,textarea,button').forEach(el => {
+      el.style.cssText = 'box-sizing:border-box;max-width:100%;padding:8px 10px;border:1px solid #dce3eb;border-radius:9px;background:white;color:#071026;font:inherit;';
+      if (el.matches('input,textarea')) el.style.width = '100%';
+    });
+    const form = panel.querySelector('form');
+    const resultView = document.createElement('div');
+    resultView.setAttribute('aria-live', 'polite');
+    form.before(resultView);
+    const skeleton = document.createElement('div');
+    skeleton.hidden = true;
+    skeleton.setAttribute('role', 'status');
+    skeleton.setAttribute('aria-label', 'DeepSeek создаёт задачу');
+    skeleton.innerHTML = '<p>Изучаю обсуждения и создаю задачу…</p>' + [95, 70, 90, 80, 60].map(width => '<div aria-hidden="true" style="display:block!important;height:20px!important;min-height:20px!important;margin:16px 0!important;width:' + width + '%!important;border-radius:7px!important;background:linear-gradient(90deg,#eef2f6 25%,#dce4ee 50%,#eef2f6 75%)!important;background-size:200% 100%!important;animation:ozon-skeleton-shimmer 1.2s linear infinite!important;"></div>').join('');
+    form.before(skeleton);
+    const submit = panel.querySelector('[type="submit"]');
+    submit.style.background = '#005bff';
+    submit.style.color = 'white';
+    const urlsInput = form.querySelector('[name="urls"]');
+    urlsInput.rows = 3;
+    urlsInput.placeholder = 'https://chatzone.o3t.ru/o3/pl/…';
+    urlsInput.style.cssText += 'resize:vertical;min-height:88px;border:0;background:transparent;outline:none;';
+    const urlField = document.createElement('div');
+    urlField.style.cssText = 'display:flex;align-items:flex-start;gap:4px;margin-top:6px;border:1px solid #dce3eb;border-radius:10px;background:#f8fbff;';
+    const urlIcon = document.createElement('span');
+    urlIcon.style.cssText = 'display:flex;padding:12px 0 0 12px;color:#005bff;flex-shrink:0;';
+    urlIcon.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="m10 13 4-4M8 16l-1 1a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0M16 8l1-1a4 4 0 0 1 6 6l-4 4a4 4 0 0 1-6 0"/></svg>';
+    urlsInput.replaceWith(urlField);
+    urlField.append(urlIcon, urlsInput);
+    urlsInput.addEventListener('focus', () => { urlField.style.borderColor = '#005bff'; });
+    urlsInput.addEventListener('blur', () => { urlField.style.borderColor = '#dce3eb'; });
+    const urlHint = document.createElement('div');
+    urlHint.id = 'ozon-thread-url-hint';
+    urlHint.textContent = 'Вставьте ссылку на тред. Несколько ссылок — каждая с новой строки.';
+    urlHint.style.cssText = 'margin-top:4px;font-size:11px;color:#64748b;';
+    urlsInput.setAttribute('aria-describedby', urlHint.id);
+    urlField.after(urlHint);
+    const contextLabel = document.createElement('label');
+    contextLabel.textContent = 'Дополнительная информация';
+    const contextInput = document.createElement('textarea');
+    contextInput.name = 'additionalInfo';
+    contextInput.rows = 4;
+    contextInput.placeholder = 'Контекст, требования или уточнения, которых нет в обсуждении';
+    contextInput.style.cssText = 'display:block;box-sizing:border-box;width:100%;margin-top:6px;padding:8px 10px;min-height:100px;resize:vertical;border:1px solid #dce3eb;border-radius:9px;background:white;color:#071026;font:inherit;';
+    contextLabel.appendChild(contextInput);
+    submit.before(contextLabel);
+    const status = form.querySelector('[role="status"]');
+    const conversation = [];
+    let requestSnapshot = null;
+    let createdIssueKey = '';
+    let uncertainResult = false;
+    const followup = document.createElement('form');
+    followup.style.cssText = 'display:none;flex-direction:column;gap:10px;margin-top:18px;';
+    const reply = document.createElement('textarea');
+    reply.rows = 3;
+    reply.placeholder = 'Уточните детали или объясните отличия от найденных дублей';
+    reply.setAttribute('aria-label', reply.placeholder);
+    reply.style.cssText = 'box-sizing:border-box;width:100%;min-height:88px;padding:10px;border:1px solid #dce3eb;border-radius:9px;resize:vertical;font:inherit;';
+    const continueButton = document.createElement('button');
+    continueButton.type = 'submit';
+    continueButton.textContent = 'Продолжить';
+    continueButton.disabled = true;
+    continueButton.style.cssText = 'padding:9px 12px;background:#005bff;color:white;border:0;border-radius:9px;font:inherit;cursor:pointer;';
+    reply.oninput = () => {
+      continueButton.disabled = threadCreationBusy || !reply.value.trim();
+      reply.style.height = '88px';
+      reply.style.height = Math.min(220, Math.max(88, reply.scrollHeight)) + 'px';
+    };
+    followup.append(reply, continueButton);
+    panel.appendChild(followup);
+    panel.querySelector('[data-thread-close]').onclick = () => {
+      if (threadCreationBusy) panel.hidden = true;
+      else panel.remove();
+    };
+    document.body.appendChild(panel);
+    try {
+      const [types, components] = await Promise.all([loadIssueCreateMeta('FCRM'), loadIssueCreateComponents('FCRM')]);
+      const availableTypes = types.filter(type => !type.subtask && !/sub.?task|подзадач/i.test(type.name));
+      const makeSelect = (name, options, placeholder) => {
+        const original = form.querySelector('[name="' + name + '"]');
+        const wrapper = document.createElement('div');
+        wrapper.className = 'ozon-ext-search-select';
+        wrapper.style.position = 'relative';
+        wrapper.innerHTML = '<button type="button" class="ozon-ext-search-select-trigger" aria-expanded="false"><span class="ozon-ext-search-select-value"></span><span class="ozon-ext-search-select-caret" aria-hidden="true"></span></button><div class="ozon-ext-combo-popover ozon-ext-search-select-popover" hidden><input type="search" autocomplete="off"><div class="ozon-ext-combo-list"></div></div>';
+        original.replaceWith(wrapper);
+        const trigger = wrapper.querySelector('button');
+        const label = trigger.querySelector('span');
+        label.textContent = placeholder;
+        const menu = wrapper.querySelector('.ozon-ext-combo-popover');
+        const search = menu.querySelector('input');
+        const list = menu.querySelector('.ozon-ext-combo-list');
+        menu.style.setProperty('display', 'none', 'important');
+        search.placeholder = placeholder;
+        search.setAttribute('aria-label', placeholder);
+        let selected = null;
+        const close = () => {
+          menu.hidden = true;
+          menu.style.setProperty('display', 'none', 'important');
+          trigger.setAttribute('aria-expanded', 'false');
+        };
+        const draw = () => {
+          list.replaceChildren();
+          const query = search.value.trim().toLocaleLowerCase('ru');
+          options.filter(item => item.name.toLocaleLowerCase('ru').includes(query)).forEach(item => {
+            const option = document.createElement('button');
+            option.type = 'button';
+            option.className = 'ozon-ext-combo-item ozon-ext-search-select-option' + (selected?.id === item.id ? ' active' : '');
+            option.textContent = item.name;
+            option.style.cssText = 'background:transparent;border:0;text-align:left;width:100%;';
+            option.onclick = () => { selected = item; label.textContent = item.name; close(); trigger.focus(); };
+            list.appendChild(option);
+          });
+          if (!list.children.length) list.textContent = 'Ничего не найдено';
+        };
+        trigger.onclick = () => {
+          if (!menu.hidden) { close(); return; }
+          panel.querySelectorAll('.ozon-ext-search-select-trigger[aria-expanded="true"]').forEach(other => other.click());
+          menu.hidden = false;
+          menu.style.setProperty('display', 'flex', 'important');
+          trigger.setAttribute('aria-expanded', 'true');
+          search.value = '';
+          draw();
+          search.focus();
+        };
+        search.oninput = draw;
+        wrapper.addEventListener('keydown', event => {
+          if (event.key === 'Escape') { close(); trigger.focus(); event.preventDefault(); }
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            const items = Array.from(list.querySelectorAll('button'));
+            const index = items.indexOf(document.activeElement);
+            const next = event.key === 'ArrowDown' ? index + 1 : index <= 0 ? items.length - 1 : index - 1;
+            items[(next + items.length) % items.length]?.focus();
+            event.preventDefault();
+          }
+          if (event.key === 'Enter' && document.activeElement === search) {
+            event.preventDefault();
+            list.querySelector('button')?.click();
+          }
+        });
+        wrapper.addEventListener('focusout', event => { if (!wrapper.contains(event.relatedTarget)) close(); });
+        return () => selected;
+      };
+      const getType = makeSelect('issueType', availableTypes, 'Поиск типа задачи');
+      const getComponent = makeSelect('component', components, 'Поиск компонента');
+      panel.querySelectorAll('datalist').forEach(el => el.remove());
+      status.textContent = 'Укажите одну или несколько ссылок. Задача будет создана сразу после обработки обсуждений.';
+      submit.disabled = false;
+      form.onsubmit = async event => {
+        event.preventDefault();
+        if (threadCreationBusy) return;
+        const values = new FormData(form);
+        const urls = Array.from(new Set(String(values.get('urls') || '').trim().split(/[\\s,;]+/).filter(Boolean)));
+        const type = getType();
+        const component = getComponent();
+        if (!urls.length) { status.textContent = 'Добавьте хотя бы одну ссылку на тред chatZone.'; return; }
+        const invalidUrl = urls.find(url => {
+          try { const parsed = new URL(url); return parsed.protocol !== 'https:' || !['chatzone.o3t.ru', 'chatzone.o3.ru'].includes(parsed.hostname) || !/\\/pl\\/[^/]+\\/?$/.test(parsed.pathname); } catch (_) { return true; }
+        });
+        if (invalidUrl) { status.textContent = 'Не удалось распознать ссылку на тред: ' + invalidUrl; return; }
+        if (!type) { status.textContent = 'Выберите тип задачи из выпадающего списка.'; return; }
+        if (!component) { status.textContent = 'Выберите компонент FCRM из выпадающего списка.'; return; }
+        threadCreationBusy = true;
+        submit.disabled = true;
+        status.textContent = 'Подбираю примеры задач…';
+        let exampleIssueKeys = [];
+        try {
+          const quoteJql = value => '"' + String(value).split(String.fromCharCode(92)).join(String.fromCharCode(92,92)).split('"').join(String.fromCharCode(92) + '"') + '"';
+          const exampleJql = 'project = FCRM AND issuetype = ' + quoteJql(type.name) + ' AND component = ' + quoteJql(component.name) + ' ORDER BY created DESC';
+          const exampleResponse = await fetch('/rest/api/2/search?jql=' + encodeURIComponent(exampleJql) + '&fields=issuetype,components&maxResults=2', {credentials:'same-origin', headers:{Accept:'application/json'}});
+          if (exampleResponse.ok) {
+            const exampleData = await exampleResponse.json();
+            exampleIssueKeys = (exampleData.issues || []).filter(issue => /^FCRM-[0-9]+$/i.test(issue.key || '') && String(issue.fields?.issuetype?.name || '').toLowerCase() === String(type.name).toLowerCase() && (issue.fields?.components || []).some(item => String(item.name || '').toLowerCase() === String(component.name).toLowerCase())).map(issue => issue.key).slice(0, 2);
+          }
+        } catch (_) { /* Примеры необязательны для создания задачи. */ }
+        requestSnapshot = { urls: Array.from(urls), issueTypeName: String(type.name || '').trim(), componentName: String(component.name || '').trim(), issueTypeId: String(type.id || ''), componentId: String(component.id || ''), exampleIssueKeys, additionalInfo: String(values.get('additionalInfo') || '') };
+        await runRequest(requestSnapshot);
+      };
+      followup.onsubmit = async event => {
+        event.preventDefault();
+        if (threadCreationBusy || !reply.value.trim() || !requestSnapshot) return;
+        await runRequest(Object.assign({}, requestSnapshot, {
+          continuation: true,
+          existingIssueKey: createdIssueKey,
+          uncertainResult,
+          conversation: conversation.slice(),
+          clarification: reply.value.trim()
+        }));
+      };
+      const runRequest = async input => {
+        threadCreationBusy = true;
+        followup.style.display = 'none';
+        continueButton.disabled = true;
+        form.hidden = true;
+        form.style.setProperty('display', 'none', 'important');
+        panel.setAttribute('aria-busy', 'true');
+        resultView.replaceChildren();
+        skeleton.hidden = false;
+        skeleton.style.setProperty('display', 'block', 'important');
+        submit.disabled = true;
+        const resultLink = panel.querySelector('[data-thread-result]');
+        resultLink.hidden = true;
+        const update = showLinksSnackbar('Собираю обсуждения chatZone и создаю FCRM. Можно продолжать работу.');
+        status.textContent = 'DeepSeek читает обсуждения и создаёт задачу…';
+        let rejectedBeforeCreation = false;
+        try {
+          const text = await new Promise((resolve, reject) => {
+            if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) { rejectedBeforeCreation = true; reject(new Error('Доступно в установленном расширении Chrome')); return; }
+            chrome.runtime.sendMessage({type:'o3ds:chat',mode:'thread',issueKey:'FCRM',approvedDescription:JSON.stringify(input)}, response => {
+              const error = chrome.runtime.lastError;
+              if (error || !response?.ok) { if (response?.errorCode === 'THREAD_INPUT_INVALID') rejectedBeforeCreation = true; reject(new Error(error?.message || response?.error || 'Нет ответа DeepSeek')); }
+              else resolve(response.text || 'DeepSeek не вернул результат');
+            });
+          });
+          const key = /<created_issue>\\s*(FCRM-[0-9]+)\\s*<\\/created_issue>/i.exec(String(text))?.[1];
+          if (key && !createdIssueKey) createdIssueKey = key;
+          conversation.push({ clarification: input.clarification || '', response: String(text) });
+          reply.value = '';
+          const message = String(text).replace(/<\\/?created_issue>/gi, '');
+          status.textContent = 'Обработка завершена';
+          resultView.innerHTML = renderStructuredAnswer(String(text), 'thread', renderAnswerMarkup);
+          if (createdIssueKey && !key) {
+            resultView.innerHTML = renderStructuredAnswer('<created_issue>' + createdIssueKey + '</created_issue>' + String(text), 'thread', renderAnswerMarkup);
+          }
+          update(renderStructuredAnswer(String(text), 'thread', renderAnswerMarkup), true);
+          if (key) {
+            submit.textContent = 'Создано ' + key;
+          } else {
+            status.textContent += ' Проверьте результат в Jira перед повторным созданием.';
+          }
+        } catch (error) {
+          uncertainResult = !rejectedBeforeCreation;
+          const message = 'Ошибка: ' + String(error.message || error) + (rejectedBeforeCreation ? '' : '. Проверьте Jira перед повторной попыткой: задача могла уже создаться.');
+          status.textContent = message;
+          resultView.textContent = message;
+          update(message);
+        } finally {
+          threadCreationBusy = false;
+          skeleton.hidden = true;
+          skeleton.style.setProperty('display', 'none', 'important');
+          form.hidden = !rejectedBeforeCreation;
+          form.style.setProperty('display', rejectedBeforeCreation ? 'flex' : 'none', 'important');
+          submit.disabled = false;
+          followup.style.display = rejectedBeforeCreation ? 'none' : 'flex';
+          continueButton.disabled = !reply.value.trim();
+          panel.setAttribute('aria-busy', 'false');
+        }
+      };
+    } catch (error) {
+      status.textContent = 'Не удалось загрузить поля FCRM: ' + String(error.message || error);
+    }
+  }
+
+  function generationIconHtml() {
+    return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m10 13 4-4M8 16l-1 1a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0M16 8l1-1a4 4 0 0 1 6 6l-4 4a4 4 0 0 1-6 0" transform="translate(1 1) scale(.85)"/><path d="m19 2 1 2 2 1-2 1-1 2-1-2-2-1 2-1Z"/></svg>';
+  }
+
+  function renderTaskProjectGeneration(task) {
+    const linked = (task.projectTaskLinks || []).some(link => !isCanceledStatus(link.status));
+    const busy = generatingLinkKeys.has(task.key);
+    const title = (linked ? 'Задача проекта есть' : 'Нет Задачи проекта') + ' · Сгенерировать связи';
+    return '<button type="button" class="ozon-ext-btn ozon-ext-inner-ctrl ozon-ext-project-generation ' + (linked ? 'linked' : 'missing') + '" data-action="generate-links" data-task-keys="' + escapeHtml(task.key) + '" ' + (busy ? 'disabled aria-busy="true"' : '') + ' title="' + title + '" aria-label="' + title + '">' + (busy ? '<span class="ozon-ext-spinner"></span>' : generationIconHtml()) + '</button>';
+  }
+
+  function renderMissingCustomerIndicator(task) {
+    if (/^(ошибка|bug)$/i.test(String(task.issueTypeName || '').trim())) return '';
+    const customer = task.customer || {};
+    const name = String(customer.name || '').trim().toLowerCase();
+    if (customer.login || (name && !['не указан', 'не назначен', '—', '-', 'unknown', 'unassigned'].includes(name))) return '';
+    return '<span class="ozon-ext-delivery-indicator" role="img" aria-label="Нет заказчика" title="Не указан Заказчик/Owner" style="color:#D92D20;background:#FFF0EE;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-3a6 6 0 0 1 10-4M18 12v5M18 21h.01"/></svg></span>';
+  }
+
+  function renderDeliveryIndicators(task) {
+    const links = (task.inProjectLinks || []).filter(link => !isCanceledStatus(link.status));
+    return '<span class="ozon-ext-delivery-indicators">' + [
+      { project: 'FTD', label: 'Дизайн' },
+      { project: 'OB', label: 'Бэкенд' },
+      { project: 'OBFRONT', label: 'Фронтенд' }
+    ].map(group => {
+      const items = links.filter(link => String(link.key || '').split('-')[0].toUpperCase() === group.project);
+      const state = !items.length ? 'absent' : items.every(isDoneTask) ? 'done' : 'active';
+      const title = group.label + ': ' + (!items.length ? 'нет задач' : state === 'done' ? 'все задачи закрыты' : 'есть незакрытые задачи');
+      const detail = title + (items.length ? ' · ' + items.map(item => item.key + ' — ' + item.status).join('; ') : '');
+      return '<span class="ozon-ext-delivery-indicator ' + state + '" role="img" aria-label="' + escapeHtml(title) + '" title="' + escapeHtml(detail) + '">' + getLinkedProjectGroupMeta(group.project + '-1', false).iconSvg + '</span>';
+    }).join('') + '</span>';
+  }
+
+  async function refreshGeneratedTaskLinks(key) {
+    const response = await fetch('/rest/api/2/issue/' + encodeURIComponent(key) + '?fields=issuelinks', {
+      credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' }
+    });
+    if (!response.ok) throw new Error('Не удалось обновить связи ' + key);
+    const raw = await response.json();
+    await syncStrategyLinks(raw);
+    const updated = (await normalizeAndEnrichJiraIssues([raw]))[0];
+    if (!updated) throw new Error('Нет данных связей ' + key);
+    tasks = tasks.map(task => task.key === key ? Object.assign({}, task, {
+      projectTaskLinks: updated.projectTaskLinks,
+      inProjectLinks: updated.inProjectLinks,
+      otherLinks: updated.otherLinks
+    }) : task);
+  }
+  let isInitialBoardLoading = false;
+  let initialLoadProgress = 4;
+  let initialLoadStage = 'Подключаемся к Jira';
   let groupByComponentInsideSprint = true;
+  const productGroupingStorage = 'ozon-product-grouping-v1';
+  let productGroupingOrder = (() => { try { const saved = JSON.parse(localStorage.getItem(productGroupingStorage) || 'null'); if (Array.isArray(saved) && saved.every((x) => ['sprint', 'component'].includes(x)) && new Set(saved).size === saved.length) return saved; } catch (_) {} return ['sprint', 'component']; })();
+  groupByComponentInsideSprint = productGroupingOrder.length > 1;
+  let productExpandedGroups = {};
   let selectedTaskKey = null;
   let isSidebarOpen = false;
+  function syncStrategyIssue(raw) {
+    const issue = raw?.key && strategicDashboard.getState().issues.find((item) => item.key === raw.key);
+    if (!issue?.fields || !raw.fields) return;
+    Object.assign(issue.fields, raw.fields);
+    strategicDashboard.invalidateGraph();
+  }
+  async function refreshStrategyIssue(key, fields, deferRender) {
+    if (!strategicDashboard.getState().issues.some((item) => item.key === key)) return;
+    try {
+      const response = await fetch('/rest/api/2/issue/' + encodeURIComponent(key) + '?fields=' + encodeURIComponent(fields), {credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json'}});
+      if (!response.ok) return;
+      syncStrategyIssue(await response.json());
+      if (!deferRender && activeDashboardView === 'strategy') renderStructure();
+    } catch (_) { /* Следующее обновление списка повторит чтение из Jira. */ }
+  }
+  async function syncStrategyLinks(raw) {
+    const issue = raw?.key && strategicDashboard.getState().issues.find((item) => item.key === raw.key);
+    if (!issue?.fields || !Array.isArray(raw.fields?.issuelinks)) return;
+    const oldLinks = issue.fields.issuelinks || [];
+    const newLinks = raw.fields.issuelinks;
+    const signature = (links) => links.map((link) => String(link.id || '') + ':' + ((link.inwardIssue || link.outwardIssue || {}).key || '') + ':' + (link.type?.name || '')).sort().join('|');
+    const changed = signature(oldLinks) !== signature(newLinks);
+    syncStrategyIssue(raw);
+    if (!changed) return;
+    const keys = [...new Set([...oldLinks, ...newLinks].map((link) => (link.inwardIssue || link.outwardIssue || {}).key).filter((key) => key && key !== raw.key))];
+    await Promise.all(keys.map((key) => refreshStrategyIssue(key, 'issuelinks', true)));
+  }
   let isEditingDescription = false;
+  const sidebarDrafts = new Map();
+  function sidebarDraft(key) {
+    if (!sidebarDrafts.has(key)) sidebarDrafts.set(key, {});
+    return sidebarDrafts.get(key);
+  }
+  async function saveSidebarFields(key, fields) {
+    const response = await fetch('/rest/api/2/issue/' + encodeURIComponent(key), {
+      method:'PUT', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body:JSON.stringify({fields})
+    });
+    if (!response.ok) throw new Error('Jira ответила с ошибкой ' + response.status);
+    tasks = tasks.map((task) => task.key === key ? Object.assign({}, task, fields) : task);
+    saveTaskOverride(key, fields);
+    const draft = sidebarDraft(key);
+    Object.keys(fields).forEach((field) => { if (draft[field] === fields[field] || (field === 'summary' && String(draft[field] || '').trim() === fields[field])) delete draft[field]; });
+    const strategyIssue = strategicDashboard.getState().issues.find((issue) => issue.key === key);
+    if (strategyIssue?.fields) { Object.assign(strategyIssue.fields, fields); strategicDashboard.invalidateGraph(); }
+  }
+  async function confirmSidebarExit() {
+    const key = selectedTaskKey;
+    const draft = sidebarDrafts.get(key);
+    if (!draft || (!Object.prototype.hasOwnProperty.call(draft, 'summary') && !Object.prototype.hasOwnProperty.call(draft, 'description'))) return true;
+    const choice = await new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.className = 'ozon-sidebar-draft-overlay';
+      overlay.innerHTML = '<div class="ozon-sidebar-draft-dialog" role="dialog" aria-modal="true" aria-labelledby="ozon-draft-title"><strong id="ozon-draft-title">Есть несохранённые изменения</strong><p>Сохранить изменения задачи ' + escapeHtml(key) + ' перед закрытием?</p><div><button type="button" data-choice="stay">Продолжить редактирование</button><button type="button" data-choice="discard">Не сохранять</button><button type="button" class="primary" data-choice="save">Сохранить</button></div></div>';
+      document.body.appendChild(overlay);
+      overlay.querySelectorAll('[data-choice]').forEach((button) => button.addEventListener('click', () => { const value = button.getAttribute('data-choice'); overlay.remove(); resolve(value); }));
+      overlay.querySelector('[data-choice="stay"]').focus();
+    });
+    if (choice === 'stay') return false;
+    if (choice === 'discard') { sidebarDrafts.delete(key); return true; }
+    const fields = Object.assign({}, draft);
+    if (Object.prototype.hasOwnProperty.call(fields, 'summary')) { fields.summary = fields.summary.trim(); if (!fields.summary) { showSaveToast('Название задачи не может быть пустым'); return false; } }
+    try { await saveSidebarFields(key, fields); sidebarDrafts.delete(key); showSaveToast('Изменения ' + key + ' сохранены'); return true; }
+    catch (error) { showSaveToast('Не удалось сохранить изменения: ' + (error.message || 'ошибка запроса')); return false; }
+  }
   let loadingSidebarTaskKey = null;
   let sidebarBlockLoading = { taskKey: null, desc: false, params: false, links: false, ipMeta: false };
-  let loadingSprintsMap = {};
-  let loadingComponentsMap = {};
+  let frontDesignLinksByKey = {};
   let sidebarWidth = Number(localStorage.getItem(STORAGE_KEY_SIDEBAR_W)) || 540;
 
   // ПО УМОЛЧАНИЮ ВСЕ СПРИНТЫ И ВСЕ КОМПОНЕНТЫ СВЕРНУТЫ!
@@ -1220,11 +2425,22 @@ export function generateContentScriptJs(
   let collapsedSidebarSections = {
     desc: false,
     params: false,
-    pt: false,
+    pt: true,
     pt_quick: true, // Быстрый фильтр в аккордеоне «Задачи проекта» по умолчанию закрыт
-    ip: false
+    ip: false,
+    other: false
   };
   let collapsedIpGroups = {}; // { [groupKey]: true }
+  let createInProjectMenuOpen = false;
+  let otherLinkMenuOpen = false;
+  const expandedSidebarDescriptions = new Set();
+  let linkCreateDraft = null;
+  let issueCreateDraft = null;
+  let issueCreateBusy = false;
+  let issueCreateLoading = false;
+  const projectComponentRequests = new Map();
+  const projectComponentRecords = new Map();
+  const issueCreateMetaByProject = {};
 
   // Состояние открытых Input-Select комбобоксов в таблице и сайдбаре
   let activeTableCombo = null; // { type: 'status' | 'epic' | 'component' | 'assignee' | 'customer' | 'sprint', taskKey, query }
@@ -1236,10 +2452,17 @@ export function generateContentScriptJs(
   let sbCompSearchQuery = '';
   let sbIpCompOpenIdx = null; // индекс связи «В проекте», у которой открыт Input-Select компонента
   let sbIpCompSearchQuery = '';
+  let sbIpSprintOpenIdx = null;
+  let sbIpSprintSearchQuery = '';
+  let ipSprintLoadProgress = {};
   let filterEpicComboOpen = false;
   let filterEpicSearchQuery = '';
   let filterCompComboOpen = false;
   let filterCompSearchQuery = '';
+  let activeToolbarFilter = '';
+  let toolbarFilterSearch = '';
+  let activeSearchSelectId = '';
+  let searchSelectQuery = '';
   let isColOrderPanelOpen = false;
   let draggedColKey = null;
 
@@ -1248,8 +2471,13 @@ export function generateContentScriptJs(
   let filterComponent = 'all';
   let filterEpic = 'all';
   let filterStatus = 'all';
-  let filterSprintState = 'all'; // 'all' | 'open_future' | 'ACTIVE' | 'FUTURE' | 'CLOSED' | 'BACKLOG'
-  let hideEpicTasks = false; // Фильтр «Скрыть задачи с типом Эпик»
+  let allSprintIssuesLoaded = false;
+  let loadedSprintMode = null;
+  let filterSprintState = 'open_future_backlog'; // активные, будущие и бэклог
+  let hideDone = false;
+  let filterIssueType = 'all';
+  let tableTreeLevel = 'sprints';
+  let treeLevelApplied = false;
   let sortByField = 'default'; // 'default' | 'priority_desc' | 'priority_asc' | 'created_desc' | 'created_asc'
 
   let umbSearchQuery = '';
@@ -1261,7 +2489,7 @@ export function generateContentScriptJs(
   let searchedCustomerResults = [];
   let userSearchTimer = null;
   let custSearchTimer = null;
-  let statusMessage = 'Загрузка спринтов и задач FCRM...';
+  let statusMessage = 'Выберите фильтры и загрузите задачи';
   let saveToastText = '';
   let saveToastTimer = null;
 
@@ -1270,10 +2498,26 @@ export function generateContentScriptJs(
     sprint: null,
     epicLink: null,
     epicName: null,
+    storyPoints: null,
     customer: null
   };
   let discoveredCustomerFieldIds = [];
   let discoveredIssueLinkTypes = [];
+  let discoveredIssueLinkTypesPromise = null;
+  async function loadIssueLinkTypes() {
+    if (Array.isArray(discoveredIssueLinkTypes) && discoveredIssueLinkTypes.length) return discoveredIssueLinkTypes;
+    if (!discoveredIssueLinkTypesPromise) {
+      discoveredIssueLinkTypesPromise = fetch('/rest/api/2/issueLinkType', {
+        credentials: 'same-origin', headers: { Accept: 'application/json' }
+      }).then(async (response) => {
+        if (!response.ok) throw new Error('Не удалось получить типы связей Jira');
+        const data = await response.json();
+        discoveredIssueLinkTypes = Array.isArray(data.issueLinkTypes) ? data.issueLinkTypes : [];
+        return discoveredIssueLinkTypes;
+      }).catch((error) => { discoveredIssueLinkTypesPromise = null; throw error; });
+    }
+    return discoveredIssueLinkTypesPromise;
+  }
   let sprintNameById = {};
   let sprintIdByName = {};
   let sprintStateByName = {};
@@ -1282,8 +2526,10 @@ export function generateContentScriptJs(
   let boardOwnedSprintNames = new Set();
   let closedSprintIds = new Set();
   let closedSprintNames = new Set();
-  let issueSprintOverrideMap = {};
   let epicNameByKey = {}; // Все эпики (для отображения названий)
+  let epicStatusByKey = {};
+  let epicLabelsByKey = {};
+  let epicObprojectByFcrmEpicKey = {};
   let fcrmEpicNameByKey = {}; // СТРОГО эпики проекта FCRM для Input-Select выбора эпика
   let projectComponentsList = [];
   let externalProjectComponentsMap = {}; // { [projectKey]: string[] }
@@ -1439,31 +2685,19 @@ export function generateContentScriptJs(
   }
 
   function getSprintStateBadgeHtml(sprintName) {
-    const code = getSprintStateCode(sprintName);
-    if (code === 'ACTIVE') {
-      return '<span class="ozon-ext-badge ozon-ext-badge-done" style="font-size:9.5px;padding:0 5px;flex-shrink:0;">Активный</span>';
-    }
-    if (code === 'FUTURE') {
-      return '<span class="ozon-ext-badge ozon-ext-badge-progress" style="font-size:9.5px;padding:0 5px;flex-shrink:0;">Будущий</span>';
-    }
-    if (code === 'CLOSED') {
-      return '<span class="ozon-ext-badge ozon-ext-badge-todo" style="font-size:9.5px;padding:0 5px;flex-shrink:0;">Прошедший</span>';
-    }
-    return '';
+    const label = getSprintStateLabelRu(sprintName);
+    return label ? renderBadge(escapeHtml(label), getSprintStateCode(sprintName).toLowerCase()) : '';
   }
 
   const DEFAULT_COLUMNS_META = [
     { key: 'task', label: 'Задача (Спринт → Компонент → Задача)', width: 370 },
     { key: 'status', label: 'Статус ▾', width: 130 },
-    { key: 'epic', label: 'Эпик (FCRM) ▾', width: 240 },
+    { key: 'epic', label: 'Epic Link ▾', width: 240 },
+    { key: 'epicObproject', label: 'Эпик OBPROJECT', width: 220 },
     { key: 'component', label: 'Компонент ▾', width: 180 },
     { key: 'assignee', label: 'Исполнитель ▾', width: 165 },
-    { key: 'author', label: 'Автор', width: 140 },
-    { key: 'customer', label: 'Заказчик/Owner ▾', width: 170 },
     { key: 'created', label: 'Создана', width: 115 },
-    { key: 'sprint', label: 'Спринт ▾', width: 175 },
-    { key: 'projectTask', label: 'Задача проекта (fcrm_umb_epic)', width: 230 },
-    { key: 'inProject', label: 'В проекте (OB · OBFRONT · FTD)', width: 275 }
+    { key: 'sprint', label: 'Спринт ▾', width: 175 }
   ];
 
   const DEFAULT_COLUMN_ORDER = DEFAULT_COLUMNS_META.map((c) => c.key);
@@ -1474,6 +2708,219 @@ export function generateContentScriptJs(
     if (!issueKey || typeof issueKey !== 'string') return CONFIG.projectKey;
     const parts = issueKey.trim().split('-');
     return (parts[0] || CONFIG.projectKey).toUpperCase();
+  }
+
+  async function loadRemoteIssueLinks(issueKey) {
+    try {
+      const response = await fetch('/rest/api/2/issue/' + encodeURIComponent(issueKey) + '/remotelink', {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+        cache: 'no-store'
+      });
+      if (!response.ok) return [];
+      const links = await response.json();
+      if (!Array.isArray(links)) return [];
+      return links.map((link) => {
+        const object = link && link.object || {};
+        const url = String(object.url || '');
+        return {
+          id: 'remote-' + String(link.id || url),
+          key: String(object.title || url || 'Веб-ссылка'),
+          summary: String(object.title || url || 'Веб-ссылка'),
+          status: 'Открыто',
+          url: url,
+          linkType: String(link.relationship || 'Веб-ссылка')
+        };
+      }).filter((link) => link.url);
+    } catch (e) { return []; }
+  }
+
+  async function loadEpicObprojectDetails(fcrmEpicKey, suppliedCustomFieldValue) {
+    const key = String(fcrmEpicKey || '').trim().toUpperCase();
+    if (!key) return;
+    const existing = epicObprojectByFcrmEpicKey[key];
+    if (existing && existing.loading && arguments.length < 2) return;
+    if (existing && existing.key && arguments.length < 2) return;
+    const initialSelectedIssue = tasks.find((task) => task.key === selectedTaskKey) || {};
+    const initialSourceKey = isEpicIssueType(initialSelectedIssue.issueTypeName) ? initialSelectedIssue.key : initialSelectedIssue.epicKey;
+    let obprojectKey = '';
+    try {
+      let rawValue = suppliedCustomFieldValue;
+      if (arguments.length < 2) {
+        const fcrmResponse = await fetch('/rest/api/2/issue/' + encodeURIComponent(key) + '?fields=customfield_20100', {
+          credentials: 'same-origin', headers: { Accept: 'application/json' }, cache: 'no-store'
+        });
+        if (!fcrmResponse.ok) throw new Error('Не удалось прочитать customfield_20100');
+        const fcrmIssue = await fcrmResponse.json();
+        rawValue = fcrmIssue && fcrmIssue.fields ? fcrmIssue.fields.customfield_20100 : null;
+      }
+      const value = Array.isArray(rawValue) ? rawValue[0] : rawValue;
+      obprojectKey = String(value && typeof value === 'object' ? value.key || value.value || value.name || value.url || '' : value || '').trim().toUpperCase();
+      const matchedKey = /[A-Z][A-Z0-9]+-[0-9]+/.exec(obprojectKey);
+      if (!matchedKey) {
+        epicObprojectByFcrmEpicKey[key] = { loading: false, key: '', summary: '', status: '' };
+      } else {
+        obprojectKey = matchedKey[0];
+        // Show the key as soon as customfield_20100 is received. Loading the
+        // linked issue's summary/status is supplementary and must not hide it.
+        epicObprojectByFcrmEpicKey[key] = { loading: true, key: obprojectKey, summary: '', status: '' };
+        if (selectedTaskKey && initialSourceKey === key) renderStructure();
+        const obKey = obprojectKey;
+        const issueResponse = await fetch('/rest/api/2/issue/' + encodeURIComponent(obKey) + '?fields=summary,status', {
+          credentials: 'same-origin', headers: { Accept: 'application/json' }, cache: 'no-store'
+        });
+        if (issueResponse.ok) {
+          const obIssue = await issueResponse.json();
+          epicObprojectByFcrmEpicKey[key] = {
+            loading: false,
+            key: obKey,
+            summary: String(obIssue.fields && obIssue.fields.summary || ''),
+            status: readStatusName(obIssue.fields && obIssue.fields.status, '')
+          };
+        } else {
+          epicObprojectByFcrmEpicKey[key] = { loading: false, key: obKey, summary: '', status: '', error: true };
+        }
+      }
+    } catch (_) {
+      epicObprojectByFcrmEpicKey[key] = obprojectKey
+        ? { loading: false, key: obprojectKey, summary: '', status: '', error: true }
+        : { loading: false, error: true };
+    }
+    const selectedIssue = tasks.find((task) => task.key === selectedTaskKey) || {};
+    const selectedObprojectSource = isEpicIssueType(selectedIssue.issueTypeName) ? selectedIssue.key : selectedIssue.epicKey;
+    if (selectedTaskKey && selectedObprojectSource === key) renderStructure();
+  }
+
+  function cacheEpicMetadata(issues) {
+    issues.forEach(issue => {
+      const fields = issue.fields || {};
+      if (fields.summary) epicNameByKey[issue.key] = String(fields.summary);
+      if (fields.status) epicStatusByKey[issue.key] = readStatusName(fields.status, '');
+      if (Array.isArray(fields.labels)) epicLabelsByKey[issue.key] = fields.labels;
+      if (!Object.prototype.hasOwnProperty.call(fields, 'customfield_20100')) return;
+      let value = fields.customfield_20100;
+      if (Array.isArray(value)) value = value[0];
+      const raw = value && typeof value === 'object' ? value.key || value.value || value.name || value.url || '' : value || '';
+      const match = /[A-Z][A-Z0-9]+-[0-9]+/.exec(String(raw).toUpperCase());
+      const key = match ? match[0] : '';
+      const previous = epicObprojectByFcrmEpicKey[issue.key];
+      if (!previous || previous.key !== key) epicObprojectByFcrmEpicKey[issue.key] = { loading:false, key, summary:'', status:'' };
+    });
+  }
+
+  async function loadTableObprojectMetadata(epicKeys) {
+    const sourcesByKey = new Map();
+    for (const source of epicKeys) {
+      const key = epicObprojectByFcrmEpicKey[source]?.key;
+      if (!key) continue;
+      if (!sourcesByKey.has(key)) sourcesByKey.set(key, []);
+      sourcesByKey.get(key).push(source);
+    }
+    const keys = Array.from(sourcesByKey.keys());
+    for (let offset = 0; offset < keys.length; offset += 50) {
+      const chunk = keys.slice(offset, offset + 50);
+      try {
+        const response = await fetch('/rest/api/2/search?jql=' + encodeURIComponent('key in (' + chunk.join(',') + ')') + '&fields=summary,status&maxResults=100', { credentials:'same-origin', cache:'no-store', headers:{ Accept:'application/json' } });
+        if (!response.ok) continue;
+        const data = await response.json();
+        (data.issues || []).forEach(issue => {
+          (sourcesByKey.get(issue.key) || []).forEach((source) => {
+            if (epicObprojectByFcrmEpicKey[source]?.key !== issue.key) return;
+            epicObprojectByFcrmEpicKey[source] = { loading:false, key:issue.key, summary:String(issue.fields.summary || ''), status:readStatusName(issue.fields.status, '') };
+          });
+        });
+      } catch (_) {}
+    }
+  }
+
+  async function refreshTaskEpicDetails(taskKey, rawIssue) {
+    const task = tasks.find((item) => item.key === taskKey);
+    if (!task) return;
+    if (isEpicIssueType(task.issueTypeName)) {
+      await loadEpicObprojectDetails(task.key, rawIssue.fields.customfield_20100);
+      return;
+    }
+    if (!task.epicKey) return;
+    const epicKey = task.epicKey;
+    const response = await fetch('/rest/api/2/issue/' + encodeURIComponent(epicKey) + '?fields=summary,status,customfield_20100,labels', {
+      credentials: 'same-origin', headers: { Accept: 'application/json' }, cache: 'no-store'
+    });
+    if (!response.ok) throw new Error('Не удалось обновить эпик ' + epicKey);
+    const epic = await response.json();
+    cacheEpicMetadata([epic]);
+    epicNameByKey[epicKey] = String(epic.fields.summary || '');
+    epicStatusByKey[epicKey] = readStatusName(epic.fields.status, '');
+    tasks = tasks.map((item) => item.epicKey === epicKey ? Object.assign({}, item, { epicName: epicNameByKey[epicKey] }) : item);
+    await loadEpicObprojectDetails(epicKey, epic.fields.customfield_20100);
+  }
+
+  const refreshingSidebarSections = new Set();
+  async function refreshSidebarSection(taskKey, section) {
+    const requestRevision = taskEditRevision;
+    const requestKey = taskKey + ':' + section;
+    if (refreshingSidebarSections.has(requestKey)) return;
+    refreshingSidebarSections.add(requestKey);
+    renderStructure();
+    try {
+      const fields = section === 'params' ? getBoardFieldsParam() : 'issuelinks';
+      const response = await fetch('/rest/api/2/issue/' + encodeURIComponent(taskKey) + '?fields=' + fields, {
+        credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' }
+      });
+      if (!response.ok) throw new Error('Jira: HTTP ' + response.status);
+      const raw = await response.json();
+      await syncStrategyLinks(raw);
+      syncStrategyIssue(raw);
+      const updated = (await normalizeAndEnrichJiraIssues([raw]))[0];
+      if (!updated) throw new Error('Jira не вернула данные задачи');
+      if (section === 'params') {
+        const keys = ['issueTypeName', 'issueTypeId', 'priority', 'sprint', 'component', 'epicKey', 'epicName', 'assignee', 'customer', 'labels', 'status'];
+        const patch = {};
+        keys.forEach((key) => { patch[key] = updated[key]; });
+        clearTaskOverride(taskKey, requestRevision);
+        tasks = applyLocalOverridesToTasks(tasks.map((item) => item.key === taskKey ? Object.assign({}, item, patch) : item), requestRevision, taskKey);
+        const transitions = await fetch('/rest/api/2/issue/' + encodeURIComponent(taskKey) + '/transitions', { credentials: 'same-origin', cache: 'no-store' });
+        if (transitions.ok) issueTransitionsByKey[taskKey] = (await transitions.json()).transitions || [];
+        await refreshTaskEpicDetails(taskKey, raw);
+      } else {
+        const field = section === 'pt' ? 'projectTaskLinks' : 'inProjectLinks';
+        tasks = tasks.map((item) => item.key === taskKey ? Object.assign({}, item, { [field]: updated[field] }) : item);
+        if (section === 'ip') {
+          await Promise.all(updated.inProjectLinks.map(async (link) => {
+            delete frontDesignLinksByKey[link.key];
+            await Promise.all([loadFrontDesignRelation(link.key)]);
+          }));
+        }
+      }
+      showSaveToast('✓ Блок обновлён из Jira');
+    } catch (error) {
+      showSaveToast('Не удалось обновить блок: ' + error.message);
+    } finally {
+      refreshingSidebarSections.delete(requestKey);
+      renderStructure();
+    }
+  }
+
+  function sidebarRefreshButton(taskKey, section) {
+    const busy = refreshingSidebarSections.has(taskKey + ':' + section) || (sidebarBlockLoading.taskKey === taskKey && sidebarBlockLoading[section === 'params' ? 'params' : 'links']);
+    return '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-action="refresh-sidebar-section" data-section="' + section + '" title="Перезагрузить" aria-label="Перезагрузить" ' + (busy ? 'disabled aria-busy="true"' : '') + ' style="width:26px;height:26px;padding:4px;flex-shrink:0;">' + (busy ? '<span class="ozon-ext-spinner"></span>' : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.9-3L4 10M4 4v6h6M4 13a8 8 0 0 0 14.9 3L20 14M20 20v-6h-6"/></svg>') + '</button>';
+  }
+
+  async function loadFrontDesignRelation(issueKey) {
+    if (!issueKey || frontDesignLinksByKey[issueKey]) return;
+    frontDesignLinksByKey[issueKey] = { loading: true, keys: [] };
+    try {
+      const response = await fetch('/rest/api/2/issue/' + encodeURIComponent(issueKey) + '?fields=issuelinks', {
+        credentials: 'same-origin', headers: { Accept: 'application/json' }, cache: 'no-store'
+      });
+      if (!response.ok) throw new Error('Не удалось проверить связи');
+      const data = await response.json();
+      const links = data && data.fields && Array.isArray(data.fields.issuelinks) ? data.fields.issuelinks : [];
+      const keys = links.map((link) => (link.inwardIssue || link.outwardIssue || {}).key).filter((key) => /^FTD-/i.test(String(key || '')));
+      frontDesignLinksByKey[issueKey] = { loading: false, keys };
+    } catch (_) {
+      frontDesignLinksByKey[issueKey] = { loading: false, keys: [], error: true };
+    }
+    if (selectedTaskKey) renderStructure();
   }
 
   async function loadExternalProjectComponents(projKey) {
@@ -1493,7 +2940,10 @@ export function generateContentScriptJs(
       const normalized = savedOrder.map((k) => (k === 'createdAt' ? 'created' : k));
       const validKeys = normalized.filter((k) => defaultColWidths[k]);
       DEFAULT_COLUMNS_META.forEach((c) => {
-        if (!validKeys.includes(c.key)) validKeys.push(c.key);
+        if (!validKeys.includes(c.key)) {
+          if (c.key === 'epicObproject' && validKeys.includes('epic')) validKeys.splice(validKeys.indexOf('epic') + 1, 0, c.key);
+          else validKeys.push(c.key);
+        }
       });
       columnOrder = validKeys;
     }
@@ -1517,47 +2967,40 @@ export function generateContentScriptJs(
   }
 
   function showSaveToast(msg) {
-    saveToastText = msg;
-    if (saveToastTimer) clearTimeout(saveToastTimer);
-    const toastEl = document.getElementById('ozon-ext-toast');
-    if (toastEl) {
-      toastEl.textContent = msg;
-      toastEl.style.display = 'inline-flex';
-    }
-    saveToastTimer = setTimeout(() => {
-      saveToastText = '';
-      const el = document.getElementById('ozon-ext-toast');
-      if (el) el.style.display = 'none';
-    }, 3200);
+    const update = showLinksSnackbar(msg);
+    update(msg);
   }
 
-  function loadLocalOverrides() {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY_OVERRIDES) || '{}') || {};
-    } catch (e) {
-      return {};
-    }
-  }
-
+  // Only edits made during an in-flight request may override Jira's response.
+  let taskEditRevision = 0;
+  const taskEdits = {};
   function saveTaskOverride(taskKey, patch) {
-    try {
-      const all = loadLocalOverrides();
-      const safePatch = Object.assign({}, patch);
-      delete safePatch.inProjectLinks;
-      delete safePatch.projectTaskLinks;
-      all[taskKey] = Object.assign({}, all[taskKey] || {}, safePatch);
-      localStorage.setItem(STORAGE_KEY_OVERRIDES, JSON.stringify(all));
-    } catch (e) {}
+    if (!taskKey) return;
+    const edits = taskEdits[taskKey] || (taskEdits[taskKey] = {});
+    Object.keys(patch).forEach((field) => {
+      if (['inProjectLinks', 'projectTaskLinks', 'otherLinks'].includes(field)) return;
+      edits[field] = { value: patch[field], revision: ++taskEditRevision };
+    });
   }
 
-  function applyLocalOverridesToTasks(list) {
-    const all = loadLocalOverrides();
-    return list.map((t) => {
-      if (!all[t.key]) return t;
-      const ov = Object.assign({}, all[t.key]);
-      delete ov.inProjectLinks;
-      delete ov.projectTaskLinks;
-      return Object.assign({}, t, ov);
+  function applyLocalOverridesToTasks(list, requestRevision, onlyTaskKey) {
+    return list.map((task) => {
+      if (onlyTaskKey && task.key !== onlyTaskKey) return task;
+      const edits = taskEdits[task.key];
+      if (!edits) return task;
+      const patch = {};
+      Object.keys(edits).forEach((field) => {
+        if (edits[field].revision > requestRevision) patch[field] = edits[field].value;
+      });
+      return Object.assign({}, task, patch);
+    });
+  }
+
+  function clearTaskOverride(taskKey, throughRevision) {
+    const edits = taskEdits[taskKey];
+    if (!edits) return;
+    Object.keys(edits).forEach((field) => {
+      if (edits[field].revision <= throughRevision) delete edits[field];
     });
   }
 
@@ -1581,8 +3024,23 @@ export function generateContentScriptJs(
     }
   }
 
+  const doneByStatus = new Map();
+  const categoryByStatus = new Map();
+  function readStatusName(status, fallback) {
+    if (status && status.name && status.statusCategory) {
+      doneByStatus.set(status.name, status.statusCategory.key === 'done');
+      categoryByStatus.set(status.name, status.statusCategory.key);
+    }
+    return status && status.name || fallback;
+  }
+
   function getStatusCategoryClass(statusName) {
+    const jiraCategory = categoryByStatus.get(statusName);
+    if (jiraCategory === 'done') return 'done';
+    if (jiraCategory === 'indeterminate') return 'progress';
+    if (jiraCategory === 'new') return 'todo';
     const low = String(statusName || '').toLowerCase();
+    if (low.includes('к выполнению') || low.includes('to do') || low.includes('backlog')) return 'todo';
     if (
       low.includes('ondev') ||
       low.includes('onanalysis') ||
@@ -1625,7 +3083,7 @@ export function generateContentScriptJs(
   function getStatusBadgeHtml(statusName) {
     const s = String(statusName || 'Открыто');
     const cat = getStatusCategoryClass(s);
-    return '<span class="ozon-ext-badge ozon-ext-badge-' + cat + '">' + escapeHtml(s) + '</span>';
+    return renderBadge(escapeHtml(s), cat);
   }
 
   /**
@@ -1634,9 +3092,9 @@ export function generateContentScriptJs(
    */
   function getLinkTypeTagHtml(isProjectTask) {
     if (isProjectTask) {
-      return '<span class="ozon-ext-link-type-tag" title="Тип связи: Задача проекта (fcrm_umb_epic)"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg><span>Задача проекта</span></span>';
+      return '<span class="ozon-ext-link-type-tag" role="img" aria-label="Задача проекта" title="Тип связи: Задача проекта (fcrm_umb_epic)"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg></span>';
     }
-    return '<span class="ozon-ext-link-type-tag" title="Тип связи: В проекте (смежная задача реализации)"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg><span>В проекте</span></span>';
+    return '<span class="ozon-ext-link-type-tag" role="img" aria-label="В проекте" title="Тип связи: В проекте (смежная задача реализации)"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>';
   }
 
   /**
@@ -1675,9 +3133,9 @@ export function generateContentScriptJs(
     s = s.replace(/\\{color:([^}]+)\\}([\\s\\S]*?)\\{color\\}/gi, '<span style="color:$1;font-weight:600;">$2</span>');
 
     // Жирный текст *текст*
-    s = s.replace(/(^|[\\s(«"'])\\*([^\\s*][^*]*?[^\\s*]|[^\\s*])\\*(?=[\\s)»"',.:;!?]|$)/g, '$1<strong style="color:#071026;font-weight:700;">$2</strong>');
+    s = s.replace(/(^|[\\s(В«"'])\\*([^\\s*][^*]*?[^\\s*]|[^\\s*])\\*(?=[\\s)В»"',.:;!?]|$)/g, '$1<strong style="color:#071026;font-weight:700;">$2</strong>');
     // Курсив _текст_
-    s = s.replace(/(^|[\\s(«"'])_([^\\s_][^_]*?[^\\s_]|[^\\s_])_(?=[\\s)»"',.:;!?]|$)/g, '$1<em>$2</em>');
+    s = s.replace(/(^|[\\s(В«"'])_([^\\s_][^_]*?[^\\s_]|[^\\s_])_(?=[\\s)В»"',.:;!?]|$)/g, '$1<em>$2</em>');
 
     return s;
   }
@@ -1758,7 +3216,7 @@ export function generateContentScriptJs(
       }
 
       // Нумерованный список (# пункт, 1. пункт, 1) пункт, либо "1 клиент переводит..." как в задачах FCRM)
-      const numMatch = trimmed.match(/^(?:(#+)|(\\d+)[.)]|(\\d+)\\s+(?=[А-Яа-яЁёA-Za-z]))\\s*(.+)$/);
+      const numMatch = trimmed.match(/^(?:(#+)|(\\d+)[.)]|(\\d+)\\s+(?=[^\\x00-\\x7F]))\\s*(.+)$/);
       if (numMatch) {
         const numLabel = numMatch[2] ? numMatch[2] + '.' : numMatch[3] ? numMatch[3] + '.' : '•';
         out.push(
@@ -1827,28 +3285,8 @@ export function generateContentScriptJs(
 
   function getIssueTypeBadgeHtml(issueTypeName, showLabel) {
     const t = String(issueTypeName || 'Задача').trim() || 'Задача';
-    const isEp = isEpicIssueType(t);
-    const bg = isEp ? '#F3E8FF' : '#F1F5F9';
-    const fg = isEp ? '#7E22CE' : '#334155';
-    const border = isEp ? '#D8B4FE' : '#CBD5E1';
-    if (!showLabel) {
-      return '<span style="display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;" title="Тип задачи: ' + escapeHtml(t) + '">' + getJiraIssueTypeIconSvg(t) + '</span>';
-    }
-    return (
-      '<span style="display:inline-flex;align-items:center;gap:4px;padding:0 5px;height:17px;border-radius:4px;font-size:10px;font-weight:600;background:' +
-      bg +
-      ';color:' +
-      fg +
-      ';border:1px solid ' +
-      border +
-      ';flex-shrink:0;white-space:nowrap;" title="Тип задачи: ' +
-      escapeHtml(t) +
-      '">' +
-      getJiraIssueTypeIconSvg(t) +
-      '<span>' +
-      escapeHtml(t) +
-      '</span></span>'
-    );
+    const color = isEpicIssueType(t) ? "#9333ea" : /истори|story/i.test(t) ? "#16a34a" : /ошиб|bug/i.test(t) ? "#dc2626" : /аналит|analy/i.test(t) ? "#d97706" : "#2563eb";
+    return '<span class="ozon-ext-type-pill" title="' + escapeHtml(t) + '"><i style="background:' + color + '"></i>' + (showLabel ? escapeHtml(t) : "") + "</span>";
   }
 
   /**
@@ -2057,21 +3495,12 @@ export function generateContentScriptJs(
     return true;
   }
 
-  function extractCleanSprintName(rawVal, issueId, issueKey, allowClosed) {
-    if (issueKey && issueSprintOverrideMap[issueKey]) {
-      const ov = issueSprintOverrideMap[issueKey];
-      if (allowClosed || !closedSprintNames.has(ov)) return ov;
-    }
-    if (issueId && issueSprintOverrideMap[String(issueId)]) {
-      const ov = issueSprintOverrideMap[String(issueId)];
-      if (allowClosed || !closedSprintNames.has(ov)) return ov;
-    }
-
+  function extractCleanSprintName(rawVal, allowClosed) {
     if (!rawVal) return null;
 
     if (Array.isArray(rawVal)) {
       for (let i = rawVal.length - 1; i >= 0; i--) {
-        const parsed = extractCleanSprintName(rawVal[i], null, null, allowClosed);
+        const parsed = extractCleanSprintName(rawVal[i], allowClosed);
         if (parsed) return parsed;
       }
       return null;
@@ -2174,55 +3603,41 @@ export function generateContentScriptJs(
       });
     }
 
-    // 1. Приоритет №1: Активный или Будущий спринт
-    if (iss.key && issueSprintOverrideMap[iss.key] && !closedSprintNames.has(issueSprintOverrideMap[iss.key])) {
-      return issueSprintOverrideMap[iss.key];
-    }
-    if (iss.id && issueSprintOverrideMap[String(iss.id)] && !closedSprintNames.has(issueSprintOverrideMap[String(iss.id)])) {
-      return issueSprintOverrideMap[String(iss.id)];
-    }
-
-    const fromAgileActive = extractCleanSprintName(f.sprint, iss.id, iss.key, false);
+    // Jira sprint fields take precedence over historical board membership.
+    const fromAgileActive = extractCleanSprintName(f.sprint, false);
     if (fromAgileActive) return fromAgileActive;
 
     if (discoveredFields.sprint && f[discoveredFields.sprint]) {
-      const fromCustomActive = extractCleanSprintName(f[discoveredFields.sprint], iss.id, iss.key, false);
+      const fromCustomActive = extractCleanSprintName(f[discoveredFields.sprint], false);
       if (fromCustomActive) return fromCustomActive;
     }
 
     for (const k of Object.keys(f)) {
       const val = f[k];
       if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'string' && val[0].includes('greenhopper.service.sprint.Sprint')) {
-        const parsedActive = extractCleanSprintName(val, iss.id, iss.key, false);
+        const parsedActive = extractCleanSprintName(val, false);
         if (parsedActive) return parsedActive;
       }
     }
 
-    // 2. Приоритет №2: Прошедший (закрытый) спринт, чтобы закрытые спринты тоже отображались в списке и на доске
-    if (iss.key && issueSprintOverrideMap[iss.key]) {
-      return issueSprintOverrideMap[iss.key];
-    }
-    if (iss.id && issueSprintOverrideMap[String(iss.id)]) {
-      return issueSprintOverrideMap[String(iss.id)];
-    }
-
-    const fromAgileClosed = extractCleanSprintName(f.sprint, iss.id, iss.key, true);
+    // Use closed sprints only when there is no active or future sprint.
+    const fromAgileClosed = extractCleanSprintName(f.sprint, true);
     if (fromAgileClosed) return fromAgileClosed;
 
     if (discoveredFields.sprint && f[discoveredFields.sprint]) {
-      const fromCustomClosed = extractCleanSprintName(f[discoveredFields.sprint], iss.id, iss.key, true);
+      const fromCustomClosed = extractCleanSprintName(f[discoveredFields.sprint], true);
       if (fromCustomClosed) return fromCustomClosed;
     }
 
     if (Array.isArray(f.closedSprints) && f.closedSprints.length > 0) {
-      const fromClosedArr = extractCleanSprintName(f.closedSprints, iss.id, iss.key, true);
+      const fromClosedArr = extractCleanSprintName(f.closedSprints, true);
       if (fromClosedArr) return fromClosedArr;
     }
 
     for (const k of Object.keys(f)) {
       const val = f[k];
       if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'string' && val[0].includes('greenhopper.service.sprint.Sprint')) {
-        const parsedClosed = extractCleanSprintName(val, iss.id, iss.key, true);
+        const parsedClosed = extractCleanSprintName(val, true);
         if (parsedClosed) return parsedClosed;
       }
     }
@@ -2286,35 +3701,26 @@ export function generateContentScriptJs(
 
   function resolveRealLinkedIssueSprint(lIss) {
     if (!lIss) return 'Не в спринте';
-    const lf = lIss.fields || {};
-
-    const fromSprint = extractAnyRealSprintName(lf.sprint);
-    if (fromSprint) return fromSprint;
-
-    if (discoveredFields.sprint && lf[discoveredFields.sprint]) {
-      const fromCustom = extractAnyRealSprintName(lf[discoveredFields.sprint]);
-      if (fromCustom) return fromCustom;
-    }
-
-    for (const k of Object.keys(lf)) {
-      const val = lf[k];
-      if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'string' && val[0].includes('greenhopper.service.sprint.Sprint')) {
-        const parsed = extractAnyRealSprintName(val);
-        if (parsed) return parsed;
+    const fields = lIss.fields || {};
+    const candidates = [fields.sprint];
+    if (discoveredFields.sprint) candidates.push(fields[discoveredFields.sprint]);
+    Object.keys(fields).forEach((key) => {
+      const value = fields[key];
+      if (Array.isArray(value) && value.length && typeof value[0] === 'string' && value[0].includes('greenhopper.service.sprint.Sprint')) candidates.push(value);
+    });
+    candidates.push(fields.closedSprints);
+    let closed = null;
+    for (const candidate of candidates) {
+      const values = Array.isArray(candidate) ? candidate.slice().reverse() : [candidate];
+      for (const value of values) {
+        const name = extractAnyRealSprintName(value);
+        if (!name) continue;
+        const state = sprintStateByName[name];
+        if (state !== 'CLOSED') return name;
+        if (!closed) closed = name;
       }
     }
-
-    if (Array.isArray(lf.closedSprints) && lf.closedSprints.length > 0) {
-      const fromClosed = extractAnyRealSprintName(lf.closedSprints);
-      if (fromClosed) {
-        if (!sprintStateByName[fromClosed]) {
-          sprintStateByName[fromClosed] = 'CLOSED';
-        }
-        return fromClosed;
-      }
-    }
-
-    return 'Не в спринте';
+    return closed || 'Не в спринте';
   }
 
   function resolveRealLinkedIssueComponent(lIss) {
@@ -2327,31 +3733,300 @@ export function generateContentScriptJs(
     return 'Без компонента';
   }
 
+  function fetchProjectComponents(key, refresh = false) {
+    if (projectComponentRequests.has(key)) return projectComponentRequests.get(key);
+    if (!refresh && projectComponentRecords.has(key)) return Promise.resolve(projectComponentRecords.get(key));
+    const request = fetch('/rest/api/2/project/' + encodeURIComponent(key) + '/components', {
+      credentials: 'same-origin', headers: { Accept: 'application/json' }
+    }).then(async response => {
+      if (!response.ok) throw new Error('Не удалось загрузить компоненты проекта ' + key);
+      const items = await response.json();
+      if (!Array.isArray(items)) throw new Error('Неизвестный формат списка компонентов ' + key);
+      const records = items.filter(item => item && item.name);
+      projectComponentRecords.set(key, records);
+      return records;
+    }).finally(() => projectComponentRequests.delete(key));
+    projectComponentRequests.set(key, request);
+    return request;
+  }
+
   async function ensureProjectComponentsLoaded(projKey) {
     if (!projKey) return [];
-    const cleanKey = String(projKey).trim().toUpperCase();
-    if (cleanKey === String(CONFIG.projectKey).toUpperCase()) {
-      return getAllComponentOptions();
-    }
-    if (externalProjectComponentsMap[cleanKey]) {
-      return externalProjectComponentsMap[cleanKey];
-    }
+    const key = String(projKey).trim().toUpperCase();
+    if (key === String(CONFIG.projectKey).toUpperCase()) return getAllComponentOptions();
+    if (externalProjectComponentsMap[key]) return externalProjectComponentsMap[key];
     try {
-      const res = await fetch('/rest/api/2/project/' + encodeURIComponent(cleanKey) + '/components', {
-        credentials: 'same-origin',
-        headers: { Accept: 'application/json' }
-      });
-      if (res.ok) {
-        const arr = await res.json();
-        if (Array.isArray(arr)) {
-          const names = arr.map((c) => c && c.name).filter(Boolean);
-          externalProjectComponentsMap[cleanKey] = Array.from(new Set(['Без компонента', ...names]));
-          return externalProjectComponentsMap[cleanKey];
+      const components = await fetchProjectComponents(key);
+      const names = ['Без компонента', ...components.map(item => item.name)];
+      externalProjectComponentsMap[key] = prioritizeFavoriteComponents(Array.from(new Set(names)));
+      return externalProjectComponentsMap[key];
+    } catch {
+      return ['Без компонента'];
+    }
+  }
+
+  async function loadIssueCreateComponents(projectKey) {
+    const components = await fetchProjectComponents(String(projectKey).trim().toUpperCase());
+    const favorites = ['CS', 'CRM_BO', 'CRM_CORE'];
+    const rank = name => {
+      const index = favorites.indexOf(name.toUpperCase());
+      return index < 0 ? favorites.length : index;
+    };
+    return components.filter(item => item.id).sort((a, b) =>
+      rank(a.name) - rank(b.name) || a.name.localeCompare(b.name, 'ru'));
+  }
+
+  async function loadIssueCreateMeta(projectKey) {
+    const key = String(projectKey || '').toUpperCase();
+    if (issueCreateMetaByProject[key]) return issueCreateMetaByProject[key];
+    const base = '/rest/api/2/issue/createmeta/' + encodeURIComponent(key) + '/issuetypes';
+    const response = await fetch(base + '?startAt=0&maxResults=1000', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+    if (!response.ok) {
+      const fallback = await fetch('/rest/api/2/project/' + encodeURIComponent(key) + '/statuses', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      if (fallback.ok) {
+        const statusTypes = await fallback.json();
+        const fallbackTypes = Array.isArray(statusTypes) ? statusTypes.filter((item) => item && item.id && item.name).map((item) => ({ id: String(item.id), name: String(item.name), subtask: Boolean(item.subtask), fields: {} })) : [];
+        if (fallbackTypes.length) {
+          issueCreateMetaByProject[key] = fallbackTypes;
+          return fallbackTypes;
         }
       }
-    } catch (e) {}
-    externalProjectComponentsMap[cleanKey] = ['Без компонента'];
-    return externalProjectComponentsMap[cleanKey];
+      throw new Error('Jira did not return create issue types for ' + key + ' (HTTP ' + response.status + ')');
+    }
+    const payload = await response.json();
+    const issueTypes = Array.isArray(payload) ? payload : payload.values || payload.issueTypes || [];
+    if (!issueTypes.length) throw new Error('No issue types are available in ' + key);
+    issueCreateMetaByProject[key] = await Promise.all(issueTypes.map(async (type) => {
+      try {
+        const fieldsResponse = await fetch(base + '/' + encodeURIComponent(type.id) + '?startAt=0&maxResults=1000', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+        if (!fieldsResponse.ok) return type;
+        const detail = await fieldsResponse.json();
+        const rawFields = Array.isArray(detail.values) ? detail.values : detail.fields || {};
+        const fields = Array.isArray(rawFields)
+          ? Object.fromEntries(rawFields.map((field) => [field.fieldId || field.key, field]).filter(([id]) => id))
+          : rawFields;
+        return Object.assign({}, type, { fields });
+      } catch (e) { return type; }
+    }));
+    return issueCreateMetaByProject[key];
+  }
+
+  function getIssueCreateType(projectKey, kind, issueTypes) {
+    const epic = kind === 'epic';
+    const candidates = (issueTypes || []).filter((type) => epic
+      ? /epic|эпик/i.test(String(type.name || ''))
+      : !/epic|эпик|sub.?task|подзадач/i.test(String(type.name || '')) && /task|задач/i.test(String(type.name || '')));
+    if (candidates.length) return candidates[0];
+    if (!epic) return (issueTypes || []).find((type) => !/sub.?task|подзадач/i.test(String(type.name || '')));
+    return null;
+  }
+
+  function isEpicNameCreateField(meta) {
+    return Boolean(meta && (
+      /gh-epic-label$/i.test(String(meta.schema && meta.schema.custom || '')) ||
+      /epic[ _-]*(name|label|метка)|название эпика|эпик.*(метка|название)/i.test(String(meta.name || ''))
+    ));
+  }
+
+  async function createIssueFromSidebar(draft) {
+    const projectKey = String(draft.projectKey).toUpperCase();
+    const [issueTypes, components] = await Promise.all([
+      loadIssueCreateMeta(projectKey),
+      loadIssueCreateComponents(projectKey)
+    ]);
+    const issueType = getIssueCreateType(projectKey, draft.kind, issueTypes);
+    if (!issueType) throw new Error(draft.kind === 'epic' ? 'В FCRM не найден тип задачи Epic' : 'В проекте не найден обычный тип задачи');
+    const component = components.find((item) => String(item.id) === String(draft.componentId));
+    if (!component) throw new Error('Выберите компонент проекта ' + projectKey);
+
+    const fieldsMeta = issueType.fields || {};
+    const fields = {
+      project: { key: projectKey },
+      issuetype: { id: String(issueType.id) },
+      summary: String(draft.summary || '').trim(),
+      components: [{ id: String(component.id) }]
+    };
+    if (draft.kind !== 'epic' && String(draft.description || '').trim()) fields.description = String(draft.description).trim();
+    if (draft.kind === 'epic') {
+      fields.labels = ['fcrm_umb_epic'];
+      fields.description = String(draft.summary || '').trim();
+      const epicNameField = Object.entries(fieldsMeta).find(([, meta]) => isEpicNameCreateField(meta));
+      if (epicNameField) fields[epicNameField[0]] = String(draft.summary).trim();
+      else {
+        const allFieldsResponse = await fetch('/rest/api/2/field', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+        if (allFieldsResponse.ok) {
+          const allFields = await allFieldsResponse.json();
+          const epicName = Array.isArray(allFields) && allFields.find(isEpicNameCreateField);
+          if (epicName && epicName.id) fields[epicName.id] = String(draft.summary).trim();
+        }
+        if (!Object.keys(fields).some(id => id.startsWith('customfield_'))) {
+          throw new Error('Не удалось найти поле «Epic Метка» для создания тематики. Обновите данные Jira и повторите попытку.');
+        }
+      }
+    }
+
+    if (fieldsMeta.reporter && fieldsMeta.reporter.required) {
+      const myselfResponse = await fetch('/rest/api/2/myself', {
+        credentials: 'same-origin', headers: { Accept: 'application/json' }
+      });
+      if (!myselfResponse.ok) throw new Error('Не удалось определить автора задачи Jira');
+      const myself = await myselfResponse.json();
+      if (!myself.name) throw new Error('Jira не вернула имя текущего пользователя для поля «Автор»');
+      fields.reporter = { name: String(myself.name) };
+    }
+
+    Object.entries(fieldsMeta).forEach(([fieldId, meta]) => {
+      if (!meta || !meta.required || Object.prototype.hasOwnProperty.call(fields, fieldId)) return;
+      const fieldName = String(meta.name || '').toLowerCase();
+      const schema = meta.schema || {};
+      if (fieldId === 'labels' || /метки|labels/i.test(fieldName)) {
+        fields[fieldId] = draft.kind === 'epic' ? ['fcrm_umb_epic'] : [String(draft.summary || '').trim()];
+      } else if (schema.type === 'string' || fieldId === 'description' || isEpicNameCreateField(meta)) {
+        fields[fieldId] = String(draft.summary || '').trim();
+      } else if (schema.type === 'array' && schema.items === 'string') {
+        fields[fieldId] = [String(draft.summary || '').trim()];
+      } else if (meta.defaultValue != null) {
+        fields[fieldId] = meta.defaultValue;
+      }
+    });
+
+    const missing = Object.entries(fieldsMeta)
+      .filter(([fieldId, meta]) => meta && meta.required && !meta.hasDefaultValue && !Object.prototype.hasOwnProperty.call(fields, fieldId))
+      .map(([, meta]) => meta.name || 'обязательное поле');
+    if (missing.length) throw new Error('Для создания Jira требует заполнить ещё: ' + missing.join(', '));
+
+    const response = await fetch('/rest/api/2/issue', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ fields })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const details = result.errors ? Object.values(result.errors).join('; ') : result.errorMessages && result.errorMessages.join('; ');
+      throw new Error(details || 'Jira не создала задачу (HTTP ' + response.status + ')');
+    }
+    return { key: result.key, summary: fields.summary, component: component.name, issueType: issueType.name, kind: draft.kind };
+  }
+
+  async function createDesignIssueFromSidebar(sourceTaskKey, summary, description) {
+    const projectKey = 'FTD';
+    const [issueTypes, components] = await Promise.all([loadIssueCreateMeta(projectKey), loadIssueCreateComponents(projectKey)]);
+    const issueType = issueTypes.find((type) => /^(задача|task)$/i.test(String(type.name || '').trim()));
+    if (!issueType) throw new Error('В проекте FTD не найден тип задачи «Задача»');
+    const component = components.find((item) => String(item.name || '').trim().toLowerCase() === 'bank crm');
+    if (!component) throw new Error('В проекте FTD не найден компонент «bank crm»');
+    const fields = {
+      project: { key: projectKey },
+      issuetype: { id: String(issueType.id) },
+      summary: String(summary || '').trim(),
+      description: String(description || '').trim(),
+      components: [{ id: String(component.id) }]
+    };
+    const requiredMissing = Object.entries(issueType.fields || {})
+      .filter(([fieldId, meta]) => meta && meta.required && !Object.prototype.hasOwnProperty.call(fields, fieldId))
+      .map(([, meta]) => meta.name || 'обязательное поле');
+    if (requiredMissing.length) throw new Error('Для создания задачи FTD требуется заполнить: ' + requiredMissing.join(', '));
+    const response = await fetch('/rest/api/2/issue', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ fields })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const details = result.errors ? Object.values(result.errors).join('; ') : result.errorMessages && result.errorMessages.join('; ');
+      throw new Error(details || 'Jira не создала задачу FTD (HTTP ' + response.status + ')');
+    }
+    if (!result.key) throw new Error('Jira создала задачу FTD, но не вернула её ключ');
+    const linked = await createIssueLinkInJira(sourceTaskKey, result.key, 'inProject');
+    await reloadSingleTaskFromJira(sourceTaskKey, true);
+    return { key: result.key, linked };
+  }
+
+  async function beginSidebarIssueCreate(kind) {
+    const projectKey = kind === 'epic' ? CONFIG.projectKey : kind === 'front' ? 'OBFRONT' : 'OB';
+    createInProjectMenuOpen = false;
+    issueCreateBusy = false;
+    issueCreateLoading = true;
+    issueCreateDraft = { kind, projectKey, summary: '', description: '', componentId: '', componentQuery: '', components: [], error: '' };
+    const draft = issueCreateDraft;
+    renderStructure();
+    try {
+      const [metaResult, componentResult] = await Promise.allSettled([
+        loadIssueCreateMeta(projectKey),
+        loadIssueCreateComponents(projectKey)
+      ]);
+      if (issueCreateDraft !== draft) return;
+      if (componentResult.status === 'fulfilled') issueCreateDraft.components = componentResult.value;
+      if (metaResult.status === 'rejected') throw metaResult.reason;
+      const issueTypes = metaResult.value;
+      if (!getIssueCreateType(projectKey, kind, issueTypes)) {
+        throw new Error(kind === 'epic' ? 'В FCRM не найден тип задачи Epic' : 'В проекте не найден тип задачи');
+      }
+    } catch (error) {
+      if (issueCreateDraft !== draft) return;
+      issueCreateDraft.error = error && error.message ? error.message : 'Не удалось загрузить данные Jira';
+    }
+    issueCreateLoading = false;
+    renderStructure();
+    setTimeout(() => document.getElementById('ozon-create-issue-summary')?.focus(), 0);
+  }
+
+  async function submitSidebarIssueCreate() {
+    if (!issueCreateDraft || issueCreateBusy) return;
+    issueCreateDraft.summary = String(document.getElementById('ozon-create-issue-summary')?.value || issueCreateDraft.summary).trim();
+    issueCreateDraft.description = String(document.getElementById('ozon-create-issue-description')?.value || issueCreateDraft.description).trim();
+    if (!issueCreateDraft.summary) {
+      issueCreateDraft.error = 'Введите название';
+      renderStructure();
+      document.getElementById('ozon-create-issue-summary')?.focus();
+      return;
+    }
+    if (issueCreateDraft.kind !== 'epic' && !String(issueCreateDraft.description || '').trim()) {
+      issueCreateDraft.error = 'Введите описание задачи';
+      renderStructure();
+      document.getElementById('ozon-create-issue-description')?.focus();
+      return;
+    }
+    if (!issueCreateDraft.componentId) {
+      issueCreateDraft.error = 'Выберите компонент';
+      renderStructure();
+      return;
+    }
+
+    const sourceTaskKey = selectedTaskKey;
+    issueCreateBusy = true;
+    issueCreateDraft.error = '';
+    renderStructure();
+    try {
+      const created = await createIssueFromSidebar(issueCreateDraft);
+      if (!created.key) throw new Error('Jira создала задачу, но не вернула её ключ');
+      if (created.kind === 'epic') {
+        umbCatalog = [{
+          key: created.key,
+          summary: created.summary,
+          status: 'Открыто',
+          component: created.component,
+          issueType: 'Epic',
+          issueTypeName: 'Epic'
+        }, ...umbCatalog.filter((item) => item.key !== created.key)];
+      }
+      issueCreateDraft = null;
+      issueCreateBusy = false;
+      renderStructure();
+      const linkCategory = created.kind === 'epic' ? 'projectTask' : 'inProject';
+      const linked = await createIssueLinkInJira(sourceTaskKey, created.key, linkCategory);
+      if (!linked) {
+        showSaveToast('Создана ' + created.key + ', но автоматическую связь сохранить не удалось');
+        await reloadSingleTaskFromJira(sourceTaskKey, true);
+      } else {
+        await reloadSingleTaskFromJira(sourceTaskKey, true);
+        showSaveToast('Создана и связана задача ' + created.key);
+      }
+    } catch (error) {
+      issueCreateBusy = false;
+      if (issueCreateDraft) issueCreateDraft.error = error && error.message ? error.message : 'Не удалось создать задачу';
+      renderStructure();
+    }
   }
 
   /**
@@ -2359,7 +4034,7 @@ export function generateContentScriptJs(
    */
   function extractSprintSeriesPrefix(sprintName) {
     if (!sprintName || sprintName === 'Не в спринте' || sprintName.includes('Бэклог')) return '';
-    const m = String(sprintName).trim().match(/^([A-Za-zА-Яа-яЁё0-9_&\\-\\s]+?)(?:\\s*#\\d+|\\s+\\d+|\\s*\\()/);
+    const m = String(sprintName).trim().match(/^([A-Za-z\\p{L}0-9_&\\-\\s]+?)(?:\\s*#\\d+|\\s+\\d+|\\s*\\()/u);
     return m && m[1] ? m[1].trim() : '';
   }
 
@@ -2376,6 +4051,10 @@ export function generateContentScriptJs(
     const compName = lnk.component && lnk.component !== 'Без компонента' ? String(lnk.component).split(',')[0].trim() : '';
     const curSprint = lnk.sprint && lnk.sprint !== 'Не в спринте' ? String(lnk.sprint).trim() : '';
     const cacheKey = projKey + '::' + (compName || '*');
+    if (!externalProjectSprintsMap[cacheKey]) {
+      ipSprintLoadProgress[lnk.key] = 12;
+      renderStructure();
+    }
     const foundSprints = new Set((externalProjectSprintsMap[cacheKey] || []).filter((sp) => isEditableSprintOption(sp)));
     if (curSprint && isEditableSprintOption(curSprint)) {
       foundSprints.add(curSprint);
@@ -2392,6 +4071,8 @@ export function generateContentScriptJs(
           headers: { Accept: 'application/json' }
         });
         if (ghRes.ok) {
+          ipSprintLoadProgress[lnk.key] = 48;
+          renderStructure();
           const ghData = await ghRes.json();
           const allMatches = [
             ...(Array.isArray(ghData && ghData.suggestions) ? ghData.suggestions : []),
@@ -2436,6 +4117,8 @@ export function generateContentScriptJs(
         { credentials: 'same-origin', headers: { Accept: 'application/json' } }
       );
       if (sRes.ok) {
+        ipSprintLoadProgress[lnk.key] = 82;
+        renderStructure();
         const sData = await sRes.json();
         if (Array.isArray(sData.issues)) {
           sData.issues.forEach((iss) => {
@@ -2489,7 +4172,11 @@ export function generateContentScriptJs(
       }
     } catch (e) {}
 
-    externalProjectSprintsMap[cacheKey] = Array.from(foundSprints).filter((sp) => isEditableSprintOption(sp));
+    const teamPrefix = compName.toLowerCase();
+    externalProjectSprintsMap[cacheKey] = Array.from(foundSprints).filter((sp) =>
+      isEditableSprintOption(sp) && getSprintStateCode(sp) !== 'CLOSED' && (!teamPrefix || sp.toLowerCase().startsWith(teamPrefix))
+    );
+    delete ipSprintLoadProgress[lnk.key];
     return externalProjectSprintsMap[cacheKey];
   }
 
@@ -2506,13 +4193,13 @@ export function generateContentScriptJs(
     // Для внешних проектов (OBFRONT, OB, FTD и др.) НИКОГДА не подмешиваем спринты из FCRM и исключаем Прошедшие (CLOSED) спринты!
     const compName = lnk.component && lnk.component !== 'Без компонента' ? String(lnk.component).split(',')[0].trim() : '';
     const cacheKey = projKey + '::' + (compName || '*');
-    const cached = (externalProjectSprintsMap[cacheKey] || externalProjectSprintsMap[projKey + '::*'] || []).filter((sp) =>
+    const cached = (externalProjectSprintsMap[cacheKey] || []).filter((sp) =>
       isEditableSprintOption(sp)
     );
 
     // Также собираем активные и будущие спринты других связанных задач того же проекта и компонента
     const fromSameProjectCompLinks = [];
-    const seriesPrefix = extractSprintSeriesPrefix(realSprintVal) || compName;
+    const seriesPrefix = compName || extractSprintSeriesPrefix(realSprintVal);
     const prefixLow = seriesPrefix ? seriesPrefix.toLowerCase() : '';
 
     tasks.forEach((t) => {
@@ -2523,7 +4210,7 @@ export function generateContentScriptJs(
         const otherComp = otherLnk.component && otherLnk.component !== 'Без компонента' ? String(otherLnk.component).split(',')[0].trim() : '';
         const otherSp = otherLnk.sprint && otherLnk.sprint !== 'Не в спринте' ? String(otherLnk.sprint).trim() : '';
         if (!otherSp || !isEditableSprintOption(otherSp)) return;
-        if (!compName || otherComp.toLowerCase() === compName.toLowerCase()) {
+        if (compName && otherComp.toLowerCase() === compName.toLowerCase()) {
           fromSameProjectCompLinks.push(otherSp);
         }
       });
@@ -2541,15 +4228,14 @@ export function generateContentScriptJs(
       });
     }
 
+    const teamSprints = compName ? [...cached, ...fromKnownPrefix, ...fromSameProjectCompLinks] : [realSprintVal];
     const combined = Array.from(
       new Set([
         ...(isEditableSprintOption(realSprintVal) ? [realSprintVal] : []),
-        ...cached,
-        ...fromKnownPrefix,
-        ...fromSameProjectCompLinks,
+        ...teamSprints,
         'Не в спринте'
       ])
-    ).filter((sp) => isEditableSprintOption(sp));
+    ).filter((sp) => isEditableSprintOption(sp) && getSprintStateCode(sp) !== 'CLOSED');
 
     const dummyGroups = {};
     combined.forEach((s) => {
@@ -2561,39 +4247,29 @@ export function generateContentScriptJs(
   // ============================================================================
   // РЕАЛЬНОЕ СОЗДАНИЕ И УДАЛЕНИЕ СВЯЗЕЙ (ISSUE LINKS) В JIRA REST API
   // ============================================================================
-  async function createIssueLinkInJira(sourceTaskKey, targetTaskKey, category /* 'projectTask' | 'inProject' */) {
+  function renderLinkActions(link, current) {
+    if (!link || !link.key) return '';
+    const attrs = ' data-link-key="' + escapeHtml(link.key) + '" data-jira-link-id="' + escapeHtml(link.jiraLinkId || link.id || '') + '" data-current="' + current + '"';
+    const types = [['projectTask','Задача проекта'],['inProject','В проекте'],['linkedTask','Связанная задача'],['duplicates','Дублирует']];
+    return '<details class="ozon-link-actions"><summary aria-label="Действия со связью" title="Действия со связью">⋯</summary><div class="ozon-link-actions-menu">' + types.filter(([id]) => id !== current).map(([id,label]) => '<button type="button" data-action="change-link-type" data-link-type="' + id + '"' + attrs + '>' + label + '</button>').join('') + '<button type="button" data-action="delete-link"' + attrs + '>Удалить связь</button><div class="ozon-link-action-message" role="status" style="color:#D92D20;font-size:11px;white-space:normal;"></div></div></details>';
+  }
+  async function createIssueLinkInJira(sourceTaskKey, targetTaskKey, category /* 'projectTask' | 'inProject' */, strictType, deferReload) {
     if (!sourceTaskKey || !targetTaskKey) return false;
     try {
       // Подгружаем типы связей, если они ещё не загружены
-      if (!Array.isArray(discoveredIssueLinkTypes) || discoveredIssueLinkTypes.length === 0) {
-        const ltRes = await fetch('/rest/api/2/issueLinkType', {
-          credentials: 'same-origin',
-          headers: { Accept: 'application/json' }
-        });
-        if (ltRes.ok) {
-          const ltData = await ltRes.json();
-          if (ltData && Array.isArray(ltData.issueLinkTypes)) {
-            discoveredIssueLinkTypes = ltData.issueLinkTypes;
-          }
-        }
-      }
+      await loadIssueLinkTypes();
 
       // Ищем тип связи "Задача проекта" / "В проекте" в вашей Jira
+      const categoryPattern = category === 'projectTask' ? /задача проекта|project task/i : category === 'linkedTask' ? /связанная задача|relates to|relates/i : category === 'duplicates' ? /дублирует|дубликат|duplicates?/i : /в проекте|in project/i;
       let chosenType = discoveredIssueLinkTypes.find((lt) => {
         const n = String(lt.name || '').toLowerCase();
         const inw = String(lt.inward || '').toLowerCase();
         const outw = String(lt.outward || '').toLowerCase();
-        return (
-          n.includes('задача проекта') ||
-          n.includes('в проекте') ||
-          inw.includes('задача проекта') ||
-          outw.includes('задача проекта') ||
-          inw.includes('в проекте') ||
-          outw.includes('в проекте')
-        );
+        return categoryPattern.test(n) || categoryPattern.test(inw) || categoryPattern.test(outw);
       });
 
       if (!chosenType) {
+        if (strictType) throw new Error('В Jira не найден тип связи «' + (category === 'duplicates' ? 'Дублирует' : category === 'linkedTask' ? 'Связанная задача' : category === 'projectTask' ? 'Задача проекта' : 'В проекте') + '».');
         chosenType =
           discoveredIssueLinkTypes.find((lt) => /relates|связ|project/i.test(String(lt.name || ''))) ||
           discoveredIssueLinkTypes[0] || {
@@ -2622,8 +4298,12 @@ export function generateContentScriptJs(
           inwardKey = targetTaskKey;
           outwardKey = sourceTaskKey;
         }
+      } else if (category === 'duplicates') {
+        if (/дублирует|дубликат|duplicates?/i.test(outwDesc)) { inwardKey = sourceTaskKey; outwardKey = targetTaskKey; }
+        else if (/дублирует|дубликат|duplicates?/i.test(inwDesc)) { inwardKey = targetTaskKey; outwardKey = sourceTaskKey; }
+        else throw new Error('Направление связи «Дублирует» недоступно');
       } else {
-        // category === 'inProject'
+        // Связанная задача — симметричный тип; Jira всё равно покажет его с обеих сторон.
         if (inwDesc.includes('в проекте') && !outwDesc.includes('в проекте')) {
           inwardKey = targetTaskKey;
           outwardKey = sourceTaskKey;
@@ -2647,12 +4327,12 @@ export function generateContentScriptJs(
       if (postRes.ok) {
         showSaveToast('✓ Связь ' + sourceTaskKey + ' ↔ ' + targetTaskKey + ' сохранена в Jira');
         // Перезагружаем задачу из Jira, чтобы подтянуть реальный ID связи и все поля связанной задачи
-        await reloadSingleTaskFromJira(sourceTaskKey);
+        if (!deferReload) await reloadSingleTaskFromJira(sourceTaskKey);
         return true;
       } else {
         // Резервная попытка с Relates, если кастомное имя типа связи отличается
         const fallbackType = discoveredIssueLinkTypes.find((lt) => /relates|связ/i.test(String(lt.name || ''))) || discoveredIssueLinkTypes[0];
-        if (fallbackType && fallbackType.name !== chosenType.name) {
+        if (!strictType && fallbackType && fallbackType.name !== chosenType.name) {
           const retryRes = await fetch('/rest/api/2/issueLink', {
             method: 'POST',
             credentials: 'same-origin',
@@ -2665,7 +4345,7 @@ export function generateContentScriptJs(
           });
           if (retryRes.ok) {
             showSaveToast('✓ Связь ' + sourceTaskKey + ' ↔ ' + targetTaskKey + ' сохранена в Jira');
-            await reloadSingleTaskFromJira(sourceTaskKey);
+            if (!deferReload) await reloadSingleTaskFromJira(sourceTaskKey);
             return true;
           }
         }
@@ -2673,6 +4353,7 @@ export function generateContentScriptJs(
         return false;
       }
     } catch (e) {
+      if (strictType) throw e;
       return false;
     }
   }
@@ -2835,6 +4516,7 @@ export function generateContentScriptJs(
       });
       if (postRes.ok) {
         showSaveToast('✓ Статус ' + issueKey + ' переведён в «' + targetStatusName + '»');
+        void refreshStrategyIssue(issueKey, 'status');
         fetch('/rest/api/2/issue/' + encodeURIComponent(issueKey) + '/transitions', {
           credentials: 'same-origin',
           headers: { Accept: 'application/json' }
@@ -2870,6 +4552,7 @@ export function generateContentScriptJs(
 
       if (putRes.ok || putRes.status === 204) {
         showSaveToast('✓ Тип задачи ' + issueKey + ' → ' + cleanName);
+        void refreshStrategyIssue(issueKey, 'issuetype');
         return true;
       }
 
@@ -2883,6 +4566,7 @@ export function generateContentScriptJs(
         });
         if (retryRes.ok || retryRes.status === 204) {
           showSaveToast('✓ Тип задачи ' + issueKey + ' → ' + cleanName);
+          void refreshStrategyIssue(issueKey, 'issuetype');
           return true;
         }
       }
@@ -2976,6 +4660,7 @@ export function generateContentScriptJs(
 
       if (savedOk) {
         showSaveToast('✓ Эпик ' + issueKey + ' → ' + (cleanEpKey || 'Без эпика') + ' сохранён в Jira');
+        void refreshStrategyIssue(issueKey, [discoveredFields.epicLink, 'epic'].filter(Boolean).join(','));
       } else {
         showSaveToast('⚠ Проверьте код эпика ' + (cleanEpKey || ''));
       }
@@ -3160,7 +4845,7 @@ export function generateContentScriptJs(
     } catch (e) {}
 
     // 2. Поиск через JQL /rest/api/2/search с безопасным определением типа задачи Epic и поддержкой префиксного поиска (почт*)
-    const epFields = ['summary'];
+    const epFields = ['summary', 'status', 'labels', 'customfield_20100'];
     if (discoveredFields.epicName) epFields.push(discoveredFields.epicName);
 
     const buildEpicJql = (epicTypeClause) => {
@@ -3199,6 +4884,7 @@ export function generateContentScriptJs(
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data.issues)) {
+            cacheEpicMetadata(data.issues);
             data.issues.forEach((epIss) => {
               if (!epIss || !epIss.key || !String(epIss.key).startsWith(CONFIG.projectKey + '-')) return;
               const ef = epIss.fields || {};
@@ -3231,6 +4917,7 @@ export function generateContentScriptJs(
             const customType = (fld.schema && fld.schema.custom) || '';
             const nameLow = String(fld.name || '').toLowerCase().trim();
             const nameCompact = nameLow.replace(/\\s+/g, '');
+            if (nameLow === 'story points' || nameLow === 'story point' || nameLow === 'стори поинты') discoveredFields.storyPoints = fld.id;
 
             if (customType.includes('gh-sprint') || nameLow === 'sprint' || nameLow === 'спринт') {
               discoveredFields.sprint = fld.id;
@@ -3256,34 +4943,15 @@ export function generateContentScriptJs(
       }
     } catch (e) {}
 
-    try {
-      const ltRes = await fetch('/rest/api/2/issueLinkType', {
-        credentials: 'same-origin',
-        headers: { Accept: 'application/json' }
-      });
-      if (ltRes.ok) {
-        const ltData = await ltRes.json();
-        if (ltData && Array.isArray(ltData.issueLinkTypes)) {
-          discoveredIssueLinkTypes = ltData.issueLinkTypes;
-        }
-      }
-    } catch (e) {}
+    try { await loadIssueLinkTypes(); } catch (e) {}
 
     // Компоненты СТРОГО проекта FCRM
     try {
-      const compRes = await fetch('/rest/api/2/project/' + encodeURIComponent(CONFIG.projectKey) + '/components', {
-        credentials: 'same-origin',
-        headers: { Accept: 'application/json' }
-      });
-      if (compRes.ok) {
-        const comps = await compRes.json();
-        if (Array.isArray(comps) && comps.length > 0) {
-          projectComponentsList = comps
-            .filter((c) => !c.project || String(c.project).toUpperCase() === String(CONFIG.projectKey).toUpperCase())
-            .map((c) => c.name)
-            .filter(Boolean);
-        }
-      }
+      const key = String(CONFIG.projectKey).toUpperCase();
+      const components = await fetchProjectComponents(key, true);
+      projectComponentsList = components
+        .filter(item => !item.project || String(item.project).toUpperCase() === key)
+        .map(item => item.name);
     } catch (e) {}
 
     // Статусы и типы задач проекта FCRM строго в разрезе каждого типа задачи (Workflow Scheme!) + точное имя типа задачи Epic
@@ -3416,6 +5084,7 @@ export function generateContentScriptJs(
           '/rest/agile/1.0/board/' + CONFIG.rapidViewId + '/sprint?state=active,future,closed&startAt=' + spStartAt + '&maxResults=50',
           {
             credentials: 'same-origin',
+            cache: 'no-store',
             headers: { Accept: 'application/json' }
           }
         );
@@ -3435,6 +5104,9 @@ export function generateContentScriptJs(
           if (stateLow === 'closed') {
             closedSprintIds.add(spIdStr);
             closedSprintNames.add(spNameClean);
+          } else if (stateLow === 'active' || stateLow === 'future') {
+            closedSprintIds.delete(spIdStr);
+            closedSprintNames.delete(spNameClean);
           }
 
           sprintNameById[spIdStr] = sp.name;
@@ -3461,6 +5133,11 @@ export function generateContentScriptJs(
         });
 
         spStartAt += vals.length;
+        if (isInitialBoardLoading && Number(spData.total) > 0) {
+          initialLoadProgress = Math.max(initialLoadProgress, Math.min(31, 15 + Math.round((spStartAt / Number(spData.total)) * 16)));
+          initialLoadStage = 'Загружаю спринты: ' + Math.min(spStartAt, Number(spData.total)) + ' из ' + Number(spData.total);
+          renderStructure();
+        }
         if (spData.isLast === true || vals.length < (spData.maxResults || 50)) {
           spIsLast = true;
         }
@@ -3470,6 +5147,7 @@ export function generateContentScriptJs(
     try {
       const ghRes = await fetch('/rest/greenhopper/1.0/xboard/plan/backlog/data.json?rapidViewId=' + CONFIG.rapidViewId, {
         credentials: 'same-origin',
+        cache: 'no-store',
         headers: { Accept: 'application/json' }
       });
       if (ghRes.ok) {
@@ -3517,11 +5195,6 @@ export function generateContentScriptJs(
             if (!sprintOrderWeight[sp.name]) {
               sprintOrderWeight[sp.name] = st === 'ACTIVE' ? 10 + idx : st === 'FUTURE' ? 60 + idx : 300 + idx;
             }
-            spIssuesIds.forEach((issId) => {
-              if (st !== 'CLOSED' || !issueSprintOverrideMap[issId]) {
-                issueSprintOverrideMap[issId] = sp.name;
-              }
-            });
           });
         }
 
@@ -3563,21 +5236,36 @@ export function generateContentScriptJs(
           jql = 'labels = fcrm_umb_epic AND summary ~ "' + qClean + '"';
         }
       }
-      const res = await fetch('/rest/api/2/search?jql=' + encodeURIComponent(jql) + '&fields=key,summary,status,issuetype,components&maxResults=200', {
+      const issues = [];
+      let startAt = 0;
+      do {
+      const res = await fetch('/rest/api/2/search?jql=' + encodeURIComponent(jql) + '&fields=key,summary,status,issuetype,components,issuelinks&maxResults=200&startAt=' + startAt, {
         credentials: 'same-origin',
         headers: { Accept: 'application/json' }
       });
       if (!res.ok) return;
       const data = await res.json();
-      if (Array.isArray(data.issues) && data.issues.length > 0) {
-        const loaded = data.issues
+      const page = Array.isArray(data.issues) ? data.issues : [];
+      issues.push(...page);
+      startAt += page.length;
+      if (!page.length || startAt >= Number(data.total || issues.length)) break;
+      } while (true);
+      if (issues.length > 0) {
+        const loaded = issues
           .map((iss, idx) => ({
             id: 'umb-' + idx + '-' + iss.key,
             key: iss.key,
             summary: (iss.fields && iss.fields.summary) || iss.key,
             status: (iss.fields && iss.fields.status && iss.fields.status.name) || 'Открыто',
             issueTypeName: (iss.fields && iss.fields.issuetype && iss.fields.issuetype.name) || 'Задача',
-            component: resolveRealLinkedIssueComponent(iss)
+            component: resolveRealLinkedIssueComponent(iss),
+            components: ((iss.fields && iss.fields.components) || []).map((c) => c && c.name).filter(Boolean),
+            parents: ((iss.fields && iss.fields.issuelinks) || []).map((link) => {
+              const inward = Boolean(link.inwardIssue);
+              const direction = inward ? link.type && link.type.inward : link.type && link.type.outward;
+              const target = inward ? link.inwardIssue : link.outwardIssue;
+              return /задача проекта|project task/i.test(String(direction || '')) && target ? target.key : '';
+            }).filter(Boolean)
           }))
           .filter((item) => !isCanceledStatus(item.status));
         if (!customQuery) {
@@ -3591,6 +5279,7 @@ export function generateContentScriptJs(
           umbCatalog = Array.from(map.values());
         }
       }
+      if (!customQuery) umbCatalogReady = true;
     } catch (e) {}
   }
 
@@ -3598,6 +5287,8 @@ export function generateContentScriptJs(
     const fieldList = [
       'summary',
       'description',
+      'labels',
+      'customfield_20100',
       'issuetype',
       'status',
       'priority',
@@ -3696,6 +5387,10 @@ export function generateContentScriptJs(
       if (rawEpicKey && typeof rawEpicKey === 'string') {
         allEpicKeysToResolve.add(rawEpicKey.trim());
       }
+      if (isEpicIssueType(f.issuetype && f.issuetype.name)) {
+        allEpicKeysToResolve.add(iss.key);
+        cacheEpicMetadata([iss]);
+      }
       if (Array.isArray(f.issuelinks)) {
         f.issuelinks.forEach((lnk) => {
           const target = lnk.outwardIssue || lnk.inwardIssue;
@@ -3729,6 +5424,7 @@ export function generateContentScriptJs(
       if (discoveredFields.sprint) lnkFields.push(discoveredFields.sprint);
       if (discoveredFields.epicLink) lnkFields.push(discoveredFields.epicLink);
       if (discoveredFields.epicName) lnkFields.push(discoveredFields.epicName);
+      if (discoveredFields.storyPoints) lnkFields.push(discoveredFields.storyPoints);
 
       function parseLinkedIssueFields(lIss) {
         const lf = (lIss && lIss.fields) || {};
@@ -3753,9 +5449,10 @@ export function generateContentScriptJs(
         }
         return {
           summary: lf.summary || lIss.key,
-          status: (lf.status && lf.status.name) || 'Открыто',
+          status: readStatusName(lf.status, 'Открыто'),
           issueTypeName: (lf.issuetype && lf.issuetype.name) || 'Задача',
           priority: (lf.priority && lf.priority.name) || 'Medium',
+          storyPoints: discoveredFields.storyPoints && lf[discoveredFields.storyPoints] != null ? lf[discoveredFields.storyPoints] : null,
           component: realComp,
           sprint: realSprint,
           epicKey: lEpicKey,
@@ -3779,7 +5476,7 @@ export function generateContentScriptJs(
             try {
               const lnkRes = await fetch(
                 '/rest/api/2/search?jql=' + encodeURIComponent('key in (' + chunk.join(',') + ')') + '&fields=' + lnkFields.join(',') + '&maxResults=100',
-                { credentials: 'same-origin', headers: { Accept: 'application/json' } }
+                { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } }
               );
               if (lnkRes.ok) {
                 const lnkData = await lnkRes.json();
@@ -3801,7 +5498,7 @@ export function generateContentScriptJs(
             try {
               const r = await fetch(
                 '/rest/api/2/issue/' + encodeURIComponent(mKey) + '?fields=' + lnkFields.join(','),
-                { credentials: 'same-origin', headers: { Accept: 'application/json' } }
+                { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } }
               );
               if (r.ok) {
                 const lIss = await r.json();
@@ -3824,7 +5521,7 @@ export function generateContentScriptJs(
 
     // Подтягиваем названия всех эпиков (как основных задач FCRM, так и эпиков связанных задач!)
     if (allEpicKeysToResolve.size > 0) {
-      const epKeysAll = Array.from(allEpicKeysToResolve).filter((k) => !epicNameByKey[k]);
+      const epKeysAll = Array.from(allEpicKeysToResolve);
       const epChunks = [];
       for (let i = 0; i < epKeysAll.length; i += 50) {
         epChunks.push(epKeysAll.slice(i, i + 50));
@@ -3834,15 +5531,16 @@ export function generateContentScriptJs(
         await Promise.all(
           batch.map(async (chunk) => {
             try {
-              const epFields = ['summary'];
+              const epFields = ['summary', 'status', 'customfield_20100', 'labels'];
               if (discoveredFields.epicName) epFields.push(discoveredFields.epicName);
               const epRes = await fetch(
                 '/rest/api/2/search?jql=' + encodeURIComponent('key in (' + chunk.join(',') + ')') + '&fields=' + epFields.join(',') + '&maxResults=100',
-                { credentials: 'same-origin', headers: { Accept: 'application/json' } }
+                { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } }
               );
               if (epRes.ok) {
                 const epData = await epRes.json();
                 if (Array.isArray(epData.issues)) {
+                  cacheEpicMetadata(epData.issues);
                   epData.issues.forEach((epIss) => {
                     const ef = epIss.fields || {};
                     const summaryTitle = ef.summary ? String(ef.summary).trim() : '';
@@ -3867,6 +5565,7 @@ export function generateContentScriptJs(
       }
     }
 
+    await loadTableObprojectMetadata(allEpicKeysToResolve);
     return rawIssues.map((iss) => {
       const f = iss.fields || {};
       const taskSprint = resolveIssueSprint(iss);
@@ -3891,8 +5590,8 @@ export function generateContentScriptJs(
       let epicName = resolvedEpicTitle || 'Без эпика';
 
       const compName =
-        Array.isArray(f.components) && f.components[0] && f.components[0].name
-          ? f.components[0].name
+        Array.isArray(f.components) && f.components.length
+          ? f.components.map((c) => c && c.name).filter(Boolean).join(', ')
           : 'Без компонента';
 
       const parsedOwner = extractCustomerOwnerFromIssueFields(f);
@@ -3901,6 +5600,7 @@ export function generateContentScriptJs(
       const rawLinks = Array.isArray(f.issuelinks) ? f.issuelinks : [];
       const ptLinks = [];
       const ipLinks = [];
+      const otherLinks = [];
 
       rawLinks.forEach((lnk, idx) => {
         const isInward = Boolean(lnk.inwardIssue);
@@ -3919,10 +5619,7 @@ export function generateContentScriptJs(
         const lEpKey = (enriched && enriched.epicKey) || '';
         const lEpName = (lEpKey && epicNameByKey[lEpKey]) || (enriched && enriched.epicName) || '';
 
-        const itemStatus = (enriched && enriched.status) || (target.fields && target.fields.status && target.fields.status.name) || 'Открыто';
-        // Исключаем отменённые (Canceled) задачи из всех списков связей
-        if (isCanceledStatus(itemStatus)) return;
-
+        const itemStatus = (enriched && enriched.status) || readStatusName(target.fields && target.fields.status, 'Открыто');
         const item = {
           id: lnk.id ? String(lnk.id) : 'lnk-' + iss.key + '-' + idx,
           jiraLinkId: lnk.id ? String(lnk.id) : null,
@@ -3931,23 +5628,24 @@ export function generateContentScriptJs(
           status: itemStatus,
           issueTypeName: (enriched && enriched.issueTypeName) || (target.fields && target.fields.issuetype && target.fields.issuetype.name) || 'Задача',
           priority: (enriched && enriched.priority) || 'Medium',
+          storyPoints: enriched?.storyPoints ?? null,
           component: realLinkComp,
           sprint: realLinkSprint,
           epicKey: lEpKey,
           epicName: lEpName,
           assigneeName: (enriched && enriched.assigneeName) || '—',
           authorName: (enriched && enriched.authorName) || '—',
-          createdAt: (enriched && enriched.createdAt) || '—'
+          createdAt: (enriched && enriched.createdAt) || '—',
+          linkType: String((lnk.type && lnk.type.name) || ''),
+          linkDirection: activeDirDesc
         };
 
-        if ((enriched && enriched.isUmbEpic) || umbKeysSet.has(target.key)) {
-          ptLinks.push(item);
-        } else if (activeDirDesc.includes('в проекте')) {
-          ipLinks.push(item);
-        } else if (activeDirDesc === 'задача проекта' && target.key.startsWith(CONFIG.projectKey + '-')) {
-          ptLinks.push(item);
+        if (/задача проекта|project task/i.test(activeDirDesc)) {
+          if (!isCanceledStatus(itemStatus)) ptLinks.push(item);
+        } else if (/в проекте|in project/i.test(activeDirDesc)) {
+          if (!isCanceledStatus(itemStatus)) ipLinks.push(item);
         } else {
-          ipLinks.push(item);
+          otherLinks.push(item);
         }
       });
 
@@ -3962,11 +5660,13 @@ export function generateContentScriptJs(
         key: iss.key,
         summary: f.summary || iss.key,
         description: rawDesc,
+        labels: Array.isArray(f.labels) ? f.labels : [],
         issueTypeName: issueTypeName,
         issueTypeId: issueTypeId,
         epicKey: epicKey,
         epicName: epicName,
         component: compName,
+        components: Array.isArray(f.components) ? f.components.map((c) => c && c.name).filter(Boolean) : [],
         assignee: {
           name: (f.assignee && f.assignee.displayName) || 'Не назначен',
           login: (f.assignee && (f.assignee.name || f.assignee.key)) || '',
@@ -3984,10 +5684,11 @@ export function generateContentScriptJs(
         createdAt: formatDate(f.created),
         createdTimestamp: f.created ? new Date(f.created).getTime() : 0,
         sprint: taskSprint,
-        status: (f.status && f.status.name) || 'Открыто',
+        status: readStatusName(f.status, 'Открыто'),
         priority: (f.priority && f.priority.name) || 'Medium',
         projectTaskLinks: ptLinks,
-        inProjectLinks: ipLinks
+        inProjectLinks: ipLinks,
+        otherLinks: otherLinks
       };
     }).filter((t) => !isCanceledStatus(t.status));
   }
@@ -3995,242 +5696,46 @@ export function generateContentScriptJs(
   /**
    * Универсальная пагинация (дозапросы по startAt) для Agile endpoints (/sprint/{id}/issue, /backlog, /board/{id}/issue)
    */
-  async function fetchPaginatedAgileIssues(baseUrlWithQuery, maxTotal) {
-    const limit = maxTotal || 2500;
-    const allIssues = [];
-    let startAt = 0;
-    const pageSize = 100;
-    const sep = baseUrlWithQuery.includes('?') ? '&' : '?';
-
-    try {
-      const firstRes = await fetch(baseUrlWithQuery + sep + 'startAt=0&maxResults=' + pageSize, {
-        credentials: 'same-origin',
-        headers: { Accept: 'application/json' }
+  async function fetchPaginatedIssues(url, limit, onProgress) {
+    const issues = [];
+    const separator = url.includes('?') ? '&' : '?';
+    async function page(offset, size) {
+      const response = await fetch(url + separator + 'startAt=' + offset + '&maxResults=' + size, {
+        credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' }
       });
-      if (!firstRes.ok) return { ok: false, issues: [] };
-      const firstData = await firstRes.json();
-      const firstBatch = Array.isArray(firstData.issues) ? firstData.issues : [];
-      allIssues.push(...firstBatch);
-
-      const total = typeof firstData.total === 'number' ? Math.min(firstData.total, limit) : firstBatch.length;
-      const effectiveStep = firstBatch.length > 0 ? firstBatch.length : pageSize;
-
-      if (allIssues.length < total && firstBatch.length > 0) {
-        const offsets = [];
-        for (let nextStart = allIssues.length; nextStart < total; nextStart += effectiveStep) {
-          offsets.push(nextStart);
+      if (!response.ok) throw new Error('Jira HTTP ' + response.status);
+      const data = await response.json();
+      if (!Array.isArray(data.issues)) throw new Error('Некорректная страница задач');
+      return data;
+    }
+    try {
+      const first = await page(0, Math.min(100, limit));
+      const total = Math.min(first.total ?? first.issues.length, limit);
+      const step = first.issues.length;
+      issues.push(...first.issues.slice(0, total));
+      onProgress?.(issues.length, total);
+      if (!step && total) return { ok: false, issues, total };
+      for (let start = step; start < total; start += 3 * step) {
+        const pages = [];
+        for (let offset = start; offset < total && pages.length < 3; offset += step) {
+          pages.push(page(offset, Math.min(step, total - offset)));
         }
-        for (let i = 0; i < offsets.length; i += 3) {
-          const batchOffsets = offsets.slice(i, i + 3);
-          const batchResponses = await Promise.all(
-            batchOffsets.map((st) =>
-              fetch(baseUrlWithQuery + sep + 'startAt=' + st + '&maxResults=' + effectiveStep, {
-                credentials: 'same-origin',
-                headers: { Accept: 'application/json' }
-              })
-                .then((r) => (r.ok ? r.json() : null))
-                .catch(() => null)
-            )
-          );
-          let anyAdded = false;
-          batchResponses.forEach((d) => {
-            if (d && Array.isArray(d.issues) && d.issues.length > 0) {
-              allIssues.push(...d.issues);
-              anyAdded = true;
-            }
-          });
-          if (!anyAdded) break;
-        }
+        for (const data of await Promise.all(pages)) issues.push(...data.issues.slice(0, total - issues.length));
+        onProgress?.(issues.length, total);
       }
-      return { ok: true, issues: allIssues };
-    } catch (e) {
-      return { ok: false, issues: allIssues };
+      return { ok: issues.length === total, issues, total };
+    } catch {
+      return { ok: false, issues, total: issues.length };
     }
   }
 
-  /**
-   * Универсальная пагинация (дозапросы по startAt) для JQL /rest/api/2/search, чтобы ВСЕ задачи FCRM попадали на доску без обрезания maxResults
-   */
-  async function fetchPaginatedJqlIssues(jql, fieldsParam, maxTotal, onProgress) {
-    const limit = maxTotal || 3000;
-    const allIssues = [];
-    const pageSize = 100;
-    const baseSearchUrl = '/rest/api/2/search?jql=' + encodeURIComponent(jql) + '&fields=' + fieldsParam;
-
-    try {
-      const firstRes = await fetch(baseSearchUrl + '&startAt=0&maxResults=' + pageSize, {
-        credentials: 'same-origin',
-        headers: { Accept: 'application/json' }
-      });
-      if (!firstRes.ok) return { ok: false, issues: [] };
-      const firstData = await firstRes.json();
-      const firstBatch = Array.isArray(firstData.issues) ? firstData.issues : [];
-      allIssues.push(...firstBatch);
-
-      const total = typeof firstData.total === 'number' ? Math.min(firstData.total, limit) : firstBatch.length;
-      const effectiveStep = firstBatch.length > 0 ? firstBatch.length : pageSize;
-
-      if (typeof onProgress === 'function') {
-        onProgress(allIssues.slice(), total, false);
-      }
-
-      if (allIssues.length < total && firstBatch.length > 0) {
-        const offsets = [];
-        for (let nextStart = allIssues.length; nextStart < total; nextStart += effectiveStep) {
-          offsets.push(nextStart);
-        }
-        for (let i = 0; i < offsets.length; i += 3) {
-          const batchOffsets = offsets.slice(i, i + 3);
-          const batchResponses = await Promise.all(
-            batchOffsets.map((st) =>
-              fetch(baseSearchUrl + '&startAt=' + st + '&maxResults=' + effectiveStep, {
-                credentials: 'same-origin',
-                headers: { Accept: 'application/json' }
-              })
-                .then((r) => (r.ok ? r.json() : null))
-                .catch(() => null)
-            )
-          );
-          let anyAdded = false;
-          batchResponses.forEach((d) => {
-            if (d && Array.isArray(d.issues) && d.issues.length > 0) {
-              allIssues.push(...d.issues);
-              anyAdded = true;
-            }
-          });
-          if (typeof onProgress === 'function') {
-            onProgress(allIssues.slice(), total, false);
-          }
-          if (!anyAdded) break;
-        }
-      }
-      return { ok: true, issues: allIssues, total: total };
-    } catch (e) {
-      return { ok: false, issues: allIssues, total: allIssues.length };
-    }
+  function fetchPaginatedAgileIssues(url, maxTotal, onProgress) {
+    return fetchPaginatedIssues(url, maxTotal || 2500, onProgress);
   }
 
-  async function reloadSingleSprintFromJira(sprintName) {
-    loadingSprintsMap[sprintName] = true;
-    renderStructure();
-
-    try {
-      const fieldsParam = getBoardFieldsParam();
-      const spId = sprintIdByName[sprintName];
-      let sprintRawIssues = [];
-
-      if (spId) {
-        const agRes = await fetchPaginatedAgileIssues(
-          '/rest/agile/1.0/board/' + CONFIG.rapidViewId + '/sprint/' + encodeURIComponent(spId) + '/issue?jql=' + encodeURIComponent('project = ' + CONFIG.projectKey) + '&fields=' + fieldsParam,
-          1000
-        );
-        if (agRes.ok && agRes.issues.length > 0) {
-          sprintRawIssues = agRes.issues.filter((iss) => iss && iss.key && iss.key.startsWith(CONFIG.projectKey + '-'));
-        } else {
-          // Фоллбэк через JQL по ID спринта (особенно полезно для закрытых спринтов)
-          const jqlRes = await fetchPaginatedJqlIssues(
-            'project = ' + CONFIG.projectKey + ' AND Sprint = ' + spId + ' ORDER BY updated DESC',
-            fieldsParam,
-            1000
-          );
-          if (jqlRes.ok && jqlRes.issues.length > 0) {
-            sprintRawIssues = jqlRes.issues.filter((iss) => iss && iss.key && iss.key.startsWith(CONFIG.projectKey + '-'));
-          }
-        }
-        sprintRawIssues.forEach((iss) => {
-          issueSprintOverrideMap[iss.key] = sprintName;
-        });
-      } else if (sprintName.includes('Бэклог')) {
-        let agBacklog = await fetchPaginatedAgileIssues(
-          '/rest/agile/1.0/board/' + CONFIG.rapidViewId + '/backlog?jql=' + encodeURIComponent('project = ' + CONFIG.projectKey + ' ORDER BY updated DESC') + '&fields=' + fieldsParam,
-          1500
-        );
-        if (!agBacklog.ok || agBacklog.issues.length === 0) {
-          agBacklog = await fetchPaginatedJqlIssues(
-            'project = ' + CONFIG.projectKey + ' AND (Sprint is EMPTY OR Sprint not in (openSprints(), futureSprints(), closedSprints())) ORDER BY updated DESC',
-            fieldsParam,
-            1500
-          );
-        }
-        if (agBacklog.ok) {
-          sprintRawIssues = agBacklog.issues.filter((iss) => iss && iss.key && iss.key.startsWith(CONFIG.projectKey + '-'));
-        }
-      }
-
-      if (sprintRawIssues.length > 0) {
-        const refreshedTasks = applyLocalOverridesToTasks(await normalizeAndEnrichJiraIssues(sprintRawIssues));
-        const refreshedMap = {};
-        refreshedTasks.forEach((t) => {
-          refreshedMap[t.key] = t;
-        });
-        tasks = tasks.map((t) => refreshedMap[t.key] || t);
-        refreshedTasks.forEach((rt) => {
-          if (!tasks.some((t) => t.key === rt.key)) {
-            tasks.push(rt);
-          }
-        });
-      }
-    } catch (e) {}
-
-    loadingSprintsMap[sprintName] = false;
-    renderStructure();
-  }
-
-  /**
-   * Перезапрос задач конкретного компонента внутри спринта при его раскрытии в списке
-   */
-  async function reloadSingleComponentFromJira(sprintName, compName) {
-    if (!sprintName || !compName) return;
-    const compKey = sprintName + '::' + compName;
-    loadingComponentsMap[compKey] = true;
-    renderStructure();
-
-    try {
-      const fieldsParam = getBoardFieldsParam();
-      const spId = sprintIdByName[sprintName];
-      const safeComp = String(compName).replace(/"/g, '\\"');
-      const compClause =
-        compName === 'Без компонента'
-          ? 'component is EMPTY'
-          : 'component = "' + safeComp + '"';
-
-      let sprintClause = '';
-      if (spId) {
-        sprintClause = 'Sprint = ' + spId;
-      } else if (sprintName.toLowerCase().includes('бэклог') || sprintName.toLowerCase().includes('backlog')) {
-        sprintClause = '(Sprint is EMPTY OR Sprint not in (openSprints(), futureSprints(), closedSprints()))';
-      } else {
-        sprintClause = 'Sprint = "' + String(sprintName).replace(/"/g, '\\"') + '"';
-      }
-
-      const jql = 'project = ' + CONFIG.projectKey + ' AND ' + sprintClause + ' AND ' + compClause + ' ORDER BY updated DESC';
-      const jqlRes = await fetchPaginatedJqlIssues(jql, fieldsParam, 600);
-
-      if (jqlRes.ok && jqlRes.issues.length > 0) {
-        const compRawIssues = jqlRes.issues.filter((iss) => iss && iss.key && iss.key.startsWith(CONFIG.projectKey + '-'));
-        if (spId) {
-          compRawIssues.forEach((iss) => {
-            issueSprintOverrideMap[iss.key] = sprintName;
-          });
-        }
-        if (compRawIssues.length > 0) {
-          const refreshedTasks = applyLocalOverridesToTasks(await normalizeAndEnrichJiraIssues(compRawIssues));
-          const refreshedMap = {};
-          refreshedTasks.forEach((t) => {
-            refreshedMap[t.key] = t;
-          });
-          tasks = tasks.map((t) => refreshedMap[t.key] || t);
-          refreshedTasks.forEach((rt) => {
-            if (!tasks.some((t) => t.key === rt.key)) {
-              tasks.push(rt);
-            }
-          });
-        }
-      }
-    } catch (e) {}
-
-    loadingComponentsMap[compKey] = false;
-    renderStructure();
+  function fetchPaginatedJqlIssues(jql, fields, maxTotal, onProgress) {
+    const url = '/rest/api/2/search?jql=' + encodeURIComponent(jql) + '&fields=' + fields;
+    return fetchPaginatedIssues(url, maxTotal || 3000, onProgress);
   }
 
   /**
@@ -4240,10 +5745,14 @@ export function generateContentScriptJs(
    * 3. Обогащение связанных задач «Задача проекта» и «В проекте» (обновление аккордеонов связей)
    * 4. Компоненты и спринты смежных проектов (OB / OBFRONT / FTD) для выпадающих списков связей
    */
-  async function reloadSingleTaskFromJira(taskKey) {
+  let sidebarLoadGeneration = 0;
+  async function reloadSingleTaskFromJira(taskKey, forceFromJira, showFullSkeleton) {
+    const requestRevision = taskEditRevision;
     if (!taskKey) return;
+    const generation = ++sidebarLoadGeneration;
+    const isCurrentLoad = () => generation === sidebarLoadGeneration && sidebarBlockLoading.taskKey === taskKey;
     const hasExistingTask = tasks.some((t) => t.key === taskKey);
-    loadingSidebarTaskKey = hasExistingTask ? null : taskKey;
+    loadingSidebarTaskKey = showFullSkeleton || !hasExistingTask ? taskKey : null;
     sidebarBlockLoading = {
       taskKey: taskKey,
       desc: true,
@@ -4253,41 +5762,52 @@ export function generateContentScriptJs(
     };
     assigneeSearchQuery = '';
     customerSearchQuery = '';
+    const taskRequest = fetch('/rest/api/2/issue/' + encodeURIComponent(taskKey) + '?fields=' + getBoardFieldsParam(), {
+      credentials:'same-origin', cache:'no-store',
+      headers:{Accept:'application/json', ...(forceFromJira ? {'Cache-Control':'no-cache'} : {})}
+    });
+    const transitionsRequest = fetch('/rest/api/2/issue/' + encodeURIComponent(taskKey) + '/transitions', {credentials:'same-origin',headers:{Accept:'application/json'}}).catch(() => null);
+    const remoteLinksRequest = loadRemoteIssueLinks(taskKey).catch(() => []);
+    const componentsRequest = ensureProjectComponentsLoaded(getIssueProjectKey(taskKey)).catch(() => {});
     renderStructure();
+    let refreshErrorText = '';
 
     try {
-      const fieldsParam = getBoardFieldsParam();
-
+      // The detail refresh explicitly requests OBPROJECT from Jira.
       // ЭТАП 1: Загружаем саму задачу (описание + основные поля) и сразу рендерим блок «Описание задачи»
       let rawIssue = null;
       try {
-        const issRes = await fetch('/rest/api/2/issue/' + encodeURIComponent(taskKey) + '?fields=' + fieldsParam, {
-          credentials: 'same-origin',
-          headers: { Accept: 'application/json' }
-        });
+        const issRes = await taskRequest;
         if (issRes.ok) {
           rawIssue = await issRes.json();
           if (rawIssue && rawIssue.key) {
+            if (!isCurrentLoad()) return;
+            void syncStrategyLinks(rawIssue);
+            syncStrategyIssue(rawIssue);
+            if (forceFromJira) {
+              clearTaskOverride(taskKey, requestRevision);
+            }
             const f = rawIssue.fields || {};
             const parsedOwner = extractCustomerOwnerFromIssueFields(f);
             const compName =
-              Array.isArray(f.components) && f.components[0] && f.components[0].name
-                ? f.components[0].name
+              Array.isArray(f.components) && f.components.length
+                ? f.components.map((c) => c && c.name).filter(Boolean).join(', ')
                 : 'Без компонента';
             const quickSprint = resolveIssueSprint(rawIssue);
 
-            tasks = applyLocalOverridesToTasks(
-              tasks.map((t) => {
+            const refreshedTaskList = tasks.map((t) => {
                 if (t.key !== taskKey) return t;
                 return Object.assign({}, t, {
-                  summary: f.summary ? String(f.summary) : t.summary,
-                  description: typeof f.description === 'string' ? f.description : t.description || '',
-                  status: (f.status && f.status.name) || t.status,
+                  summary: Object.prototype.hasOwnProperty.call(f, 'summary') ? String(f.summary || '') : t.summary,
+                  description: Object.prototype.hasOwnProperty.call(f, 'description') ? (typeof f.description === 'string' ? f.description : '') : t.description || '',
+                  status: readStatusName(f.status, t.status),
                   issueTypeName: (f.issuetype && f.issuetype.name) || t.issueTypeName || 'Задача',
                   issueTypeId: (f.issuetype && f.issuetype.id) || t.issueTypeId || '',
                   priority: (f.priority && f.priority.name) || t.priority,
+                  labels: Array.isArray(f.labels) ? f.labels : [],
                   component: compName,
-                  sprint: quickSprint || t.sprint,
+                  components: Array.isArray(f.components) ? f.components.map((c) => c && c.name).filter(Boolean) : [],
+                  sprint: quickSprint || (forceFromJira ? 'Бэклог FCRM' : t.sprint),
                   assignee: f.assignee
                     ? {
                         name: f.assignee.displayName || f.assignee.name || 'Не назначен',
@@ -4297,28 +5817,32 @@ export function generateContentScriptJs(
                   customer:
                     parsedOwner && parsedOwner.name && parsedOwner.name !== 'Не указан'
                       ? parsedOwner
-                      : t.customer
+                      : { name: 'Не указан', login: '', department: 'FCRM' }
                 });
-              })
-            ).filter((t) => !isCanceledStatus(t.status));
+              });
+            tasks = applyLocalOverridesToTasks(refreshedTaskList, requestRevision, taskKey).filter((t) => !isCanceledStatus(t.status));
           }
+        } else {
+          refreshErrorText = 'Не удалось обновить ' + taskKey + ' из Jira (HTTP ' + issRes.status + ')';
         }
-      } catch (e) {}
+      } catch (e) {
+        refreshErrorText = 'Не удалось обновить ' + taskKey + ' из Jira';
+      }
 
-      if (sidebarBlockLoading.taskKey !== taskKey) return;
+      if (!isCurrentLoad()) return;
       loadingSidebarTaskKey = null;
       sidebarBlockLoading.desc = false;
       renderStructure();
 
+      // Связи и сведения об эпике не зависят от загрузки переходов статуса.
+      const enrichedRequest = rawIssue?.key ? normalizeAndEnrichJiraIssues([rawIssue]).catch(() => []) : Promise.resolve([]);
+      const epicDetailsRequest = rawIssue?.key ? refreshTaskEpicDetails(taskKey, rawIssue).catch(() => {}) : Promise.resolve();
+
       // ЭТАП 2: Загружаем переходы воркфлоу (transitions) и компоненты проекта для блока «Параметры задачи»
-      try {
-        const taskProjKey = getIssueProjectKey(taskKey);
+      const paramsRequest = (async () => { try {
         const [trRes] = await Promise.all([
-          fetch('/rest/api/2/issue/' + encodeURIComponent(taskKey) + '/transitions', {
-            credentials: 'same-origin',
-            headers: { Accept: 'application/json' }
-          }),
-          ensureProjectComponentsLoaded(taskProjKey)
+          transitionsRequest,
+          componentsRequest
         ]);
         if (trRes && trRes.ok) {
           const trData = await trRes.json();
@@ -4327,137 +5851,213 @@ export function generateContentScriptJs(
           }
         }
       } catch (e) {}
-
-      if (sidebarBlockLoading.taskKey !== taskKey) return;
-      sidebarBlockLoading.params = false;
-      renderStructure();
+      if (isCurrentLoad()) { sidebarBlockLoading.params = false; renderStructure(); }
+      })();
 
       // ЭТАП 3: Полное обогащение связей «Задача проекта» и «В проекте» (статусы, приоритеты, эпики, спринты связей)
       let enrichedTask = null;
       if (rawIssue && rawIssue.key) {
         try {
-          const enrichedArr = applyLocalOverridesToTasks(await normalizeAndEnrichJiraIssues([rawIssue]));
+          const enrichedArr = applyLocalOverridesToTasks(await enrichedRequest, requestRevision, taskKey);
+          if (!isCurrentLoad()) return;
           if (enrichedArr[0]) {
             enrichedTask = enrichedArr[0];
-            tasks = tasks.map((t) => (t.key === taskKey ? enrichedTask : t));
+            const hasTask = tasks.some((t) => t.key === taskKey);
+            tasks = hasTask ? tasks.map((t) => (t.key === taskKey ? Object.assign({}, t, {projectTaskLinks:enrichedTask.projectTaskLinks,inProjectLinks:enrichedTask.inProjectLinks,otherLinks:enrichedTask.otherLinks}) : t)) : [...tasks, enrichedTask];
           }
         } catch (e) {}
       }
 
-      if (sidebarBlockLoading.taskKey !== taskKey) return;
+      if (enrichedTask) {
+        const [, remoteLinks] = await Promise.all([epicDetailsRequest, remoteLinksRequest]);
+        if (!isCurrentLoad()) return;
+        tasks = tasks.map((t) => t.key === taskKey ? Object.assign({}, t, {otherLinks:[...(enrichedTask.otherLinks || []), ...remoteLinks]}) : t);
+      }
+
+      if (!isCurrentLoad()) return;
       sidebarBlockLoading.links = false;
       renderStructure();
 
       // ЭТАП 4: Последовательная догрузка справочников компонентов и спринтов для связанных задач «В проекте»
       const ipLinks = (enrichedTask && enrichedTask.inProjectLinks) || [];
-      if (ipLinks.length > 0) {
-        for (let i = 0; i < ipLinks.length; i += 3) {
-          if (sidebarBlockLoading.taskKey !== taskKey) return;
-          const batch = ipLinks.slice(i, i + 3);
-          await Promise.all(
-            batch.map((lnk) =>
-              Promise.all([
-                ensureProjectComponentsLoaded(getIssueProjectKey(lnk.key)),
-                loadSprintsForLinkedIssue(lnk)
-              ])
-            )
-          );
-        }
-      }
-    } catch (e) {}
+      await Promise.all(ipLinks.filter((link) => /^OBFRONT-/i.test(String(link.key || ''))).map((link) => loadFrontDesignRelation(link.key)));
+      await paramsRequest;
+    } catch (e) {
+      if (forceFromJira && !refreshErrorText) refreshErrorText = 'Не удалось полностью обновить ' + taskKey + ' из Jira';
+    }
 
+    if (!isCurrentLoad()) return;
     if (sidebarBlockLoading.taskKey === taskKey) {
       sidebarBlockLoading = { taskKey: null, desc: false, params: false, links: false, ipMeta: false };
     }
     if (loadingSidebarTaskKey === taskKey) {
       loadingSidebarTaskKey = null;
     }
+    if (forceFromJira) showSaveToast(refreshErrorText || ('✓ Данные ' + taskKey + ' обновлены из Jira'));
     renderStructure();
   }
 
+  let productFiltersPromise = null;
+  let productFiltersReady = false;
+  async function prepareProductFilters() {
+    if (productFiltersReady || productFiltersPromise) return;
+    productFiltersPromise = Promise.allSettled([
+      fetchProjectComponents(String(CONFIG.projectKey).toUpperCase()),
+      fetch('/rest/api/2/project/' + encodeURIComponent(CONFIG.projectKey) + '/statuses', {credentials:'same-origin',headers:{Accept:'application/json'}}).then(response => { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
+    ]).then(results => {
+      if (results[0].status === 'fulfilled') projectComponentsList = results[0].value.map(item => item.name).filter(Boolean);
+      if (results[1].status === 'fulfilled' && Array.isArray(results[1].value)) {
+        const types = results[1].value;
+        projectIssueTypesList = types.filter(item => item?.name).map(item => ({id:String(item.id || ''),name:item.name,subtask:Boolean(item.subtask)}));
+        projectStatusesList = Array.from(new Set(types.flatMap(item => (item.statuses || []).map(status => status.name).filter(Boolean))));
+      }
+      productFiltersReady = results.every(result => result.status === 'fulfilled');
+      if (!productFiltersReady && !productDashboardLoaded) statusMessage = 'Не удалось загрузить часть фильтров. Повторите открытие страницы.';
+      if (activeDashboardView === 'product') renderStructure();
+    }).finally(() => { productFiltersPromise = null; });
+    return productFiltersPromise;
+  }
+
   async function loadBoardIssuesFromJira() {
+    const requestRevision = taskEditRevision;
+    if (isInitialBoardLoading) return;
     isInitialBoardLoading = true;
+    const requestedSprintMode = filterSprintState;
+    const sprintJqlClauses = { ACTIVE:'sprint in openSprints()', FUTURE:'sprint in futureSprints()', BACKLOG:'sprint is EMPTY', CLOSED:'sprint in closedSprints()', open_future:'(sprint in openSprints() OR sprint in futureSprints())', open_future_backlog:'(sprint in openSprints() OR sprint in futureSprints() OR sprint is EMPTY)', all:'' };
+    const sprintJql = sprintJqlClauses[requestedSprintMode] ?? sprintJqlClauses.open_future_backlog;
+    const issueJql = 'project = ' + CONFIG.projectKey + (sprintJql ? ' AND ' + sprintJql : '') + ' ORDER BY updated DESC';
+    initialLoadProgress = 4;
+    initialLoadStage = 'Подключаемся к Jira…';
     renderStructure();
 
     try {
       await discoverJiraFieldsAndComponents();
+      initialLoadProgress = 15;
+      initialLoadStage = 'Загружаю список спринтов…';
+      renderStructure();
       await Promise.all([loadBoardSprintsAndEpics(), loadUmbEpicTasksFromJira()]);
+      initialLoadProgress = 32;
+      initialLoadStage = 'Получаю задачи выбранных спринтов…';
+      renderStructure();
 
       const fieldsParam = getBoardFieldsParam();
       let rawIssues = [];
-      const seenKeys = new Set();
+      const issuePositions = new Map();
 
-      const addUniqueIssues = (arr, explicitSprintName) => {
+      const addUniqueIssues = (arr, preferNew) => {
         if (!Array.isArray(arr)) return;
         arr.forEach((iss) => {
           if (!iss || !iss.key || !String(iss.key).startsWith(CONFIG.projectKey + '-')) return;
-          if (explicitSprintName) {
-            issueSprintOverrideMap[iss.key] = explicitSprintName;
-          }
-          if (!seenKeys.has(iss.key)) {
-            seenKeys.add(iss.key);
+          if (!issuePositions.has(iss.key)) {
+            issuePositions.set(iss.key, rawIssues.length);
             rawIssues.push(iss);
+          } else if (preferNew) {
+            rawIssues[issuePositions.get(iss.key)] = iss;
           }
         });
       };
 
       // 1. Запрашиваем задачи для родных активных и будущих спринтов доски 9349 с дозапросами (пагинацией)
-      const activeAndFutureSprintIds = Array.from(boardOwnedSprintIds).filter((id) => !closedSprintIds.has(id));
+      const allowedSprintStates = {ACTIVE:['ACTIVE'],FUTURE:['FUTURE'],BACKLOG:[],CLOSED:['CLOSED'],open_future:['ACTIVE','FUTURE'],open_future_backlog:['ACTIVE','FUTURE'],all:['ACTIVE','FUTURE','CLOSED']};
+      const allowedStates = allowedSprintStates[requestedSprintMode] || allowedSprintStates.open_future_backlog;
+      const activeAndFutureSprintIds = Array.from(boardOwnedSprintIds).filter((id) => allowedStates.includes(sprintStateByName[sprintNameById[id]]));
       await Promise.all(
         activeAndFutureSprintIds.slice(0, 20).map(async (spId) => {
           const spRes = await fetchPaginatedAgileIssues(
             '/rest/agile/1.0/board/' + CONFIG.rapidViewId + '/sprint/' + spId + '/issue?jql=' + encodeURIComponent('project = ' + CONFIG.projectKey) + '&fields=' + fieldsParam,
-            1000
+            1000,
+            (loaded, total) => {
+              if (total > 0) {
+                initialLoadProgress = Math.max(initialLoadProgress, 32 + Math.round((loaded / total) * 20));
+                initialLoadStage = 'Получаю задачи спринтов: ' + loaded + ' из ' + total;
+                renderStructure();
+              }
+            }
           );
           if (spRes.ok) {
-            addUniqueIssues(spRes.issues, sprintNameById[spId]);
+            addUniqueIssues(spRes.issues, false);
           }
         })
       );
 
-      // 2. Комплексная выгрузка ВСЕХ задач проекта FCRM с автоматическими дозапросами по startAt (активные, будущие, закрытые спринты и бэклог)
+      initialLoadProgress = Math.max(initialLoadProgress, 54);
+      initialLoadStage = 'Загружаю задачи FCRM…';
+      renderStructure();
+
+      // При первом открытии запрашиваем только актуальные спринты и бэклог;
+      // прошедшие спринты загружаются при выборе соответствующего фильтра.
       const jqlAllRes = await fetchPaginatedJqlIssues(
-        'project = ' + CONFIG.projectKey + ' ORDER BY updated DESC',
+        issueJql,
         fieldsParam,
         3000,
-        (partialIssues, totalCount) => {
-          statusMessage = 'Дозагрузка задач FCRM: ' + Math.min(seenKeys.size + partialIssues.length, totalCount) + ' из ' + totalCount + '...';
+        (loaded, totalCount) => {
+          initialLoadProgress = totalCount ? Math.min(90, Math.max(initialLoadProgress, 54 + Math.round((loaded / totalCount) * 36))) : Math.max(initialLoadProgress, 60);
+          initialLoadStage = 'Загружаю задачи FCRM: ' + loaded + ' из ' + (totalCount || loaded);
+          statusMessage = initialLoadStage;
+          renderStructure();
         }
       );
 
-      if (jqlAllRes.ok && jqlAllRes.issues.length > 0) {
-        addUniqueIssues(jqlAllRes.issues, null);
+      if (jqlAllRes.ok) {
+        addUniqueIssues(jqlAllRes.issues, true);
       } else {
         // Резервный вариант через Agile Board API с пагинацией
         let boardPaginated = await fetchPaginatedAgileIssues(
-          '/rest/agile/1.0/board/' + CONFIG.rapidViewId + '/issue?jql=' + encodeURIComponent('project = ' + CONFIG.projectKey + ' ORDER BY updated DESC') + '&fields=' + fieldsParam,
-          2500
+          '/rest/agile/1.0/board/' + CONFIG.rapidViewId + '/issue?jql=' + encodeURIComponent(issueJql) + '&fields=' + fieldsParam,
+          2500,
+          (loaded, total) => {
+            initialLoadProgress = total ? Math.min(90, Math.max(initialLoadProgress, 54 + Math.round((loaded / total) * 36))) : initialLoadProgress;
+            initialLoadStage = 'Загружаю задачи FCRM: ' + loaded + ' из ' + (total || loaded);
+            renderStructure();
+          }
         );
-        if (!boardPaginated.ok || boardPaginated.issues.length === 0) {
+        if ((!boardPaginated.ok || boardPaginated.issues.length === 0) && (requestedSprintMode === 'BACKLOG' || requestedSprintMode === 'open_future_backlog' || requestedSprintMode === 'all')) {
           boardPaginated = await fetchPaginatedAgileIssues(
             '/rest/agile/1.0/board/' + CONFIG.rapidViewId + '/backlog?jql=' + encodeURIComponent('project = ' + CONFIG.projectKey + ' ORDER BY updated DESC') + '&fields=' + fieldsParam,
-            2500
+            2500,
+            (loaded, total) => {
+              initialLoadProgress = total ? Math.min(90, Math.max(initialLoadProgress, 54 + Math.round((loaded / total) * 36))) : initialLoadProgress;
+              initialLoadStage = 'Загружаю задачи FCRM: ' + loaded + ' из ' + (total || loaded);
+              renderStructure();
+            }
           );
         }
         if (boardPaginated.ok) {
-          addUniqueIssues(boardPaginated.issues, null);
+          addUniqueIssues(boardPaginated.issues, true);
         }
       }
 
+      if (requestedSprintMode === 'BACKLOG' || requestedSprintMode === 'open_future_backlog') {
+        const backlogRes = await fetchPaginatedAgileIssues('/rest/agile/1.0/board/' + CONFIG.rapidViewId + '/backlog?jql=' + encodeURIComponent('project = ' + CONFIG.projectKey) + '&fields=' + fieldsParam, 2500);
+        if (backlogRes.ok) addUniqueIssues(backlogRes.issues, false);
+      }
+      allSprintIssuesLoaded = requestedSprintMode === 'all';
+      loadedSprintMode = requestedSprintMode;
       if (rawIssues.length === 0) {
+        initialLoadProgress = 100;
+        initialLoadStage = 'Загрузка завершена';
         isInitialBoardLoading = false;
-        statusMessage = 'Показаны демо-данные FCRM';
+        tasks = []; productDashboardLoaded = true;
+        statusMessage = 'По выбранным условиям задачи не найдены';
         renderStructure();
         return;
       }
 
-      tasks = applyLocalOverridesToTasks(await normalizeAndEnrichJiraIssues(rawIssues));
+      initialLoadProgress = 94;
+      initialLoadStage = 'Обрабатываю данные задач…';
+      renderStructure();
+      tasks = applyLocalOverridesToTasks(await normalizeAndEnrichJiraIssues(rawIssues), requestRevision);
+      productDashboardLoaded = true;
+      initialLoadProgress = 100;
+      initialLoadStage = 'Загрузка завершена';
       isInitialBoardLoading = false;
       statusMessage = 'Спринт → Компонент (' + tasks.length + ' задач FCRM)';
       renderStructure();
     } catch (e) {
+      initialLoadProgress = 100;
+      initialLoadStage = 'Не удалось загрузить задачи FCRM';
       isInitialBoardLoading = false;
-      statusMessage = 'Режим предпросмотра FCRM';
+      statusMessage = 'Не удалось загрузить задачи FCRM. Повторите попытку.';
       renderStructure();
     }
   }
@@ -4497,9 +6097,10 @@ export function generateContentScriptJs(
     if (projectComponentsList.length > 0) {
       return Array.from(new Set([...projectComponentsList, 'Без компонента']));
     }
-    const fcrmOnly = tasks
+    if (!productDashboardLoaded) return ['Без компонента'];
+    const fcrmOnly = (productDashboardLoaded ? tasks : [])
       .filter((t) => t.key && t.key.startsWith(CONFIG.projectKey + '-'))
-      .map((t) => t.component)
+      .flatMap((t) => Array.isArray(t.components) && t.components.length ? t.components : [t.component])
       .filter(Boolean);
     return Array.from(
       new Set([
@@ -4647,7 +6248,7 @@ export function generateContentScriptJs(
         map[k] = epicNameByKey[k];
       }
     });
-    tasks.forEach((t) => {
+    (productDashboardLoaded ? tasks : []).forEach((t) => {
       if (t.epicKey && t.epicKey.startsWith(CONFIG.projectKey + '-') && !isBogusEpicTitle(t.epicName, t.epicKey)) {
         map[t.epicKey] = t.epicName;
       }
@@ -4676,6 +6277,15 @@ export function generateContentScriptJs(
     return Array.from(new Set([...fromLinks, 'Без компонента']));
   }
 
+  const favoriteComponentNames = ['CS', 'CRM_BO', 'CRM_CORE', 'crm support'];
+  function prioritizeFavoriteComponents(names) {
+    return names.slice().sort((a, b) => {
+      const ai = favoriteComponentNames.findIndex(name => name.toLowerCase() === a.toLowerCase());
+      const bi = favoriteComponentNames.findIndex(name => name.toLowerCase() === b.toLowerCase());
+      return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi) || a.localeCompare(b);
+    });
+  }
+
   function buildSkeletonTableRowsHtml(count) {
     let html = '';
     for (let i = 0; i < count; i++) {
@@ -4693,13 +6303,12 @@ export function generateContentScriptJs(
     return html;
   }
 
-  function renderSingleTaskRowAndSubrows(task, allComponents, allSprints, allAssignees, epicMap, epicKeys) {
+  function renderSingleTaskRowAndSubrows(task, allComponents, allSprints, allAssignees, epicMap, epicKeys, treeDepth = 0) {
     const isSelected = isSidebarOpen && task.key === selectedTaskKey;
     const ptList = (task.projectTaskLinks || []).filter((l) => !isCanceledStatus(l.status));
     const ipList = (task.inProjectLinks || []).filter((l) => !isCanceledStatus(l.status));
     const totalLinks = ptList.length + ipList.length;
     const isSubExpanded = Boolean(expandedSubRows[task.key]);
-    const hasNoProjectTask = ptList.length === 0;
     const hasNoAssignee = isTaskMissingAssignee(task);
 
     const taskTransitions = issueTransitionsByKey[task.key] || [];
@@ -4761,8 +6370,9 @@ export function generateContentScriptJs(
         return k.toLowerCase().includes(q) || name.includes(q);
       });
       epicPopoverHtml = \`
-        <div class="ozon-ext-inner-ctrl ozon-ext-combo-popover" style="min-width:290px;padding:6px;display:flex;flex-direction:column;gap:5px;" onclick="event.stopPropagation();">
-          <input type="text" class="ozon-ext-input" id="ozon-table-combo-input" data-action="table-combo-search" placeholder="Поиск эпика FCRM (код или название)..." value="\${escapeHtml(activeTableCombo.query || '')}" autocomplete="off" />
+        <aside role="dialog" aria-label="Эпик задачи" class="ozon-ext-inner-ctrl ozon-ext-combo-popover ozon-ext-epic-picker-popover" style="min-width:290px;padding:6px;display:flex;flex-direction:column;gap:5px;" onclick="event.stopPropagation();">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;"><strong>Эпик задачи · \${escapeHtml(task.key)}</strong><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-action="close-table-epic" aria-label="Закрыть">✕</button></div>
+          <input type="search" class="ozon-ext-input" id="ozon-table-combo-input" data-action="table-combo-search" placeholder="Поиск эпика FCRM (код или название)..." value="\${escapeHtml(activeTableCombo.query || '')}" autocomplete="off" />
           <div class="ozon-ext-combo-list" id="ozon-table-combo-list" style="display:flex;flex-direction:column;gap:2px;">
             <div class="ozon-ext-combo-item \${!task.epicKey ? 'active' : ''}" style="\${comboItemStyle}" data-action="pick-table-epic" data-key="\${escapeHtml(task.key)}" data-epic-key="" data-epic-name="">
               <span style="color:#94A3B8;">✕ Без эпика</span>
@@ -4773,9 +6383,8 @@ export function generateContentScriptJs(
                     .slice(0, 40)
                     .map(
                       (k) => \`
-                        <div class="ozon-ext-combo-item \${k === task.epicKey ? 'active' : ''}" style="\${comboItemStyle}" data-action="pick-table-epic" data-key="\${escapeHtml(task.key)}" data-epic-key="\${escapeHtml(k)}" data-epic-name="\${escapeHtml(epicMap[k] || '')}">
-                          <span class="ozon-mono" style="color:#005BFF;font-weight:700;flex-shrink:0;">\${escapeHtml(k)}</span>
-                          <span style="overflow:hidden;text-overflow:ellipsis;color:#071026;">\${escapeHtml(epicMap[k] || '')}</span>
+                        <div class="ozon-ext-combo-item ozon-ext-epic-option \${k === task.epicKey ? 'active' : ''}" style="\${comboItemStyle}" data-action="pick-table-epic" data-key="\${escapeHtml(task.key)}" data-epic-key="\${escapeHtml(k)}" data-epic-name="\${escapeHtml(epicMap[k] || '')}">
+                          \${renderEpicOption(k, epicMap[k] || '')}
                         </div>
                       \`
                     )
@@ -4783,23 +6392,28 @@ export function generateContentScriptJs(
                 : '<div style="padding:6px 8px;color:#64748B;font-size:11px;">Эпики FCRM не найдены (введите запрос для поиска в Jira)</div>'
             }
           </div>
-        </div>
+        </aside>
       \`;
     }
 
+    const tableFcrmEpicKey = task.epicKey || '';
+    const tableEpicStatus = epicStatusByKey[tableFcrmEpicKey] || '';
+    const tableEpicProjectTag = renderEpicProjectTag(tableFcrmEpicKey);
+    const tableObprojectSource = isEpicIssueType(task.issueTypeName) ? task.key : task.epicKey;
+    const tableObproject = epicObprojectByFcrmEpicKey[tableObprojectSource];
     const epicCellHtml = \`
-      <div class="ozon-ext-inner-ctrl ozon-ext-cell-combo-trigger" data-action="open-table-epic-combo" data-key="\${escapeHtml(task.key)}" title="\${escapeHtml((task.epicKey ? task.epicKey + ' — ' : '') + (cleanEpicTitle || 'Без эпика'))} (Нажмите для поиска эпика FCRM)">
-        <div style="display:flex;align-items:center;gap:4px;min-width:0;flex:1;overflow:hidden;">
-          \${
-            task.epicKey
-              ? \`<span class="ozon-mono" style="color:#005BFF;font-weight:600;font-size:11px;flex-shrink:0;">\${escapeHtml(task.epicKey)}</span>
-                 <span style="color:#334155;font-size:11px;overflow:hidden;text-overflow:ellipsis;">\${escapeHtml(cleanEpicTitle || task.epicKey)}</span>\`
-              : \`<span style="color:#94A3B8;font-size:11px;">Без эпика</span>\`
-          }
+        <div class="ozon-ext-inner-ctrl ozon-ext-cell-combo-trigger" data-action="open-table-epic-combo" data-key="\${escapeHtml(task.key)}" tabindex="0" role="button" aria-label="Изменить Epic Link" title="Изменить Epic Link">
+          <div class="ozon-ext-table-epic-line" style="flex:1;overflow:hidden;">
+            \${tableFcrmEpicKey ? '<a class="ozon-mono" href="https://jit.o3.ru/browse/' + encodeURIComponent(tableFcrmEpicKey) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();">' + escapeHtml(tableFcrmEpicKey) + '</a>' + (tableEpicStatus ? getStatusBadgeHtml(tableEpicStatus) : '') + tableEpicProjectTag + '<span class="epic-title" title="' + escapeHtml(cleanEpicTitle || task.summary) + '">' + escapeHtml(cleanEpicTitle || task.summary) + '</span>' : '<span style="color:#94A3B8;">Без эпика</span>'}
+          </div>
+          <span class="ozon-ext-toolbar-chevron" aria-hidden="true"></span>
+          \${epicPopoverHtml}
         </div>
-        <span style="color:#94A3B8;font-size:9px;flex-shrink:0;">▾</span>
-        \${epicPopoverHtml}
-      </div>
+    \`;
+    const obprojectCellHtml = \`
+        <div class="ozon-ext-table-epic-line ozon-ext-inner-ctrl" style="min-height:22px;">
+          \${tableObproject && tableObproject.key ? '<a class="ozon-mono" href="https://jit.o3.ru/browse/' + encodeURIComponent(tableObproject.key) + '" target="_blank" rel="noopener noreferrer" title="' + escapeHtml(tableObproject.summary || tableObproject.key) + '" onclick="event.stopPropagation();">' + escapeHtml(tableObproject.key) + '</a>' + (tableObproject.status ? getStatusBadgeHtml(tableObproject.status) : '<span style="color:#94A3B8;">Статус недоступен</span>') + '<span class="epic-title" title="' + escapeHtml(tableObproject.summary || '') + '">' + escapeHtml(tableObproject.summary || '') + '</span>' : '<span style="color:#94A3B8;">OBPROJECT: не указан</span>'}
+        </div>
     \`;
 
     const taskProjKey = getIssueProjectKey(task.key);
@@ -4810,7 +6424,7 @@ export function generateContentScriptJs(
       const filteredComps = taskProjComponents.filter((c) => !cq || c.toLowerCase().includes(cq));
       compPopoverHtml = \`
         <div class="ozon-ext-inner-ctrl ozon-ext-combo-popover" style="min-width:260px;padding:6px;display:flex;flex-direction:column;gap:5px;" onclick="event.stopPropagation();">
-          <input type="text" class="ozon-ext-input" id="ozon-table-combo-input" data-action="table-combo-search" placeholder="Поиск компонента (\${escapeHtml(taskProjKey)})..." value="\${escapeHtml(activeTableCombo.query || '')}" autocomplete="off" />
+          <input type="search" class="ozon-ext-input" id="ozon-table-combo-input" data-action="table-combo-search" placeholder="Поиск компонента (\${escapeHtml(taskProjKey)})..." value="\${escapeHtml(activeTableCombo.query || '')}" autocomplete="off" />
           <div class="ozon-ext-combo-list" id="ozon-table-combo-list" style="display:flex;flex-direction:column;gap:2px;">
             \${
               filteredComps.length > 0
@@ -4857,7 +6471,7 @@ export function generateContentScriptJs(
 
       assigneePopoverHtml = \`
         <div class="ozon-ext-inner-ctrl ozon-ext-combo-popover" style="min-width:270px;padding:6px;display:flex;flex-direction:column;gap:5px;" onclick="event.stopPropagation();">
-          <input type="text" class="ozon-ext-input" id="ozon-table-combo-input" data-action="table-combo-search" placeholder="Поиск человека (ФИО или логин)..." value="\${escapeHtml(activeTableCombo.query || '')}" autocomplete="off" />
+          <input type="search" class="ozon-ext-input" id="ozon-table-combo-input" data-action="table-combo-search" placeholder="Поиск человека (ФИО или логин)..." value="\${escapeHtml(activeTableCombo.query || '')}" autocomplete="off" />
           <div class="ozon-ext-combo-list" id="ozon-table-combo-list" style="display:flex;flex-direction:column;gap:2px;">
             <div class="ozon-ext-combo-item \${task.assignee.name === 'Не назначен' ? 'active' : ''}" style="\${comboItemStyle}" data-action="pick-table-assignee" data-key="\${escapeHtml(task.key)}" data-user-login="" data-user-display="Не назначен">
               <span style="color:#94A3B8;">✕ Не назначен</span>
@@ -4910,7 +6524,7 @@ export function generateContentScriptJs(
 
       customerPopoverHtml = \`
         <div class="ozon-ext-inner-ctrl ozon-ext-combo-popover" style="min-width:270px;padding:6px;display:flex;flex-direction:column;gap:5px;" onclick="event.stopPropagation();">
-          <input type="text" class="ozon-ext-input" id="ozon-table-combo-input" data-action="table-combo-search" placeholder="Поиск Заказчик/Owner (ФИО или логин)..." value="\${escapeHtml(activeTableCombo.query || '')}" autocomplete="off" />
+          <input type="search" class="ozon-ext-input" id="ozon-table-combo-input" data-action="table-combo-search" placeholder="Поиск Заказчик/Owner (ФИО или логин)..." value="\${escapeHtml(activeTableCombo.query || '')}" autocomplete="off" />
           <div class="ozon-ext-combo-list" id="ozon-table-combo-list" style="display:flex;flex-direction:column;gap:2px;">
             <div class="ozon-ext-combo-item \${isCustEmpty ? 'active' : ''}" style="\${comboItemStyle}" data-action="pick-table-customer" data-key="\${escapeHtml(task.key)}" data-user-login="" data-user-display="Не указан">
               <span style="color:#94A3B8;">✕ Не указан</span>
@@ -4984,8 +6598,8 @@ export function generateContentScriptJs(
       \`;
     }
 
-    const taskIndentPx = groupByComponentInsideSprint ? 46 : 28;
-    const subRowIndentPx = groupByComponentInsideSprint ? 68 : 48;
+    const taskIndentPx = 8 + treeDepth * 20;
+    const subRowIndentPx = taskIndentPx + 20;
 
     const cellMap = {
       task: \`
@@ -4996,20 +6610,23 @@ export function generateContentScriptJs(
                 ? \`<button type="button" class="ozon-ext-inner-ctrl" data-action="toggle-subrow" data-key="\${escapeHtml(task.key)}" title="Развернуть/свернуть связанные задачи (\${totalLinks})" style="border:none;background:transparent;color:#005BFF;font-weight:700;cursor:pointer;padding:0;width:16px;min-width:16px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;line-height:1;flex-shrink:0;">\${isSubExpanded ? '▼' : '▶'}</button>\`
                 : '<span style="display:inline-block;width:16px;min-width:16px;flex-shrink:0;"></span>'
             }
-            <span title="Приоритет: \${escapeHtml(task.priority || 'Medium')}" style="display:inline-flex;align-items:center;justify-content:center;width:15px;min-width:15px;flex-shrink:0;">\${getJiraPriorityIconSvg(task.priority)}</span>
-            \${getIssueTypeBadgeHtml(task.issueTypeName || 'Задача', true)}
             <a href="/browse/\${escapeHtml(task.key)}" target="_blank" class="ozon-ext-inner-ctrl ozon-mono" onclick="event.stopPropagation();" style="color:#005BFF;font-weight:700;font-size:11px;text-decoration:none;flex-shrink:0;">\${escapeHtml(task.key)}</a>
-            \${hasNoProjectTask ? getMissingProjectTaskWarnSvg() : ''}
+            \${getIssueTypeBadgeHtml(task.issueTypeName || 'Задача', true)}
+            <button type="button" class="ozon-dev-priority-edit ozon-ext-inner-ctrl" data-priority-key="\${escapeHtml(task.key)}" title="Изменить приоритет: \${escapeHtml(task.priority || 'Не указан')}" aria-label="Изменить приоритет \${escapeHtml(task.key)}">\${getJiraPriorityIconSvg(task.priority)}</button>
             \${hasNoAssignee ? getMissingAssigneeWarnSvg() : ''}
             <span style="overflow:hidden;text-overflow:ellipsis;color:#071026;font-weight:500;font-size:11.5px;flex:1;min-width:0;">\${escapeHtml(task.summary)}</span>
+            \${renderTaskProjectGeneration(task)}
+            \${renderDeliveryIndicators(task)}
+            \${renderMissingCustomerIndicator(task)}
             <button type="button" class="ozon-ext-inner-ctrl ozon-ext-open-sb-btn \${isSelected ? 'active' : ''}" data-action="open-sidebar" data-key="\${escapeHtml(task.key)}" title="Открыть детали задачи \${escapeHtml(task.key)} в боковой панели справа">
-              ◨ Детали
+              Детали
             </button>
           </div>
         </td>
       \`,
       status: \`<td style="overflow:visible;">\${statusCellHtml}</td>\`,
       epic: \`<td style="overflow:visible;">\${epicCellHtml}</td>\`,
+      epicObproject: \`<td>\${obprojectCellHtml}</td>\`,
       component: \`<td style="overflow:visible;">\${compCellHtml}</td>\`,
       assignee: \`<td style="overflow:visible;">\${assigneeCellHtml}</td>\`,
       author: \`
@@ -5029,11 +6646,9 @@ export function generateContentScriptJs(
         </td>
       \`,
       sprint: \`
-        <td>
+        <td style="overflow:visible;">
           <div class="ozon-ext-cell-singleline">
-            <select class="ozon-ext-inner-ctrl ozon-ext-inline-select sprint-muted" data-action="change-sprint" data-key="\${escapeHtml(task.key)}" title="\${escapeHtml(formatSprintWithStateText(task.sprint))}">
-              \${sprintOptions}
-            </select>
+            \${renderSearchSelect('table-sprint-' + task.key, task.sprint, Array.from(new Set([...allSprints, task.sprint].filter(Boolean))).map(sp => ({ value: sp, label: formatSprintWithStateText(sp) })), 'Поиск спринта...', 'compact')}
           </div>
         </td>
       \`,
@@ -5042,7 +6657,7 @@ export function generateContentScriptJs(
     };
 
     let html = \`
-      <tr class="ozon-ext-task-row \${isSelected ? 'selected' : ''}" data-key="\${escapeHtml(task.key)}" title="Нажмите на строку, чтобы развернуть/свернуть связанные задачи (или нажмите «◨ Детали» для открытия боковой панели)">
+      <tr class="ozon-ext-task-row ozon-tree-depth-\${treeDepth % 2} \${isDoneTask(task) ? 'completed' : ''} \${isSelected ? 'selected' : ''}" data-key="\${escapeHtml(task.key)}" title="Нажмите на строку, чтобы развернуть/свернуть связанные задачи (или нажмите «◨ Детали» для открытия боковой панели)">
         \${columnOrder.map((colId) => cellMap[colId] || '<td></td>').join('')}
       </tr>
     \`;
@@ -5065,9 +6680,9 @@ export function generateContentScriptJs(
               <div class="ozon-ext-cell-singleline">
                 <span class="ozon-mono" style="color:#94A3B8;font-weight:700;">↳</span>
                 \${getLinkTypeTagHtml(isPt)}
-                <span title="Приоритет: \${escapeHtml(l.priority || 'Medium')}" style="display:inline-flex;align-items:center;flex-shrink:0;">\${getJiraPriorityIconSvg(l.priority || 'Medium')}</span>
-                \${getIssueTypeBadgeHtml(l.issueTypeName || 'Задача', true)}
                 <a href="/browse/\${escapeHtml(l.key)}" target="_blank" class="ozon-mono" style="color:#005BFF;font-weight:700;font-size:11px;text-decoration:none;flex-shrink:0;">\${escapeHtml(l.key)}</a>
+                \${getIssueTypeBadgeHtml(l.issueTypeName || 'Задача', true)}
+                <button type="button" class="ozon-dev-priority-edit ozon-ext-inner-ctrl" data-priority-key="\${escapeHtml(l.key)}" title="Изменить приоритет: \${escapeHtml(l.priority || 'Не указан')}" aria-label="Изменить приоритет \${escapeHtml(l.key)}">\${getJiraPriorityIconSvg(l.priority || 'Medium')}</button>
                 <span style="color:#071026;font-weight:500;overflow:hidden;text-overflow:ellipsis;" title="\${escapeHtml(l.summary)}">\${escapeHtml(l.summary)}</span>
               </div>
             </td>
@@ -5080,7 +6695,7 @@ export function generateContentScriptJs(
           customer: \`<td style="color:#94A3B8;">—</td>\`,
           created: \`<td class="ozon-mono" style="color:#64748B;font-size:10.5px;"><div class="ozon-ext-cell-singleline">\${escapeHtml(l.createdAt || '—')}</div></td>\`,
           createdAt: \`<td class="ozon-mono" style="color:#64748B;font-size:10.5px;"><div class="ozon-ext-cell-singleline">\${escapeHtml(l.createdAt || '—')}</div></td>\`,
-          sprint: \`<td style="color:#334155;font-weight:500;"><div class="ozon-ext-cell-singleline" title="\${escapeHtml(formatSprintWithStateText(l.sprint || 'Не в спринте'))}"><span style="overflow:hidden;text-overflow:ellipsis;">\${escapeHtml(l.sprint || 'Не в спринте')}</span>\${getSprintStateBadgeHtml(l.sprint)}</div></td>\`,
+          sprint: \`<td style="color:#334155;font-weight:500;"><div class="ozon-ext-cell-singleline ozon-ext-sprint-value" title="\${escapeHtml(formatSprintWithStateText(l.sprint || 'Не в спринте'))}"><span style="overflow:hidden;text-overflow:ellipsis;">\${escapeHtml(l.sprint || 'Не в спринте')}</span>\${getSprintStateBadgeHtml(l.sprint)}</div></td>\`,
           projectTask: isPt
             ? \`<td><div class="ozon-ext-cell-singleline">\${getLinkTypeTagHtml(true)}</div></td>\`
             : \`<td style="color:#94A3B8;">—</td>\`,
@@ -5090,7 +6705,7 @@ export function generateContentScriptJs(
         };
 
         return \`
-          <tr class="ozon-ext-subrow">
+          <tr class="ozon-ext-subrow ozon-tree-depth-\${(treeDepth + 1) % 2} \${isDoneTask(l) ? 'completed' : ''}">
             \${columnOrder.map((colId) => subCellMap[colId] || '<td></td>').join('')}
           </tr>
         \`;
@@ -5112,9 +6727,12 @@ export function generateContentScriptJs(
       return \`
         <tr class="ozon-ext-sprint-row">
           <td colspan="\${columnOrder.length}">
-            <div style="display:flex;align-items:center;gap:8px;">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
               <span class="ozon-ext-spinner"></span>
-              <span>\${escapeHtml(statusMessage || 'Загрузка спринтов и задач FCRM из Jira (с дозапросами)...')}</span>
+              <div class="ozon-ext-load-progress">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;color:#334155;font-size:11px;"><span>\${escapeHtml(initialLoadStage || statusMessage || 'Загрузка спринтов и задач FCRM из Jira...')}</span><strong style="color:#005BFF;">\${initialLoadProgress}%</strong></div>
+                <div class="ozon-ext-load-progress-track"><div class="ozon-ext-load-progress-fill" style="--load-progress:\${initialLoadProgress}%"></div></div>
+              </div>
             </div>
           </td>
         </tr>
@@ -5122,8 +6740,9 @@ export function generateContentScriptJs(
       \`;
     }
 
+    if (!productDashboardLoaded) return '<tr><td colspan="' + columnOrder.length + '" style="padding:20px;color:#64748B">Выберите спринты и нажмите «Загрузить задачи». После загрузки можно применить дополнительные фильтры.</td></tr>';
     const groups = {};
-    const hasActiveTaskFilters = Boolean(searchQuery.trim()) || filterComponent !== 'all' || filterEpic !== 'all' || filterStatus !== 'all' || hideEpicTasks;
+    const hasActiveTaskFilters = Boolean(searchQuery.trim()) || filterComponent !== 'all' || filterEpic !== 'all' || filterStatus !== 'all' || hideDone || filterIssueType !== 'all';
 
     // Инициализируем все родные спринты доски (включая Прошедшие/Закрытые), чтобы они всегда отображались в списке
     if (!hasActiveTaskFilters) {
@@ -5144,11 +6763,7 @@ export function generateContentScriptJs(
     const sortedSprints = getSortedSprintNames(groups).filter((spName) => {
       const items = groups[spName] || [];
       const spState = getSprintStateCode(spName);
-      if (filterSprintState === 'open_future' && (spState === 'CLOSED' || spState === 'BACKLOG')) return false;
-      if (filterSprintState === 'ACTIVE' && spState !== 'ACTIVE') return false;
-      if (filterSprintState === 'FUTURE' && spState !== 'FUTURE') return false;
-      if (filterSprintState === 'CLOSED' && spState !== 'CLOSED') return false;
-      if (filterSprintState === 'BACKLOG' && spState !== 'BACKLOG') return false;
+      if (!matchesSprintState(spState)) return false;
       if (hasActiveTaskFilters) return items.length > 0;
       return items.length > 0 || boardOwnedSprintNames.has(spName);
     });
@@ -5161,35 +6776,46 @@ export function generateContentScriptJs(
 
     let rowsHtml = '';
 
-    sortedSprints.forEach((sprintName) => {
-      const groupItems = sortTasksList(groups[sprintName] || []);
-      // По умолчанию спринты СВЁРНУТЫ (разворачиваются по клику или при активном поиске)
-      const isExpanded = Boolean(expandedSprints[sprintName]) || Boolean(searchQuery.trim());
-      const collapsed = !isExpanded;
-      const isSprintLoading = Boolean(loadingSprintsMap[sprintName]);
-      const isBacklog = sprintName.toLowerCase().includes('бэклог') || sprintName.toLowerCase().includes('backlog');
-      const spState = getSprintStateCode(sprintName);
-      const stateLabel =
-        spState === 'ACTIVE'
-          ? 'Активный'
-          : spState === 'FUTURE'
-          ? 'Будущий'
-          : spState === 'CLOSED'
-          ? 'Прошедший'
-          : 'Бэклог';
+    if (productGroupingOrder.join(',') !== 'sprint,component') {
+      const renderGroups = (items, depth, path) => {
+        if (depth >= productGroupingOrder.length) return sortTasksList(items).map((task) => renderSingleTaskRowAndSubrows(task, allComponents, allSprints, allAssignees, epicMap, epicKeys, depth)).join('');
+        const field = productGroupingOrder[depth]; const buckets = {};
+        items.forEach((task) => {
+          const values = field === 'sprint' ? [task.sprint || 'Бэклог FCRM'] : (task.components?.length ? task.components : [task.component || 'Без компонента']);
+          values.forEach((value) => { if (field === 'component' && filterComponent !== 'all' && value !== filterComponent) return; (buckets[value] ||= []).push(task); });
+        });
+        if (field === 'sprint' && depth === 0 && !hasActiveTaskFilters) sortedSprints.forEach((name) => { buckets[name] ||= []; });
+        const names = field === 'sprint' ? getSortedSprintNames(buckets) : Object.keys(buckets).sort((a,b) => a === 'Без компонента' ? 1 : b === 'Без компонента' ? -1 : a.localeCompare(b,'ru'));
+        return names.map((name) => {
+          const key = JSON.stringify([...path, [field, name]]); const groupItems = buckets[name];
+          const defaultExpanded = treeLevelApplied && (tableTreeLevel === 'tasks' || tableTreeLevel === 'links' || (tableTreeLevel === 'components' && depth === 0));
+          const expanded = Object.prototype.hasOwnProperty.call(productExpandedGroups, key) ? productExpandedGroups[key] : (defaultExpanded || (!treeLevelApplied && Boolean(searchQuery.trim())));
+          const heading = field === 'sprint' ? escapeHtml(name) + ' ' + (getSprintStateBadgeHtml(name) || renderBadge('Бэклог','todo')) : '<span style="color:#64748B;font-weight:500">Компонент:</span> ' + escapeHtml(name);
+          const row = '<tr class="ozon-ext-product-group ozon-tree-depth-' + (depth % 2) + ' ' + (field === 'sprint' ? 'ozon-ext-sprint-row' : 'ozon-ext-comp-group-row') + '" data-group-key="' + escapeHtml(key) + '"><td colspan="' + columnOrder.length + '"><div style="display:flex;align-items:center;gap:8px;padding-left:' + (depth * 20) + 'px"><span style="color:#005BFF">' + (expanded ? '▾' : '▸') + '</span><strong>' + heading + '</strong><span class="ozon-ext-group-total">' + groupItems.length + ' задач</span>' + renderStatusSummary(groupItems) + '</div></td></tr>';
+          return row + (expanded ? renderGroups(groupItems, depth + 1, [...path, [field,name]]) : '');
+        }).join('');
+      };
+      return renderGroups(filteredTasks, 0, []);
+    }
 
+    sortedSprints.forEach((sprintName) => {
+      const groupItems = groups[sprintName] || [];
+      // По умолчанию спринты СВЁРНУТЫ (разворачиваются по клику или при активном поиске)
+      const isExpanded = Boolean(expandedSprints[sprintName]) || (!treeLevelApplied && Boolean(searchQuery.trim()));
+      const collapsed = !isExpanded;
       rowsHtml += \`
         <tr class="ozon-ext-sprint-row" data-sprint="\${escapeHtml(sprintName)}">
           <td colspan="\${columnOrder.length}">
             <div style="display:flex;align-items:center;justify-content:space-between;">
               <div style="display:flex;align-items:center;gap:8px;">
-                \${isSprintLoading ? '<span class="ozon-ext-spinner"></span>' : \`<span style="color:#005BFF;font-size:10px;">\${collapsed ? '▶' : '▼'}</span>\`}
+                <span style="color:#005BFF;font-size:10px;">\${collapsed ? "▸" : "▾"}</span>
                 <span style="color:#071026;font-weight:700;font-size:12px;">\${escapeHtml(sprintName)}</span>
-                <span class="ozon-ext-badge \${spState === 'ACTIVE' ? 'ozon-ext-badge-done' : isBacklog || spState === 'CLOSED' ? 'ozon-ext-badge-todo' : 'ozon-ext-badge-progress'}">\${escapeHtml(stateLabel)}</span>
-                <span class="ozon-ext-badge ozon-ext-badge-progress ozon-mono">\${groupItems.length} задач</span>
+                \${getSprintStateBadgeHtml(sprintName) || renderBadge("Бэклог", "todo")}
+                <span class="ozon-ext-group-total">\${groupItems.length} задач</span>
+                \${renderStatusSummary(groupItems)}
               </div>
               <span class="ozon-ext-sprint-chevron" style="color:#64748B;font-size:11px;">
-                \${isSprintLoading ? 'Обновление из Jira...' : collapsed ? 'Развернуть спринт' : 'Свернуть спринт'}
+                \${collapsed ? 'Развернуть спринт' : 'Свернуть спринт'}
               </span>
             </div>
           </td>
@@ -5197,17 +6823,11 @@ export function generateContentScriptJs(
       \`;
 
       if (!collapsed) {
-        if (isSprintLoading) {
-          rowsHtml += buildSkeletonTableRowsHtml(Math.max(3, Math.min(6, groupItems.length || 4)));
-          return;
-        }
-
         if (groupByComponentInsideSprint) {
           const compGroups = {};
           groupItems.forEach((t) => {
-            const cName = t.component || 'Без компонента';
-            if (!compGroups[cName]) compGroups[cName] = [];
-            compGroups[cName].push(t);
+            const names = Array.isArray(t.components) && t.components.length ? t.components : [t.component || 'Без компонента'];
+            names.forEach((cName) => { if (filterComponent !== 'all' && cName !== filterComponent) return; if (!compGroups[cName]) compGroups[cName] = []; compGroups[cName].push(t); });
           });
 
           const sortedCompNames = Object.keys(compGroups).sort((a, b) => {
@@ -5217,24 +6837,28 @@ export function generateContentScriptJs(
           });
 
           sortedCompNames.forEach((compName) => {
-            const compItems = sortTasksList(compGroups[compName]);
+            const compItems = sortByField !== 'default' ? sortTasksList(compGroups[compName] || []) : (compGroups[compName] || []).slice().sort((a, b) => {
+              const priorityDifference = getPrioritySortWeight(b.priority) - getPrioritySortWeight(a.priority);
+              if (priorityDifference !== 0) return priorityDifference;
+              return parseTaskCreatedTimestamp(b) - parseTaskCreatedTimestamp(a);
+            });
             const compKey = sprintName + '::' + compName;
             // По умолчанию компоненты внутри спринта тоже СВЁРНУТЫ (или развёрнуты при активном поиске)
-            const isCompExpanded = Boolean(expandedComponents[compKey]) || Boolean(searchQuery.trim());
+            const isCompExpanded = Boolean(expandedComponents[compKey]) || (!treeLevelApplied && Boolean(searchQuery.trim()));
             const isCompCollapsed = !isCompExpanded;
-            const isCompLoading = Boolean(loadingComponentsMap[compKey]);
 
             rowsHtml += \`
-              <tr class="ozon-ext-comp-group-row" data-comp-group="\${escapeHtml(compKey)}">
+              <tr class="ozon-ext-comp-group-row ozon-tree-depth-1" data-comp-group="\${escapeHtml(compKey)}">
                 <td colspan="\${columnOrder.length}">
                   <div style="display:flex;align-items:center;justify-content:space-between;">
                     <div style="display:flex;align-items:center;gap:7px;">
-                      \${isCompLoading ? '<span class="ozon-ext-spinner" style="width:11px;height:11px;border-width:1.8px;"></span>' : \`<span style="color:#005BFF;font-size:9.5px;">\${isCompCollapsed ? '▶' : '▼'}</span>\`}
+                      <span style="color:#005BFF;font-size:9.5px;">\${isCompCollapsed ? "▸" : "▾"}</span>
                       <span style="color:#64748B;font-size:11px;font-weight:500;">Компонент:</span>
                       <strong style="color:#071026;font-size:11px;font-weight:700;">\${escapeHtml(compName)}</strong>
-                      <span class="ozon-ext-badge ozon-ext-badge-progress ozon-mono" style="font-size:10px;padding:0 5px;">\${compItems.length} задач</span>
+                      <span class="ozon-ext-group-total">\${compItems.length} задач</span>
+                      \${renderStatusSummary(compItems)}
                     </div>
-                    <span style="color:#94A3B8;font-size:10.5px;">\${isCompLoading ? 'Обновление задач компонента из Jira...' : isCompCollapsed ? 'Показать (' + compItems.length + ')' : 'Свернуть'}</span>
+                    <span style="color:#94A3B8;font-size:10.5px;">\${isCompCollapsed ? 'Показать (' + compItems.length + ')' : 'Свернуть'}</span>
                   </div>
                 </td>
               </tr>
@@ -5242,13 +6866,13 @@ export function generateContentScriptJs(
 
             if (!isCompCollapsed) {
               compItems.forEach((task) => {
-                rowsHtml += renderSingleTaskRowAndSubrows(task, allComponents, allSprints, allAssignees, epicMap, epicKeys);
+                rowsHtml += renderSingleTaskRowAndSubrows(task, allComponents, allSprints, allAssignees, epicMap, epicKeys, groupByComponentInsideSprint ? 2 : 1);
               });
             }
           });
         } else {
-          groupItems.forEach((task) => {
-            rowsHtml += renderSingleTaskRowAndSubrows(task, allComponents, allSprints, allAssignees, epicMap, epicKeys);
+          sortTasksList(groupItems).forEach((task) => {
+            rowsHtml += renderSingleTaskRowAndSubrows(task, allComponents, allSprints, allAssignees, epicMap, epicKeys, groupByComponentInsideSprint ? 2 : 1);
           });
         }
       }
@@ -5308,7 +6932,8 @@ export function generateContentScriptJs(
   const COLUMN_META = {
     task: { label: 'Задача (Спринт → Компонент → Задача)', accent: false },
     status: { label: 'Статус ▾', accent: false },
-    epic: { label: 'Эпик (FCRM) ▾', accent: false },
+    epic: { label: 'Epic Link ▾', accent: false },
+    epicObproject: { label: 'Эпик OBPROJECT', accent: false },
     component: { label: 'Компонент ▾', accent: true },
     assignee: { label: 'Исполнитель ▾', accent: false },
     author: { label: 'Автор', accent: false },
@@ -5390,6 +7015,14 @@ export function generateContentScriptJs(
       .map((itName) => \`<option value="\${escapeHtml(itName)}" \${itName === currentIssueType ? 'selected' : ''}>\${escapeHtml(itName)}</option>\`)
       .join('');
 
+    const statusSearchOptions = statusList.map((st) => {
+      const matchedTr = taskTransitions.find((tr) => ((tr.to && tr.to.name) || tr.name || '').toLowerCase() === st.toLowerCase());
+      return { value: st, label: st, transitionId: matchedTr && matchedTr.id ? String(matchedTr.id) : '' };
+    });
+    const issueTypeSearchOptions = issueTypeList.map((name) => ({ value: name, label: name }));
+    const prioritySearchOptions = priorityList.map((name) => ({ value: name, label: name }));
+    const sidebarSprintSearchOptions = Array.from(new Set([...editableSprints, task.sprint].filter(Boolean))).map((name) => ({ value: name, label: formatSprintWithStateText(name) }));
+
     const transitionsChipsHtml =
       taskTransitions.length > 0
         ? \`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">
@@ -5398,7 +7031,7 @@ export function generateContentScriptJs(
                  const targetSt = (tr.to && tr.to.name) || tr.name;
                  const isCurrent = String(targetSt).toLowerCase() === String(task.status).toLowerCase();
                  if (isCurrent) return '';
-                 return \`<button type="button" class="ozon-ext-btn" data-action="quick-transition" data-tr-id="\${escapeHtml(tr.id)}" data-target-status="\${escapeHtml(targetSt)}" style="padding:2px 7px;height:21px;font-size:10px;">→ \${escapeHtml(targetSt)}</button>\`;
+                 return \`<button type="button" class="ozon-ext-status-chip ozon-ext-badge-\${getStatusCategoryClass(targetSt)}" data-action="quick-transition" data-tr-id="\${escapeHtml(tr.id)}" data-target-status="\${escapeHtml(targetSt)}">\${escapeHtml(targetSt)}</button>\`;
                })
                .join('')}
            </div>\`
@@ -5431,6 +7064,16 @@ export function generateContentScriptJs(
     const currentEpicCleanTitle =
       (task.epicKey && epicNameByKey[task.epicKey]) ||
       (!isBogusEpicTitle(task.epicName, task.epicKey) ? task.epicName : '');
+    const currentEpicStatus = task.epicKey ? epicStatusByKey[task.epicKey] || ((umbCatalog.find((item) => item.key === task.epicKey) || {}).status || '') : '';
+    const obprojectSourceKey = isEpicIssueType(task.issueTypeName) ? task.key : task.epicKey;
+    const currentObprojectEpic = obprojectSourceKey ? epicObprojectByFcrmEpicKey[obprojectSourceKey] : null;
+    const obprojectEpicHtml = !obprojectSourceKey
+      ? '<span style="color:#94A3B8;">—</span>'
+      : currentObprojectEpic && currentObprojectEpic.loading && !currentObprojectEpic.key
+        ? '<span style="color:#64748B;">Загружаю эпик OBPROJECT…</span>'
+        : currentObprojectEpic && currentObprojectEpic.key
+          ? '<a href="/browse/' + encodeURIComponent(currentObprojectEpic.key) + '" target="_blank" class="ozon-mono" style="color:#005BFF;font-weight:700;text-decoration:none;">' + escapeHtml(currentObprojectEpic.key) + '</a><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">' + escapeHtml(currentObprojectEpic.summary || currentObprojectEpic.key) + '</span>' + (currentObprojectEpic.status ? getStatusBadgeHtml(currentObprojectEpic.status) : '')
+          : '<span style="color:#64748B;">' + (currentObprojectEpic && currentObprojectEpic.error ? 'Не удалось загрузить эпик OBPROJECT' : 'Не указан') + '</span>';
 
     // Фильтрация для Input-Select эпика (проект FCRM)
     const sbEpicQ = sbEpicSearchQuery.trim().toLowerCase();
@@ -5445,18 +7088,30 @@ export function generateContentScriptJs(
     const filteredSbComps = taskProjComponents.filter((c) => !sbCompQ || c.toLowerCase().includes(sbCompQ));
 
     const umbQ = umbSearchQuery.trim().toLowerCase();
-    const filteredUmb = umbCatalog
-      .filter((u) => !isCanceledStatus(u.status))
-      .filter((u) => {
-        if (!umbQ) return true;
-        return u.key.toLowerCase().includes(umbQ) || u.summary.toLowerCase().includes(umbQ);
-      });
+    const taskComponents = Array.isArray(task.components) ? task.components.map((c) => typeof c === 'string' ? c : c && c.name).filter(Boolean) : String(task.component || '').split(',').map((c) => c.trim()).filter((c) => c && c !== 'Без компонента');
+    const matchingUmb = umbCatalog.filter((u) => !isCanceledStatus(u.status) && u.key !== task.key).filter((u) => {
+      const components = Array.isArray(u.components) ? u.components : String(u.component || '').split(',').map((c) => c.trim()).filter((c) => c && c !== 'Без компонента');
+      return taskComponents.length ? components.some((c) => taskComponents.includes(c)) : !components.length;
+    });
+    const umbByKey = new Map(matchingUmb.map((u) => [u.key, u]));
+    const visibleUmb = new Set();
+    const pendingUmb = matchingUmb.filter((u) => !umbQ || (u.key + ' ' + u.summary).toLowerCase().includes(umbQ)).map((u) => u.key);
+    while (pendingUmb.length) { const key = pendingUmb.pop(); if (visibleUmb.has(key)) continue; visibleUmb.add(key); ((umbByKey.get(key) || {}).parents || []).forEach((parent) => { if (umbByKey.has(parent)) pendingUmb.push(parent); }); }
+    const umbChildren = new Map();
+    const umbRoots = [];
+    matchingUmb.forEach((u) => { if (!visibleUmb.has(u.key)) return; const parents = (u.parents || []).filter((key) => key !== u.key && visibleUmb.has(key) && umbByKey.has(key)); if (!parents.length) umbRoots.push(u.key); parents.forEach((key) => { if (!umbChildren.has(key)) umbChildren.set(key, []); umbChildren.get(key).push(u.key); }); });
+    const filteredUmb = [];
+    const coveredUmb = new Set();
+    function appendUmbTree(key, depth, ancestors) { if (ancestors.has(key)) return; const next = new Set(ancestors); next.add(key); coveredUmb.add(key); filteredUmb.push({ item: umbByKey.get(key), depth }); (umbChildren.get(key) || []).forEach((child) => appendUmbTree(child, depth + 1, next)); }
+    umbRoots.forEach((key) => appendUmbTree(key, 0, new Set()));
+    matchingUmb.forEach((u) => { if (visibleUmb.has(u.key) && !coveredUmb.has(u.key)) appendUmbTree(u.key, 0, new Set()); });
 
     const isDescCollapsed = Boolean(collapsedSidebarSections['desc']);
     const isParamsCollapsed = Boolean(collapsedSidebarSections['params']);
     const isPtCollapsed = Boolean(collapsedSidebarSections['pt']);
     const isPtQuickCollapsed = collapsedSidebarSections['pt_quick'] !== false;
     const isIpCollapsed = Boolean(collapsedSidebarSections['ip']);
+    const isOtherCollapsed = Boolean(collapsedSidebarSections['other']);
 
     const isBlockLoadingForTask = sidebarBlockLoading && sidebarBlockLoading.taskKey === task.key;
     const isDescBlockLoading = Boolean(isBlockLoadingForTask && sidebarBlockLoading.desc);
@@ -5470,6 +7125,38 @@ export function generateContentScriptJs(
 
     const visiblePtLinks = (task.projectTaskLinks || []).filter((lnk) => !isCanceledStatus(lnk.status));
     const visibleIpLinks = (task.inProjectLinks || []).filter((lnk) => !isCanceledStatus(lnk.status));
+    const visibleOtherLinks = task.otherLinks || [];
+
+    const createModalHtml = issueCreateDraft ? (() => {
+      const query = String(issueCreateDraft.componentQuery || '').trim().toLowerCase();
+      const components = issueCreateDraft.components || [];
+      const favorites = ['CS', 'CRM_BO', 'CRM_CORE', 'crm support'];
+      const filtered = components.filter((component) => !query || String(component.name).toLowerCase().includes(query));
+      const selected = components.find((component) => String(component.id) === String(issueCreateDraft.componentId));
+      const renderComponent = (component) => '<button type="button" class="ozon-ext-create-component ' + (selected && String(selected.id) === String(component.id) ? 'active' : '') + '" data-action="pick-create-component" data-component-id="' + escapeHtml(component.id) + '">' + escapeHtml(component.name) + '</button>';
+      const favoriteComponents = filtered.filter((component) => favorites.some((name) => name.toLowerCase() === String(component.name).toLowerCase()));
+      const otherComponents = filtered.filter((component) => !favorites.some((name) => name.toLowerCase() === String(component.name).toLowerCase()));
+      return '<div class="ozon-ext-create-overlay" data-action="close-create-issue">' +
+        '<form class="ozon-ext-create-dialog" id="ozon-create-issue-form">' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;"><div><strong>' + (issueCreateDraft.kind === 'epic' ? 'Создать тематику' : 'Создать задачу — ' + (issueCreateDraft.kind === 'front' ? 'Фронт' : 'Бэк')) + '</strong><div style="font-size:11px;color:#64748B;margin-top:3px;">Проект ' + escapeHtml(issueCreateDraft.projectKey) + '</div></div><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-action="close-create-issue">✕</button></div>' +
+          '<label>Название<input id="ozon-create-issue-summary" type="text" value="' + escapeHtml(issueCreateDraft.summary || '') + '" placeholder="Введите название" autocomplete="off" /></label>' +
+          (issueCreateDraft.kind === 'epic' ? '' : '<label>Описание<textarea id="ozon-create-issue-description" rows="4" placeholder="Введите описание задачи">' + escapeHtml(issueCreateDraft.description || '') + '</textarea></label>') +
+          '<div><label>Компонент <span style="color:#64748B;font-weight:400;">' + (selected ? '· ' + escapeHtml(selected.name) : '') + '</span></label><input id="ozon-create-issue-component-search" type="search" value="' + escapeHtml(issueCreateDraft.componentQuery || '') + '" placeholder="Поиск компонента проекта ' + escapeHtml(issueCreateDraft.projectKey) + '..." autocomplete="off" /><div class="ozon-ext-create-components">' +
+            (issueCreateLoading ? '<div style="padding:10px;color:#64748B;font-size:12px;">Загружаю список компонентов…</div>' : '') +
+            (favoriteComponents.length ? '<div class="ozon-ext-create-caption">Быстрый доступ</div>' + favoriteComponents.map(renderComponent).join('') : '') +
+            (otherComponents.length ? '<div class="ozon-ext-create-caption">Все компоненты</div>' + otherComponents.map(renderComponent).join('') : '') +
+            (!filtered.length ? '<div style="padding:10px;color:#64748B;font-size:12px;">Компоненты не найдены</div>' : '') +
+          '</div></div>' +
+          (issueCreateDraft.kind === 'epic' ? '<div class="ozon-ext-create-note">Тип Epic, метка <code>fcrm_umb_epic</code>; поле названия эпика будет заполнено тем же названием.</div>' : '') +
+          (issueCreateDraft.error ? '<div class="ozon-ext-create-error">' + escapeHtml(issueCreateDraft.error) + '</div>' : '') +
+          '<div class="ozon-ext-create-actions"><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-action="close-create-issue">Отмена</button><button type="submit" class="ozon-ext-btn" ' + (issueCreateBusy || issueCreateLoading ? 'disabled' : '') + '>' + (issueCreateLoading ? 'Загружаю…' : issueCreateBusy ? 'Создаю…' : 'Создать и связать') + '</button></div>' +
+        '</form></div>';
+    })() : '';
+    const linkTypes = {inProject:'В проекте', projectTask:'Задача проекта', duplicates:'Дублирует', linkedTask:'Связанная задача', web:'Связанная ссылка'};
+    const linkModalHtml = linkCreateDraft ? '<div class="ozon-ext-create-overlay" data-action="close-link-create"><form class="ozon-ext-create-dialog" id="ozon-link-create-form" role="dialog" aria-label="Новая связь">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;"><div><strong>Новая связь</strong><div class="ozon-ext-create-note">' + escapeHtml(linkTypes[linkCreateDraft.kind]) + '</div></div><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-action="close-link-create" aria-label="Закрыть">✕</button></div>' +
+      (linkCreateDraft.kind === 'web' ? '<label>Ссылка<input id="ozon-link-create-url" type="url" placeholder="https://…" required /></label><label>Название ссылки<input id="ozon-link-create-title" type="text" placeholder="Например, обсуждение задачи" required /></label>' : '<label>Ключ задачи<input id="ozon-link-create-key" type="text" placeholder="Например, FCRM-1234" required autocomplete="off" /></label>') +
+      '<div id="ozon-link-create-message" class="ozon-ext-create-error" role="alert" hidden></div><div class="ozon-ext-create-actions"><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-action="close-link-create">Отмена</button><button type="submit" class="ozon-ext-btn">Связать</button></div></form></div>' : '';
 
     // Группируем задачи «В проекте» по OB (Бэкенд), OBFRONT (Фронтенд), FTD (Дизайн), FCRM
     const ipGroupsMap = {};
@@ -5489,90 +7176,40 @@ export function generateContentScriptJs(
         <div class="ozon-ext-sidebar-header">
           <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;flex-wrap:wrap;">
             <a href="/browse/\${escapeHtml(task.key)}" target="_blank" class="ozon-mono" style="color:#005BFF;font-weight:700;font-size:13px;text-decoration:none;flex-shrink:0;">
-              \${escapeHtml(task.key)} ↗
+              \${escapeHtml(task.key)}
             </a>
+            <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-copy-task-link" title="Копировать ссылку и название" aria-label="Копировать ссылку и название" style="width:26px;height:26px;padding:4px;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></svg></button>
+            <span style="color:#64748B;font-size:10px;white-space:nowrap;" title="Создана: \${escapeHtml(task.createdAt || '—')}">Создана: \${escapeHtml(task.createdAt || '—')}</span>
+            <span style="color:#64748B;font-size:10px;white-space:nowrap;" title="Автор: \${escapeHtml(task.author && task.author.name || '—')}">Автор: \${escapeHtml(task.author && task.author.name || '—')}</span>
             \${getIssueTypeBadgeHtml(currentIssueType, true)}
-            <select id="ozon-sb-header-status" class="ozon-ext-status-select status-\${statusCat}" style="width:auto !important;max-width:170px !important;padding:0 16px 0 8px !important;height:22px !important;">
-              \${statusOptions}
-            </select>
-            <span class="ozon-ext-badge \${prioBadgeClass}" title="Приоритет задачи" style="display:inline-flex;align-items:center;gap:4px;">
-              \${getJiraPriorityIconSvg(task.priority)}
-              <span>\${escapeHtml(task.priority || 'Medium')}</span>
-            </span>
           </div>
           <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
-            <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-ext-sidebar-refresh" title="Перезагрузить задачу из Jira">
-              ↻
-            </button>
-            <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-ext-sidebar-expand" title="Расширить/сузить сайдбар">
-              \${sidebarWidth < 620 ? '⇔ Шире' : '⇒⇐ Уже'}
+            <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-ext-sidebar-refresh" title="Обновить все" aria-label="Обновить все">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.9-3L4 10"/><path d="M4 4v6h6"/><path d="M4 13a8 8 0 0 0 14.9 3L20 14"/><path d="M20 20v-6h-6"/></svg>
             </button>
             <button type="button" class="ozon-ext-btn ozon-ext-btn-negative" id="ozon-ext-sidebar-close" title="Закрыть сайдбар">
               ✕
             </button>
           </div>
+            <div class="ozon-ext-title-line">
+              <input type="text" aria-label="Название задачи" id="ozon-sb-summary" value="\${escapeHtml(sidebarDraft(task.key).summary ?? task.summary)}" style="flex:1;font-weight:600;font-size:12.5px;" />
+              <button type="button" class="ozon-ext-btn" id="ozon-sb-save-summary" title="Сохранить название задачи" \${sidebarDraft(task.key).summary === undefined ? 'style="display:none" disabled' : ''}>Сохранить название</button>
+            </div>
+
         </div>
 
         <div class="ozon-ext-sidebar-body">
-          <!-- Название задачи -->
-          <div>
-            <div style="font-size:10.5px;font-weight:700;color:#64748B;margin-bottom:4px;letter-spacing:0.02em;">НАЗВАНИЕ ЗАДАЧИ</div>
-            <div style="display:flex;gap:6px;">
-              <input type="text" id="ozon-sb-summary" value="\${escapeHtml(task.summary)}" style="flex:1;font-weight:600;font-size:12.5px;" />
-              <button type="button" class="ozon-ext-btn" id="ozon-sb-save-summary">Сохранить</button>
-            </div>
-          </div>
-
-          <!-- АККОРДЕОН 1: ОПИСАНИЕ ЗАДАЧИ (с поддержкой форматирования Jira Wiki / Markdown и режимом редактирования) -->
-          <div class="ozon-ext-section-card">
-            <div class="ozon-ext-section-head \${isDescCollapsed ? 'collapsed' : ''}" data-action="toggle-sb-section" data-sec="desc">
-              <div style="display:flex;align-items:center;gap:6px;">
-                <span style="color:#005BFF;font-size:10px;">\${isDescCollapsed ? '▶' : '▼'}</span>
-                <span>Описание задачи</span>
-                \${isDescBlockLoading ? miniBlockSpinnerHtml : ''}
-              </div>
-              <div style="display:flex;align-items:center;gap:5px;" onclick="event.stopPropagation();">
-                <button type="button" class="ozon-ext-btn \${isEditingDescription ? '' : 'ozon-ext-btn-surface'}" id="ozon-sb-toggle-edit-desc" style="height:21px;padding:1px 8px;font-size:10px;">
-                  \${isEditingDescription ? '👁 Просмотр' : '✎ Редактировать'}
-                </button>
-                \${
-                  isEditingDescription
-                    ? '<button type="button" class="ozon-ext-btn" id="ozon-sb-save-description" style="height:21px;padding:1px 8px;font-size:10px;">Сохранить описание</button>'
-                    : ''
-                }
-              </div>
-            </div>
-            \${
-              !isDescCollapsed
-                ? isEditingDescription
-                  ? \`<div style="padding:8px 10px;display:flex;flex-direction:column;gap:6px;">
-                       <textarea id="ozon-sb-description" rows="\${descLinesCount}" placeholder="Введите текст описания (поддерживается разметка *Заголовок*, h2., списки, ссылки)..." style="width:100%;resize:vertical;min-height:90px;max-height:680px;overflow-y:auto;font-size:12px;line-height:1.45;">\${escapeHtml(task.description || '')}</textarea>
-                       <div style="display:flex;justify-content:flex-end;gap:6px;">
-                         <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-sb-cancel-description" style="height:23px;padding:2px 10px;font-size:10.5px;">Отмена</button>
-                         <button type="button" class="ozon-ext-btn" id="ozon-sb-save-description-bottom" style="height:23px;padding:2px 10px;font-size:10.5px;">✓ Сохранить в Jira</button>
-                       </div>
-                     </div>\`
-                  : isDescBlockLoading && !task.description
-                  ? \`<div style="padding:10px 12px;display:flex;flex-direction:column;gap:6px;">
-                       <div class="ozon-ext-skeleton" style="width:45%;height:12px;"></div>
-                       <div class="ozon-ext-skeleton" style="width:100%;height:48px;border-radius:6px;"></div>
-                     </div>\`
-                  : \`<div style="padding:10px 12px;" id="ozon-sb-desc-preview" title="Двойной клик — перейти к редактированию описания">
-                       \${formatJiraDescriptionHtml(task.description)}
-                     </div>\`
-                : ''
-            }
-          </div>
-
+<div class="ozon-ext-workflow"><div class="ozon-ext-workflow-current"><span class="ozon-ext-workflow-label">Статус</span>\${getStatusBadgeHtml(task.status)}</div>
+\${taskTransitions.length ? '<span class="ozon-ext-workflow-label">Перевести в:</span>' : ''}\${transitionsChipsHtml}</div>
           <!-- АККОРДЕОН 2: ПАРАМЕТРЫ ЗАДАЧИ -->
-          <div class="ozon-ext-section-card">
+          <div class="ozon-ext-section-card" id="ozon-sb-params-card">
             <div class="ozon-ext-section-head \${isParamsCollapsed ? 'collapsed' : ''}" data-action="toggle-sb-section" data-sec="params">
               <div style="display:flex;align-items:center;gap:6px;">
-                <span style="color:#005BFF;font-size:10px;">\${isParamsCollapsed ? '▶' : '▼'}</span>
-                <span>Параметры задачи (редактируемые)</span>
+                <span style="color:#005BFF;font-size:10px;">\${isParamsCollapsed ? '▾' : '▾'}</span>
+                <span>Атрибуты задачи</span>
                 \${isParamsBlockLoading ? miniBlockSpinnerHtml : ''}
               </div>
-              <span style="color:#005BFF;font-weight:600;font-size:10.5px;">Ozon Bank \${escapeHtml(taskProjKey)}</span>
+              \${sidebarRefreshButton(task.key, 'params')}
             </div>
             \${
               !isParamsCollapsed
@@ -5580,33 +7217,19 @@ export function generateContentScriptJs(
                     <!-- Тип задачи (доступный в проекте FCRM) -->
                     <div class="ozon-ext-field-label">Тип задачи</div>
                     <div style="display:flex;align-items:center;gap:7px;">
-                      <span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;background:#F8FAFC;border:1px solid #E2E8F0;flex-shrink:0;">
-                        \${getJiraIssueTypeIconSvg(currentIssueType)}
-                      </span>
-                      <select id="ozon-sb-issuetype" style="flex:1;">\${issueTypeOptions}</select>
-                    </div>
-
-                    <!-- Статус (только статусы из схемы воркфлоу задачи) -->
-                    <div class="ozon-ext-field-label">Статус</div>
-                    <div>
-                      <select id="ozon-sb-status">\${statusOptions}</select>
-                      \${transitionsChipsHtml}
+                      \${renderSearchSelect('sidebar-issuetype', currentIssueType, issueTypeSearchOptions, 'Поиск типа задачи...')}
                     </div>
 
                     <!-- Приоритет со стандартной SVG-иконкой Jira -->
                     <div class="ozon-ext-field-label">Приоритет</div>
                     <div style="display:flex;align-items:center;gap:7px;">
-                      <span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;background:#F8FAFC;border:1px solid #E2E8F0;flex-shrink:0;">
-                        \${getJiraPriorityIconSvg(task.priority)}
-                      </span>
-                      <select id="ozon-sb-priority" style="flex:1;">\${priorityOptions}</select>
+                      \${renderSearchSelect('sidebar-priority', task.priority, prioritySearchOptions, 'Поиск приоритета...')}
                     </div>
 
                     <!-- Спринт + быстрые чипсы спринтов доски FCRM и кнопка «Удалить из спринта» -->
                     <div class="ozon-ext-field-label">Спринт</div>
                     <div>
-                      <select id="ozon-sb-sprint">\${sprintOptions}</select>
-                      \${sprintQuickChipsHtml}
+                      \${renderSearchSelect('sidebar-sprint', task.sprint, sidebarSprintSearchOptions, 'Поиск спринта...')}
                     </div>
 
                     <!-- Компонент (Input-Select с поиском по компонентам проекта задачи) -->
@@ -5614,12 +7237,12 @@ export function generateContentScriptJs(
                     <div class="ozon-ext-sb-combo">
                       <div class="ozon-ext-sb-combo-trigger" id="ozon-sb-comp-trigger" title="Нажмите для поиска компонента проекта \${escapeHtml(taskProjKey)}">
                         <span style="font-weight:600;color:#071026;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">\${escapeHtml(task.component || 'Без компонента')}</span>
-                        <span style="color:#64748B;font-size:10px;flex-shrink:0;">🔍 \${escapeHtml(taskProjKey)} ▾</span>
+                        <span style="color:#64748B;font-size:10px;flex-shrink:0;">⌕ \${escapeHtml(taskProjKey)} ▾</span>
                       </div>
                       \${
                         sbCompComboOpen
                           ? \`<div class="ozon-ext-combo-popover" style="width:100%;padding:6px;display:flex;flex-direction:column;gap:5px;">
-                               <input type="text" id="ozon-sb-comp-search" placeholder="Поиск компонента в проекте \${escapeHtml(taskProjKey)}..." value="\${escapeHtml(sbCompSearchQuery)}" autocomplete="off" />
+                               <input type="search" id="ozon-sb-comp-search" placeholder="Поиск компонента в проекте \${escapeHtml(taskProjKey)}..." value="\${escapeHtml(sbCompSearchQuery)}" autocomplete="off" />
                                <div class="ozon-ext-combo-list" id="ozon-sb-comp-list" style="display:flex;flex-direction:column;gap:2px;">
                                  \${
                                    filteredSbComps.length > 0
@@ -5641,24 +7264,24 @@ export function generateContentScriptJs(
                     </div>
 
                     <!-- Эпик (Input-Select с поиском СТРОГО по эпикам проекта FCRM + сохранение в Jira) -->
-                    <div class="ozon-ext-field-label">Эпик (FCRM)</div>
+                    <div class="ozon-ext-field-label">Epic Link</div>
                     <div style="display:flex;flex-direction:column;gap:5px;">
                       <div class="ozon-ext-sb-combo">
-                        <div class="ozon-ext-sb-combo-trigger" id="ozon-sb-epic-trigger" title="Нажмите для поиска эпика в проекте FCRM">
+                        <div class="ozon-ext-sb-combo-trigger" id="ozon-sb-epic-trigger" tabindex="0" role="button" aria-label="Изменить Epic Link" title="Изменить Epic Link">
                           <div style="display:flex;align-items:center;gap:6px;overflow:hidden;min-width:0;">
                             \${
                               task.epicKey
-                                ? \`<span class="ozon-mono" style="color:#005BFF;font-weight:700;flex-shrink:0;">\${escapeHtml(task.epicKey)}</span>
+                                ? \`<a href="/browse/\${encodeURIComponent(task.epicKey)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();" class="ozon-mono" style="color:#005BFF;font-weight:700;flex-shrink:0;text-decoration:none;">\${escapeHtml(task.epicKey)}</a>
                                    <span style="color:#071026;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">\${escapeHtml(currentEpicCleanTitle || task.epicKey)}</span>\`
-                                : '<span style="color:#94A3B8;">Без эпика (нажмите для поиска в FCRM)</span>'
+                                : '<span style="color:#94A3B8;">Без эпика</span>'
                             }
                           </div>
-                          <span style="color:#64748B;font-size:10px;flex-shrink:0;">🔍 FCRM ▾</span>
+                          <span style="display:flex;align-items:center;gap:5px;flex-shrink:0;">\${currentEpicStatus ? getStatusBadgeHtml(currentEpicStatus) : ''}<span style="color:#64748B;font-size:10px;">⌕ ▾</span></span>
                         </div>
                         \${
                           sbEpicComboOpen
                             ? \`<div class="ozon-ext-combo-popover" style="width:100%;padding:6px;display:flex;flex-direction:column;gap:5px;">
-                                 <input type="text" id="ozon-sb-epic-search" placeholder="Поиск эпика в проекте FCRM (код или название)..." value="\${escapeHtml(sbEpicSearchQuery)}" autocomplete="off" />
+                                 <input type="search" id="ozon-sb-epic-search" placeholder="Поиск эпика в проекте FCRM (код или название)..." value="\${escapeHtml(sbEpicSearchQuery)}" autocomplete="off" />
                                  <div class="ozon-ext-combo-list" id="ozon-sb-epic-list" style="display:flex;flex-direction:column;gap:2px;">
                                    <div class="ozon-ext-combo-item \${!task.epicKey ? 'active' : ''}" style="\${sbComboItemStyle}" data-action="pick-sb-epic" data-epic-key="" data-epic-name="">
                                      <span style="color:#94A3B8;">✕ Без эпика (отвязать эпик)</span>
@@ -5669,9 +7292,8 @@ export function generateContentScriptJs(
                                            .slice(0, 50)
                                            .map(
                                              (k) => \`
-                                               <div class="ozon-ext-combo-item \${k === task.epicKey ? 'active' : ''}" style="\${sbComboItemStyle}" data-action="pick-sb-epic" data-epic-key="\${escapeHtml(k)}" data-epic-name="\${escapeHtml(epicMap[k] || '')}">
-                                                 <span class="ozon-mono" style="color:#005BFF;font-weight:700;flex-shrink:0;">\${escapeHtml(k)}</span>
-                                                 <span style="overflow:hidden;text-overflow:ellipsis;color:#071026;">\${escapeHtml(epicMap[k] || '')}</span>
+                                               <div class="ozon-ext-combo-item ozon-ext-epic-option \${k === task.epicKey ? 'active' : ''}" style="\${sbComboItemStyle}" data-action="pick-sb-epic" data-epic-key="\${escapeHtml(k)}" data-epic-name="\${escapeHtml(epicMap[k] || '')}">
+                                                 \${renderEpicOption(k, epicMap[k] || '')}
                                                </div>
                                              \`
                                            )
@@ -5683,19 +7305,19 @@ export function generateContentScriptJs(
                             : ''
                         }
                       </div>
-                      <div style="display:flex;gap:5px;align-items:center;">
-                        <input type="text" id="ozon-sb-epic-key-input" class="ozon-mono" value="\${escapeHtml(task.epicKey)}" placeholder="Код (FCRM-...)" style="width:110px;" />
-                        <input type="text" id="ozon-sb-epic-name" value="\${escapeHtml(currentEpicCleanTitle)}" placeholder="Название эпика..." style="flex:1;" />
-                        <button type="button" class="ozon-ext-btn" id="ozon-sb-save-epic-btn" style="padding:2px 8px;height:26px;" title="Применить и сохранить эпик в Jira">ОК</button>
-                      </div>
                     </div>
+
+                    <div class="ozon-ext-field-label">Эпик OBPROJECT</div>
+                    <div class="ozon-ext-obproject-value" style="display:flex;align-items:center;gap:7px;min-width:0;min-height:30px;width:100%;">\${obprojectEpicHtml}</div>
+
+                    <div class="ozon-ext-field-label">Метки</div>
+                    <div class="ozon-sb-labels" id="ozon-sb-labels">\${(task.labels || []).length ? task.labels.map(label => '<span class="ozon-ext-badge ozon-ext-badge-todo ozon-sb-label-chip">' + escapeHtml(label) + '<button type="button" class="ozon-sb-label-remove" data-sb-remove-label="' + escapeHtml(label) + '" aria-label="Удалить метку ' + escapeHtml(label) + '">×</button></span>').join('') : '<span style="color:#64748B;">Нет меток</span>'}<form class="ozon-sb-label-form" id="ozon-sb-label-form"><input id="ozon-sb-label-input" type="text" aria-label="Новая метка" placeholder="Новая метка" autocomplete="off" /><button type="submit" class="ozon-ext-btn ozon-ext-btn-surface">Добавить</button></form><span class="ozon-sb-label-error" id="ozon-sb-label-error" role="alert" hidden></span></div>
 
                     <!-- Исполнитель с живым поиском по пользователям Jira (оформлено аналогично Заказчик/Owner) -->
                     <div class="ozon-ext-field-label">Исполнитель</div>
                     <div style="display:flex;flex-direction:column;gap:4px;">
                       <div style="display:flex;gap:5px;">
-                        <input type="text" id="ozon-sb-user-search" value="\${escapeHtml(task.assignee.name)}" placeholder="🔍 Поиск Исполнителя по ФИО или логину..." style="flex:1;" />
-                        <button type="button" class="ozon-ext-btn" id="ozon-sb-save-assignee" style="padding:3px 8px;">ОК</button>
+                        <input type="search" id="ozon-sb-user-search" value="\${escapeHtml(task.assignee.name)}" placeholder="🔍 Поиск Исполнителя по ФИО или логину..." style="flex:1;" />
                       </div>
                       <div id="ozon-sb-user-results">
                         \${renderUserSearchResultsHtml(searchedUsersResults)}
@@ -5706,36 +7328,77 @@ export function generateContentScriptJs(
                     <div class="ozon-ext-field-label">Заказчик/Owner</div>
                     <div style="display:flex;flex-direction:column;gap:4px;">
                       <div style="display:flex;gap:5px;">
-                        <input type="text" id="ozon-sb-customer" value="\${escapeHtml(task.customer.name)}" placeholder="🔍 Поиск Заказчик/Owner по ФИО или логину..." style="flex:1;" />
-                        <button type="button" class="ozon-ext-btn" id="ozon-sb-save-customer" style="padding:3px 8px;">ОК</button>
+                        <input type="search" id="ozon-sb-customer" value="\${escapeHtml(task.customer.name)}" placeholder="🔍 Поиск Заказчик/Owner по ФИО или логину..." style="flex:1;" />
                       </div>
                       <div id="ozon-sb-customer-results">
                         \${renderCustomerSearchResultsHtml(searchedCustomerResults)}
                       </div>
                     </div>
 
-                    <div class="ozon-ext-field-label">Автор</div>
-                    <div style="color:#334155;font-weight:500;padding-top:4px;">\${escapeHtml(task.author.name)}</div>
-
-                    <div class="ozon-ext-field-label">Дата создания</div>
-                    <div class="ozon-mono" style="color:#334155;padding-top:4px;">\${escapeHtml(task.createdAt)}</div>
                   </div>\`
                 : ''
             }
+          <!-- АККОРДЕОН 1: ОПИСАНИЕ ЗАДАЧИ (с поддержкой форматирования Jira Wiki / Markdown и режимом редактирования) -->
+          <div class="ozon-ext-section-card" id="ozon-sb-description-card">
+            <div class="ozon-ext-section-head \${isDescCollapsed ? 'collapsed' : ''}" data-action="toggle-sb-section" data-sec="desc">
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span style="color:#005BFF;font-size:10px;">\${isDescCollapsed ? '▾' : '▾'}</span>
+                <span>Описание задачи</span>
+                \${isDescBlockLoading ? miniBlockSpinnerHtml : ''}
+              </div>
+              <div style="display:flex;align-items:center;gap:5px;" onclick="event.stopPropagation();">
+                <button type="button" class="ozon-ext-btn \${isEditingDescription ? '' : 'ozon-ext-btn-surface'}" id="ozon-sb-toggle-edit-desc" style="height:21px;padding:1px 8px;font-size:10px;">
+                  \${isEditingDescription ? '👁 Просмотр' : '✎ Редактировать'}
+                </button>
+                \${
+                  isEditingDescription
+                    ? '<button type="button" class="ozon-ext-btn" id="ozon-sb-save-description" style="height:21px;padding:1px 8px;font-size:10px;">Сохранить описание</button>'
+                    : ''
+                }
+              </div>
+            </div>
+            \${
+              !isDescCollapsed
+                ? isEditingDescription
+                  ? \`<div style="padding:8px 10px;display:flex;flex-direction:column;gap:6px;">
+                       <textarea id="ozon-sb-description" rows="\${descLinesCount}" placeholder="Введите текст описания (поддерживается разметка *Заголовок*, h2., списки, ссылки)..." style="width:100%;resize:vertical;min-height:90px;max-height:680px;overflow-y:auto;font-size:12px;line-height:1.45;">\${escapeHtml(sidebarDraft(task.key).description ?? task.description ?? '')}</textarea>
+                       <div style="display:flex;justify-content:flex-end;gap:6px;">
+                         <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-sb-cancel-description" style="height:23px;padding:2px 10px;font-size:10.5px;">Отмена</button>
+                         <button type="button" class="ozon-ext-btn" id="ozon-sb-save-description-bottom" style="height:23px;padding:2px 10px;font-size:10.5px;">✓ Сохранить в Jira</button>
+                       </div>
+                     </div>\`
+                  : isDescBlockLoading && !task.description
+                  ? \`<div style="padding:10px 12px;display:flex;flex-direction:column;gap:6px;">
+                       <div class="ozon-ext-skeleton" style="width:45%;height:12px;"></div>
+                       <div class="ozon-ext-skeleton" style="width:100%;height:48px;border-radius:6px;"></div>
+                     </div>\`
+                  : \`<div class="ozon-sb-description-preview \${(task.description || '').length > 500 && !expandedSidebarDescriptions.has(task.key) ? 'is-compact' : ''}" style="padding:10px 12px;" id="ozon-sb-desc-preview" title="Двойной клик — перейти к редактированию описания">
+                       \${formatJiraDescriptionHtml(task.description)}
+                     </div>\${(task.description || '').length > 500 ? '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface ozon-sb-description-more" data-action="toggle-description-length" aria-expanded="' + expandedSidebarDescriptions.has(task.key) + '">' + (expandedSidebarDescriptions.has(task.key) ? 'Свернуть описание' : 'Показать описание полностью') + '</button>' : ''}\`
+                : ''
+            }
+          </div>
+
           </div>
 
           <!-- АККОРДЕОН 3: СВЯЗИ «ЗАДАЧА ПРОЕКТА» -->
           <div class="ozon-ext-section-card">
             <div class="ozon-ext-section-head \${isPtCollapsed ? 'collapsed' : ''}" data-action="toggle-sb-section" data-sec="pt">
               <div style="display:flex;align-items:center;gap:6px;">
-                <span style="color:#005BFF;font-size:10px;">\${isPtCollapsed ? '▶' : '▼'}</span>
+                <span style="color:#005BFF;font-size:10px;">\${isPtCollapsed ? '▾' : '▾'}</span>
                 <span>Связи: «Задача проекта» (\${visiblePtLinks.length})</span>
                 \${visiblePtLinks.length === 0 ? getMissingProjectTaskWarnSvg() : ''}
                 \${isLinksBlockLoading ? miniBlockSpinnerHtml : ''}
               </div>
+              <div style="display:flex;align-items:center;gap:6px;">
+            <button type="button" class="ozon-ext-btn ozon-ext-btn-surface ozon-sb-link-add" data-action="start-create-link" data-link-kind="projectTask">+ Связать</button>
+            <details class="ozon-sidebar-more" onclick="event.stopPropagation()"><summary aria-label="Другие действия со связями">⋯</summary><div class="ozon-sidebar-more-menu">
+            <button type="button" class="ozon-ext-btn ozon-ext-inner-ctrl" data-action="generate-links" data-task-keys="\${escapeHtml(task.key)}" \${generatingLinkKeys.has(task.key) ? 'disabled aria-busy="true"' : ''} aria-label="Сгенерировать связи" title="Сгенерировать связи">\${generatingLinkKeys.has(task.key) ? '<span class="ozon-ext-spinner"></span>' : generationIconHtml()} Сгенерировать связи</button>
+              \${sidebarRefreshButton(task.key, 'pt')}
               <a href="/issues/?jql=labels%20%3D%20fcrm_umb_epic" target="_blank" class="ozon-mono" onclick="event.stopPropagation();" style="color:#005BFF;font-size:10.5px;text-decoration:none;">
                 JQL: fcrm_umb_epic ↗
-              </a>
+              </a></div></details>
+              </div>
             </div>
             \${
               !isPtCollapsed
@@ -5751,15 +7414,14 @@ export function generateContentScriptJs(
                                     <div style="display:flex;align-items:center;gap:5px;overflow:hidden;min-width:0;">
                                       <span class="ozon-mono" style="color:#94A3B8;font-weight:700;font-size:11px;">↳</span>
                                       <span class="ozon-ext-link-icon-box" style="background:\${gMeta.bg};color:\${gMeta.color};">\${gMeta.iconSvg}</span>
-                                      <span style="display:inline-flex;align-items:center;flex-shrink:0;">\${getJiraPriorityIconSvg(lnk.priority || 'Medium')}</span>
-                                      \${getIssueTypeBadgeHtml(lnk.issueTypeName || 'Задача', true)}
                                       <a href="/browse/\${escapeHtml(lnk.key)}" target="_blank" class="ozon-mono" style="color:#005BFF;font-weight:700;font-size:11px;text-decoration:none;flex-shrink:0;">\${escapeHtml(lnk.key)}</a>
+                                      \${getIssueTypeBadgeHtml(lnk.issueTypeName || 'Задача', true)}
+                                      <button type="button" class="ozon-dev-priority-edit ozon-ext-inner-ctrl" data-priority-key="\${escapeHtml(lnk.key)}" title="Изменить приоритет: \${escapeHtml(lnk.priority || 'Не указан')}" aria-label="Изменить приоритет \${escapeHtml(lnk.key)}">\${getJiraPriorityIconSvg(lnk.priority || 'Medium')}</button>
                                       <span style="font-weight:600;color:#071026;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="\${escapeHtml(lnk.summary)}">\${escapeHtml(lnk.summary)}</span>
                                     </div>
                                     <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
                                       \${getStatusBadgeHtml(lnk.status)}
-                                      <button type="button" class="ozon-ext-btn" data-action="move-pt-to-ip" data-pt-idx="\${ptIdx}" title="Перенести в блок «В проекте»" style="padding:1px 5px;height:19px;font-size:9.5px;">⇄ В проекте</button>
-                                      <button type="button" class="ozon-ext-btn ozon-ext-btn-negative" data-action="remove-pt-link" data-link-key="\${escapeHtml(lnk.key)}" data-jira-link-id="\${escapeHtml(lnk.jiraLinkId || lnk.id || '')}" style="padding:1px 5px;height:19px;font-size:9.5px;">✕</button>
+                                      \${renderLinkActions(lnk, 'projectTask')}
                                     </div>
                                   </div>
                                 </div>
@@ -5775,32 +7437,35 @@ export function generateContentScriptJs(
                     <div style="border-top:1px solid #E2E8F0;background:#F8FAFC;">
                       <div class="ozon-ext-link-group-header" data-action="toggle-sb-section" data-sec="pt_quick">
                         <div style="display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:700;color:#334155;">
-                          <span style="color:#005BFF;font-size:9.5px;">\${isPtQuickCollapsed ? '▶' : '▼'}</span>
-                          <span>Быстрый фильтр из <code class="ozon-mono">labels = fcrm_umb_epic</code> (\${filteredUmb.length})</span>
+                          <span style="color:#005BFF;font-size:9.5px;">\${isPtQuickCollapsed ? '▾' : '▾'}</span>
+                          <span>Быстрый выбор (\${filteredUmb.length})</span>
                         </div>
-                        <span style="font-size:10px;color:#64748B;">\${isPtQuickCollapsed ? 'Развернуть' : 'Свернуть'}</span>
+                        <div style="display:flex;align-items:center;gap:6px;flex:0 0 auto;">
+                          <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-action="start-create-issue" data-create-kind="epic" style="height:21px;padding:1px 7px;font-size:10px;">+ Создать тематику</button>
+                          <span style="font-size:10px;color:#64748B;">\${isPtQuickCollapsed ? 'Развернуть' : 'Свернуть'}</span>
+                        </div>
                       </div>
                       \${
                         !isPtQuickCollapsed
                           ? \`<div style="padding:7px 12px 7px 42px;border-top:1px solid #EEF2F6;border-left:3px solid #E2E8F0;background:#FFFFFF;">
-                               <input type="text" id="ozon-sb-umb-search" value="\${escapeHtml(umbSearchQuery)}" placeholder="Поиск по ключу или названию в fcrm_umb_epic..." style="width:100%;margin-bottom:5px;background:#F8FAFC !important;height:24px !important;" />
+                               <input type="search" id="ozon-sb-umb-search" value="\${escapeHtml(umbSearchQuery)}" placeholder="Поиск по ключу или названию в fcrm_umb_epic..." style="width:100%;margin-bottom:5px;background:#F8FAFC !important;height:24px !important;" />
                                <div style="max-height:135px;overflow-y:auto;background:#FFFFFF;border:1px solid #CBD5E1;border-radius:7px;">
                                  \${filteredUmb
-                                   .map((u) => {
+                                   .map(({item: u, depth}) => {
                                      const alreadyLinked = visiblePtLinks.some((l) => l.key === u.key);
                                      return \`
-                                       <div style="padding:4px 8px;border-bottom:1px solid #EEF2F6;display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:11px;">
-                                         <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                                       <div style="padding:4px 8px 4px \${8 + Math.min(depth, 8) * 18}px;border-bottom:1px solid #EEF2F6;display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:11px;">
+                                         <a href="/browse/\${encodeURIComponent(u.key)}" target="_blank" rel="noopener noreferrer" style="display:block;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none;">
                                            <strong class="ozon-mono" style="color:#005BFF;margin-right:5px;">\${escapeHtml(u.key)}</strong>
-                                           <span style="color:#071026;">\${escapeHtml(u.summary)}</span>
-                                         </div>
+                                           <span style="color:#071026;">\${depth ? '↳ ' : ''}\${escapeHtml(u.summary)}</span> <span class="ozon-ext-badge ozon-ext-badge-todo">\${escapeHtml(u.component || 'Без компонента')}</span>
+                                         </a>
                                          <button type="button" class="ozon-ext-btn" data-action="toggle-umb-link" data-umb-key="\${escapeHtml(u.key)}" style="padding:1px 7px;height:20px;font-size:10px;flex-shrink:0;">
                                            \${alreadyLinked ? '✓ Привязана' : '+ Выбрать'}
                                          </button>
                                        </div>
                                      \`;
                                    })
-                                   .join('')}
+                                   .join('') || '<div style="padding:10px;color:#64748B;">Для компонента задачи тематики не найдены</div>'}
                                </div>
                              </div>\`
                           : ''
@@ -5815,11 +7480,19 @@ export function generateContentScriptJs(
           <div class="ozon-ext-section-card">
             <div class="ozon-ext-section-head \${isIpCollapsed ? 'collapsed' : ''}" data-action="toggle-sb-section" data-sec="ip">
               <div style="display:flex;align-items:center;gap:6px;">
-                <span style="color:#005BFF;font-size:10px;">\${isIpCollapsed ? '▶' : '▼'}</span>
+                <span style="color:#005BFF;font-size:10px;">\${isIpCollapsed ? '▾' : '▾'}</span>
                 <span>Связи: «В проекте» (\${visibleIpLinks.length})</span>
                 \${isLinksBlockLoading || isIpMetaBlockLoading ? miniBlockSpinnerHtml : ''}
               </div>
-              <span style="font-size:10px;color:#64748B;">\${isLinksBlockLoading ? 'Обновление связей...' : isIpMetaBlockLoading ? 'Догрузка спринтов/компонентов...' : 'OB (Бэкенд) · OBFRONT (Фронтенд) · FTD (Дизайн)'}</span>
+              <div style="display:flex;align-items:center;gap:6px;flex:0 0 auto;">
+                <span style="font-size:10px;color:#64748B;">\${isLinksBlockLoading ? 'Обновление связей...' : isIpMetaBlockLoading ? 'Догрузка спринтов/компонентов...' : ''}</span>
+                <details class="ozon-sidebar-more" onclick="event.stopPropagation()"><summary aria-label="Другие действия со связями">⋯</summary><div class="ozon-sidebar-more-menu">\${sidebarRefreshButton(task.key, 'ip')}<span style="color:#64748b">OB · OBFRONT · FTD</span></div></details>
+                <button type="button" class="ozon-ext-btn ozon-ext-btn-surface ozon-sb-link-add" data-action="start-create-link" data-link-kind="inProject">+ Связать</button>
+                <div style="position:relative;">
+                  <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-action="toggle-create-in-project-menu" style="height:24px;padding:2px 8px;font-size:10px;">+ Создать</button>
+                  \${createInProjectMenuOpen ? '<div class="ozon-ext-create-menu"><button type="button" data-action="start-create-issue" data-create-kind="front">Фронт · OBFRONT</button><button type="button" data-action="start-create-issue" data-create-kind="back">Бэк · OB</button><button type="button" data-action="start-create-issue" data-create-kind="design">Дизайн · FTD</button><button type="button" data-action="start-create-link" data-link-kind="inProject">Новая связь</button></div>' : ''}
+                </div>
+              </div>
             </div>
             \${
               !isIpCollapsed
@@ -5828,11 +7501,11 @@ export function generateContentScriptJs(
                       sortedIpGroups.length > 0
                         ? sortedIpGroups
                             .map((grp) => {
-                              const grpCollapsed = Boolean(collapsedIpGroups[grp.meta.id]);
+                              const grpCollapsed = false;
                               return \`
                                 <div class="ozon-ext-link-group-header" data-action="toggle-ip-group" data-grp-id="\${escapeHtml(grp.meta.id)}">
                                   <div style="display:flex;align-items:center;gap:6px;">
-                                    <span style="color:#005BFF;font-size:9px;">\${grpCollapsed ? '▶' : '▼'}</span>
+                                    <span style="color:#005BFF;font-size:9px;">\${grpCollapsed ? '▾' : '▾'}</span>
                                     <span class="ozon-ext-link-icon-box" style="background:\${grp.meta.bg};color:\${grp.meta.color};">\${grp.meta.iconSvg}</span>
                                     <strong style="font-size:11px;color:#071026;">\${escapeHtml(grp.meta.label)}</strong>
                                     <span class="ozon-ext-badge ozon-ext-badge-progress ozon-mono" style="font-size:9.5px;padding:0 5px;">\${grp.items.length}</span>
@@ -5848,13 +7521,27 @@ export function generateContentScriptJs(
                                           const realSprintVal = (lnk.sprint && String(lnk.sprint).trim()) || 'Не в спринте';
                                           const projComps = getComponentsForProject(lnkProjKey);
                                           const linkCompOptionList = Array.from(new Set([realCompVal, ...projComps]));
-                                          const linkSprintOptionList = getSprintsForLinkedIssue(lnk);
+                                          const linkSprintOptionList = getSprintsForLinkedIssue(lnk).slice().sort((a, b) => a.localeCompare(b, 'ru', { sensitivity: 'base' }));
+                                          const filteredLinkSprints = linkSprintOptionList.filter(sp => !sbIpSprintSearchQuery.trim() || sp.toLowerCase().includes(sbIpSprintSearchQuery.trim().toLowerCase()));
                                           const isThisIpCompOpen = sbIpCompOpenIdx === lIdx;
                                           const ipCompQ = sbIpCompSearchQuery.trim().toLowerCase();
                                           const filteredIpComps = linkCompOptionList.filter((c) => !ipCompQ || c.toLowerCase().includes(ipCompQ));
                                           const lnkEpicClean =
                                             (lnk.epicKey && epicNameByKey[lnk.epicKey]) ||
                                             (!isBogusEpicTitle(lnk.epicName, lnk.epicKey) ? lnk.epicName : '');
+                                          const designRelation = frontDesignLinksByKey[lnk.key];
+                                          const designCandidates = visibleIpLinks.filter((candidate) => /^FTD-/i.test(String(candidate.key || '')));
+                                          const linkedDesigns = designCandidates.filter(candidate => designRelation?.keys?.includes(candidate.key));
+                                          const designColor = !designRelation?.keys?.length ? 'absent' : linkedDesigns.length === designRelation.keys.length && linkedDesigns.every(candidate => /^(готово|закрыт[ао]?|done|closed)$/i.test(candidate.status || '')) ? 'done' : 'active';
+                                          const designLabel = designRelation?.loading ? 'Проверяю связь с дизайном' : designRelation?.error ? 'Не удалось проверить связь с дизайном' : designRelation?.keys?.length ? 'Дизайн: ' + designRelation.keys.join(', ') : 'Нет связи с дизайном';
+                                          const designIcon = /^OBFRONT-/i.test(String(lnk.key || '')) ? '<button type="button" class="ozon-dev-indicator ' + designColor + '" data-action="toggle-front-design" aria-label="' + escapeHtml(designLabel) + '" title="' + escapeHtml(designLabel) + '" aria-expanded="false" style="border:0;cursor:pointer;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20c2 0 2-2 1-3s-1-3 1-3h2a6 6 0 0 0 6-6c0-4-5-8-10-8Z"/><circle cx="7" cy="10" r="1"/><circle cx="10" cy="6" r="1"/><circle cx="16" cy="7" r="1"/></svg></button>' : '';
+                                          const designLinkHtml = /^OBFRONT-/i.test(String(lnk.key || ''))
+                                            ? '<div data-front-design-details hidden style="padding:2px 0 2px 28px;font-size:10px;color:#64748B;">' +
+                                              (designRelation && designRelation.loading ? 'Проверяю связь с дизайном…' :
+                                                designRelation && designRelation.keys.length ? 'Дизайн: ' + designRelation.keys.map((key) => '<a href="/browse/' + encodeURIComponent(key) + '" target="_blank" style="color:#005BFF;text-decoration:none;font-weight:650;">' + escapeHtml(key) + '</a>').join(', ') :
+                                                  designCandidates.length ? 'Нет связи с дизайном · ' + designCandidates.map((candidate) => '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-action="link-front-design" data-front-key="' + escapeHtml(lnk.key) + '" data-design-key="' + escapeHtml(candidate.key) + '" style="height:19px;padding:1px 6px;font-size:9.5px;margin-left:3px;">Связать ' + escapeHtml(candidate.key) + '</button>').join('') :
+                                                    designRelation && designRelation.error ? 'Не удалось проверить связь с дизайном' : 'Задача дизайна FTD пока не привязана к этой FCRM-задаче') +
+                                              '</div>' : '';
 
                                           return \`
                                             <div class="ozon-ext-link-compact-row">
@@ -5862,10 +7549,12 @@ export function generateContentScriptJs(
                                                 <div style="display:flex;align-items:center;gap:5px;overflow:hidden;min-width:0;flex:1;">
                                                   <span class="ozon-mono" style="color:#94A3B8;font-weight:700;font-size:11px;flex-shrink:0;">↳</span>
                                                   <span class="ozon-ext-link-icon-box" style="background:\${grp.meta.bg};color:\${grp.meta.color};">\${grp.meta.iconSvg}</span>
-                                                  <span style="display:inline-flex;align-items:center;flex-shrink:0;" title="Приоритет: \${escapeHtml(lnk.priority || 'Medium')}">\${getJiraPriorityIconSvg(lnk.priority || 'Medium')}</span>
-                                                  \${getIssueTypeBadgeHtml(lnk.issueTypeName || 'Задача', true)}
                                                   <a href="/browse/\${escapeHtml(lnk.key)}" target="_blank" class="ozon-mono" style="color:#005BFF;font-weight:700;font-size:11px;text-decoration:none;flex-shrink:0;">\${escapeHtml(lnk.key)}</a>
+                                                  \${getIssueTypeBadgeHtml(lnk.issueTypeName || 'Задача', true)}
+                                                  <button type="button" class="ozon-dev-priority-edit ozon-ext-inner-ctrl" data-priority-key="\${escapeHtml(lnk.key)}" title="Изменить приоритет: \${escapeHtml(lnk.priority || 'Не указан')}" aria-label="Изменить приоритет \${escapeHtml(lnk.key)}">\${getJiraPriorityIconSvg(lnk.priority || 'Medium')}</button>
+                                                  \${lnk.storyPoints != null ? '<span class="ozon-ext-badge ozon-ext-badge-todo" title="Story Points">' + escapeHtml(String(lnk.storyPoints)) + ' SP</span>' : ''}
                                                   <span style="font-weight:600;color:#071026;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="\${escapeHtml(lnk.summary)}">\${escapeHtml(lnk.summary)}</span>
+                                                  \${designIcon}
                                                   \${
                                                     lnk.epicKey
                                                       ? \`<span class="ozon-mono" style="font-size:9.5px;color:#005BFF;background:#E5F0FF;padding:0 4px;border-radius:4px;flex-shrink:0;" title="Эпик: \${escapeHtml(lnk.epicKey + (lnkEpicClean ? ' — ' + lnkEpicClean : ''))}">\${escapeHtml(lnk.epicKey)}</span>\`
@@ -5874,22 +7563,22 @@ export function generateContentScriptJs(
                                                 </div>
                                                 <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
                                                   \${getStatusBadgeHtml(lnk.status)}
-                                                  <button type="button" class="ozon-ext-btn" data-action="move-ip-to-pt" data-link-idx="\${lIdx}" title="Перенести в «Задача проекта»" style="padding:1px 5px;height:19px;font-size:9.5px;">⇄</button>
-                                                  <button type="button" class="ozon-ext-btn ozon-ext-btn-negative" data-action="remove-ip-link" data-link-idx="\${lIdx}" data-link-key="\${escapeHtml(lnk.key)}" data-jira-link-id="\${escapeHtml(lnk.jiraLinkId || lnk.id || '')}" style="padding:1px 5px;height:19px;font-size:9.5px;">✕</button>
+                                                  \${renderLinkActions(lnk, 'inProject')}
                                                 </div>
                                               </div>
+                                              \${designLinkHtml}
 
                                               <!-- Уровень 4: Компактная строка Компонента и Спринта (с дополнительным отступом вправо под заголовком задачи) -->
                                               <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;align-items:center;padding-left:22px;">
                                                 <div class="ozon-ext-sb-combo">
-                                                  <div class="ozon-ext-sb-combo-trigger" data-action="open-ip-comp-combo" data-link-idx="\${lIdx}" data-proj="\${escapeHtml(lnkProjKey)}" style="min-height:22px;padding:1px 7px;font-size:10.5px;" title="Компонент проекта \${escapeHtml(lnkProjKey)}">
+                                                  <button type="button" class="ozon-ext-search-select-trigger" aria-expanded="\${isThisIpCompOpen}" data-action="open-ip-comp-combo" data-link-idx="\${lIdx}" data-proj="\${escapeHtml(lnkProjKey)}" style="min-height:22px;padding:1px 7px;font-size:10.5px;" title="Компонент проекта \${escapeHtml(lnkProjKey)}">
                                                     <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#071026;font-weight:600;">Комп. (\${escapeHtml(lnkProjKey)}): \${escapeHtml(realCompVal)}</span>
-                                                    <span style="color:#64748B;font-size:9px;flex-shrink:0;">🔍▾</span>
-                                                  </div>
+                                                    <span style="color:#64748B;font-size:9px;flex-shrink:0;">⌕▾</span>
+                                                  </button>
                                                   \${
                                                     isThisIpCompOpen
                                                       ? \`<div class="ozon-ext-combo-popover" style="width:100%;min-width:210px;">
-                                                           <input type="text" id="ozon-sb-ip-comp-search" placeholder="Поиск компонента в проекте \${escapeHtml(lnkProjKey)}..." value="\${escapeHtml(sbIpCompSearchQuery)}" autocomplete="off" />
+                                                           <input type="search" id="ozon-sb-ip-comp-search" placeholder="Поиск компонента в проекте \${escapeHtml(lnkProjKey)}..." value="\${escapeHtml(sbIpCompSearchQuery)}" autocomplete="off" />
                                                            <div class="ozon-ext-combo-list" id="ozon-sb-ip-comp-list">
                                                              \${
                                                                filteredIpComps.length > 0
@@ -5909,9 +7598,10 @@ export function generateContentScriptJs(
                                                       : ''
                                                   }
                                                 </div>
-                                                <select data-action="change-ip-sprint" data-link-idx="\${lIdx}" data-link-key="\${escapeHtml(lnk.key)}" style="height:22px !important;padding:1px 18px 1px 6px !important;font-size:10.5px !important;">
-                                                  \${buildSprintSelectOptionsHtml(linkSprintOptionList, realSprintVal, 'Спринт: ')}
-                                                </select>
+                                                <div class="ozon-ext-sb-combo" style="position:relative;min-width:0;">
+                                                  <button type="button" class="ozon-ext-search-select-trigger" aria-expanded="\${sbIpSprintOpenIdx === lIdx}" data-action="open-ip-sprint-combo" data-link-idx="\${lIdx}" title="Спринт: \${escapeHtml(realSprintVal)}"><span class="ozon-ext-search-select-value">\${escapeHtml(realSprintVal.replace(/\\s*\\((Активный|Будущий|Прошедший)\\)$/, ""))}</span>\${getSprintStateBadgeHtml(realSprintVal)}<span class="ozon-ext-search-select-caret" aria-hidden="true"></span></button>
+                                                  \${sbIpSprintOpenIdx === lIdx ? '<div class="ozon-ext-combo-popover" style="width:100%;min-width:240px;max-height:280px;overflow:auto;"><input type="search" id="ozon-sb-ip-sprint-search" placeholder="Поиск спринта..." value="' + escapeHtml(sbIpSprintSearchQuery) + '" autocomplete="off" />' + (ipSprintLoadProgress[lnk.key] ? '<div class="ozon-ext-sprint-load">Загружаю...<div class="ozon-ext-sprint-load-track"><div class="ozon-ext-sprint-load-fill" style="--sprint-load:' + ipSprintLoadProgress[lnk.key] + '%"></div></div></div>' : '') + (filteredLinkSprints.length ? filteredLinkSprints.map(sp => '<div class="ozon-ext-combo-item ' + (sp === realSprintVal ? 'active' : '') + '" data-action="pick-ip-sprint" data-link-idx="' + lIdx + '" data-link-key="' + escapeHtml(lnk.key) + '" data-sprint="' + escapeHtml(sp) + '"><span>' + escapeHtml(sp.replace(/\\s*\\((Активный|Будущий|Прошедший)\\)$/, '')) + '</span>' + getSprintStateBadgeHtml(sp) + '</div>').join('') : '<div style="padding:6px 8px;color:#64748b;font-size:11px">Спринты не найдены</div>') + '</div>' : ''}
+                                                </div>
                                               </div>
                                             </div>
                                           \`;
@@ -5925,32 +7615,140 @@ export function generateContentScriptJs(
                         : '<div style="padding:10px 12px 10px 26px;color:#64748B;font-size:11.5px;">Нет связанных задач в блоке «В проекте»</div>'
                     }
 
-                    <!-- Добавление новой связи «В проекте» -->
-                    <div style="padding:7px 12px 7px 26px;background:#F8FAFC;border-top:1px solid #E2E8F0;border-left:3px solid #CBD5E1;display:flex;flex-direction:column;gap:5px;">
-                      <div style="font-size:10.5px;font-weight:700;color:#334155;">Привязать задачу в блок «В проекте» (сохраняется в Jira):</div>
-                      <div style="display:grid;grid-template-columns:125px 1fr auto;gap:5px;">
-                        <input type="text" id="ozon-new-ip-key" class="ozon-mono" placeholder="Код (OB-..., FTD-...)" style="background:#FFFFFF !important;height:24px !important;" />
-                        <input type="text" id="ozon-new-ip-summary" placeholder="Комментарий / название (необязательно)..." style="background:#FFFFFF !important;height:24px !important;" />
-                        <button type="button" class="ozon-ext-btn" id="ozon-add-ip-btn" style="height:24px;padding:2px 8px;">+ Привязать</button>
-                      </div>
-                    </div>
                   </div>\`
                 : ''
             }
           </div>
+          <div class="ozon-ext-section-card">
+            <div class="ozon-ext-section-head \${isOtherCollapsed ? 'collapsed' : ''}" data-action="toggle-sb-section" data-sec="other">
+              <div style="display:flex;align-items:center;gap:6px;"><span style="color:#005BFF;font-size:10px;">▾</span><span>Другие связи (\${visibleOtherLinks.length})</span></div>
+              <div style="position:relative;"><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-action="toggle-other-link-menu" style="height:24px;padding:2px 8px;font-size:10px;">+ Связать</button>\${otherLinkMenuOpen ? '<div class="ozon-ext-create-menu ozon-ext-other-link-menu">' + Object.entries(linkTypes).map(([kind,label]) => '<button type="button" data-action="start-create-link" data-link-kind="' + kind + '">' + label + '</button>').join('') + '</div>' : ''}</div>
+            </div>
+            \${!isOtherCollapsed ? (visibleOtherLinks.length
+              ? '<div style="padding:6px 12px;">' + visibleOtherLinks.map((link) => {
+                  const relation = link.linkDirection || link.linkType || (link.url ? 'Веб-ссылка' : 'Связанная задача');
+                  const isIssue = /^[A-Z][A-Z0-9]*-[0-9]+$/i.test(String(link.key || ''));
+                  const status = isIssue ? getStatusBadgeHtml(link.status || 'Статус недоступен') : '';
+                  const target = link.url || ('/browse/' + encodeURIComponent(link.key));
+                  const moveButton = isIssue ? renderLinkActions(link, '') : (link.id && /^remote-\\d+$/.test(String(link.id)) ? '<button type="button" class="ozon-ext-btn ozon-ext-btn-negative" data-action="delete-remote-link" data-remote-id="' + escapeHtml(String(link.id).slice(7)) + '" aria-label="Удалить веб-ссылку">✕</button>' : '');
+                  return '<div style="display:flex;align-items:center;gap:6px;padding:6px 2px;border-bottom:1px solid #EEF2F6;min-width:0;"><span style="font-size:10px;color:#64748B;flex:0 0 auto;">' + escapeHtml(relation) + '</span>' + (isIssue ? '<a class="ozon-mono" href="' + escapeHtml(target) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(link.key) + '</a><span class="ozon-other-summary" style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(link.summary || link.key) + '</span>' : '<a href="' + escapeHtml(target) + '" target="_blank" rel="noopener noreferrer" style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(link.summary || link.key) + '</a>') + status + moveButton + '</div>';
+                }).join('') + '</div>'
+              : '<div style="padding:10px 12px;color:#64748B;font-size:11.5px;">Других связей нет</div>') : ''}
+          </div>
+          \${renderTicketSearchSection(task.key, 'fcrm')}
+          \${renderTicketSearchSection(task.key, 'threads')}
+          \${createModalHtml}
+          \${linkModalHtml}
         </div>
       </aside>
     \`;
   }
 
+  function matchesSprintState(spState) {
+      if ((filterSprintState === 'open_future' || filterSprintState === 'open_future_backlog') && spState === 'CLOSED') return false;
+      if (filterSprintState === 'open_future' && spState === 'BACKLOG') return false;
+      if (filterSprintState === 'ACTIVE' && spState !== 'ACTIVE') return false;
+      if (filterSprintState === 'FUTURE' && spState !== 'FUTURE') return false;
+      if (filterSprintState === 'CLOSED' && spState !== 'CLOSED') return false;
+      if (filterSprintState === 'BACKLOG' && spState !== 'BACKLOG') return false;
+    return true;
+  }
+
+  function isDoneTask(task) {
+    return doneByStatus.get(task.status) ?? /^(done|closed|resolved|готово|выполнено|закрыт|закрыто|закрыта|завершено)$/i.test(task.status);
+  }
+
+  function doneToggleLabel(count) {
+    return (hideDone ? "Показать выполненные" : "Скрыть выполненные") + " (" + count + ")";
+  }
+
+  function renderEpicOption(key, title) {
+    const status = epicStatusByKey[key];
+    return '<span style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;"><span class="ozon-mono" style="color:#005BFF;font-weight:700;">' + escapeHtml(key) + '</span>' + (status ? getStatusBadgeHtml(status) : '<span style="color:#94A3B8;font-size:10px;">Статус недоступен</span>') + '</span><span class="ozon-ext-epic-option-title">' + escapeHtml(title) + '</span>';
+  }
+
+  function renderEpicProjectTag(epicKey) {
+    return '';
+  }
+
+  function renderToolbarFilter(id, title, value, options, placeholder) {
+    const current = options.find(option => option.value === value);
+    const open = activeToolbarFilter === id;
+    const query = toolbarFilterSearch.trim().toLowerCase();
+    const matches = options.filter(option => !query || option.label.toLowerCase().includes(query));
+    if (id === 'epic' && /^fcrm-\\d+$/i.test(query) && !matches.some(option => String(option.value).toLowerCase() === query)) matches.push({value:query.toUpperCase(),label:query.toUpperCase()});
+    return '<div class="ozon-ext-toolbar-combo">' +
+      '<button type="button" class="ozon-ext-toolbar-trigger" data-action="toggle-toolbar-filter" data-filter="' + id + '" ' + ((id === 'sprint' && isInitialBoardLoading) || (['component','epic','status','issue-type'].includes(id) && (!productDashboardLoaded || isInitialBoardLoading)) ? 'disabled ' : '') + 'aria-expanded="' + open + '">' +
+      '<span class="ozon-ext-toolbar-label">' + escapeHtml(current ? current.label : id === 'epic' && value !== 'all' ? 'Эпик: ' + value : title) + '</span><span class="ozon-ext-toolbar-chevron" aria-hidden="true"></span></button>' +
+      (open ? '<div class="ozon-ext-combo-popover ozon-ext-toolbar-popover ' + (id === 'epic' ? 'ozon-ext-epic-filter-popover ozon-dev-epic-filter-sidebar' : '') + '">' + (id === 'epic' ? '<div class="ozon-dev-editor-head"><strong>Фильтр по эпику</strong><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-action="toggle-toolbar-filter" data-filter="epic" aria-label="Закрыть">✕</button></div>' : '') + '<input type="search" id="ozon-toolbar-filter-search" placeholder="' + escapeHtml(placeholder || 'Поиск...') + '" value="' + escapeHtml(toolbarFilterSearch) + '" autocomplete="off" />' +
+        '<div class="ozon-dev-filter-list">' + (matches.length ? matches.map(option => '<button type="button" class="ozon-ext-combo-item ' + (option.value === value ? 'active' : '') + '" data-action="pick-toolbar-filter" data-filter="' + id + '" data-value="' + escapeHtml(option.value) + '">' + escapeHtml(option.label) + '</button>').join('') : '<div class="ozon-ext-toolbar-empty">Ничего не найдено</div>') + '</div></div>' : '') +
+      '</div>';
+  }
+
+  function applyTableTreeLevel(level) {
+    tableTreeLevel = level;
+    treeLevelApplied = true;
+    expandedSprints = {};
+    expandedComponents = {};
+    expandedSubRows = {};
+    productExpandedGroups = {};
+    if (level === 'sprints') return;
+    getAllSprintOptions().forEach(sprint => { expandedSprints[sprint] = true; });
+    tasks.forEach(task => {
+      const sprint = task.sprint || 'Бэклог FCRM';
+      expandedSprints[sprint] = true;
+      if (level === 'tasks' || level === 'links') (task.components?.length ? task.components : [task.component || 'Без компонента']).forEach((name) => { expandedComponents[sprint + '::' + name] = true; });
+      if (level === 'links') expandedSubRows[task.key] = true;
+    });
+  }
+
+  function renderStatusSummary(items) {
+    const counts = new Map();
+    items.forEach(item => {
+      const status = item.status || 'Открыто';
+      counts.set(status, (counts.get(status) || 0) + 1);
+    });
+    return '<span class="ozon-ext-status-summary" aria-label="Сводка по статусам">' + Array.from(counts.entries()).sort((a,b) => a[0].localeCompare(b[0], 'ru')).map(([status, count]) => '<span class="ozon-ext-status-count">' + escapeHtml(status) + ' · ' + count + '</span>').join('') + '</span>';
+  }
+
+  function renderSearchSelect(id, value, options, placeholder, className, buttonClass) {
+    const current = options.find(option => String(option.value) === String(value));
+    const open = activeSearchSelectId === id;
+    const query = open ? searchSelectQuery.trim().toLowerCase() : '';
+    const filtered = options.filter(option => !query || String(option.label).toLowerCase().includes(query));
+    const safeId = escapeHtml(id);
+    const renderLabel = (option) => {
+      const label = escapeHtml(option.label);
+      let icon = '';
+      let badge = '';
+      let text = label;
+      if (id === 'sidebar-issuetype') icon = getJiraIssueTypeIconSvg(option.value);
+      if (id === 'sidebar-priority') icon = getJiraPriorityIconSvg(option.value);
+      if (id === 'sidebar-sprint' || id.startsWith('table-sprint-')) {
+        text = escapeHtml(option.value);
+        badge = getSprintStateBadgeHtml(option.value);
+      }
+      if (!icon && !badge) return label;
+      return '<span class="ozon-ext-select-content">' + icon + '<span class="ozon-ext-select-text">' + text + '</span>' + badge + '</span>';
+    };
+    return '<div class="ozon-ext-search-select ' + ((id === 'sidebar-sprint' || id.startsWith('table-sprint-')) ? 'ozon-ext-sprint-select ' : '') + (className || '') + '">' +
+      '<button type="button" class="ozon-ext-search-select-trigger ' + (buttonClass || '') + '" data-action="toggle-search-select" data-select-id="' + safeId + '" aria-expanded="' + open + '">' +
+      '<span class="ozon-ext-search-select-value">' + renderLabel(current || { value: value || '', label: value || 'Выберите значение' }) + '</span><span class="ozon-ext-search-select-caret" aria-hidden="true"></span></button>' +
+      (open ? '<div class="ozon-ext-combo-popover ozon-ext-search-select-popover"><input type="search" id="ozon-search-select-search" placeholder="' + escapeHtml(placeholder || 'Поиск...') + '" value="' + escapeHtml(searchSelectQuery) + '" autocomplete="off" />' +
+        '<div class="ozon-ext-combo-list">' + (filtered.length ? filtered.map(option => '<button type="button" class="ozon-ext-combo-item ozon-ext-search-select-option ' + (String(option.value) === String(value) ? 'active' : '') + '" data-action="pick-search-select" data-select-id="' + safeId + '" data-value="' + escapeHtml(option.value) + '" data-transition-id="' + escapeHtml(option.transitionId || '') + '">' + renderLabel(option) + '</button>').join('') : '<div class="ozon-ext-search-select-empty">Ничего не найдено</div>') + '</div></div>' : '') +
+      '</div>';
+  }
+
   function getFilteredTasks() {
+    if (!productDashboardLoaded) return {filtered:[],doneCount:0};
     const q = searchQuery.trim().toLowerCase();
-    return tasks.filter((t) => {
+    const matching = tasks.filter((t) => {
       if (isCanceledStatus(t.status)) return false;
-      if (hideEpicTasks && isEpicIssueType(t.issueTypeName)) return false;
-      if (filterComponent !== 'all' && t.component !== filterComponent) return false;
+      if (filterIssueType !== 'all' && (t.issueTypeName || 'Задача') !== filterIssueType) return false;
+      if (filterComponent !== 'all' && !(Array.isArray(t.components) && t.components.length ? t.components : [t.component || 'Без компонента']).includes(filterComponent)) return false;
       if (filterEpic !== 'all' && t.epicKey !== filterEpic) return false;
       if (filterStatus !== 'all' && t.status !== filterStatus) return false;
+      if (filterSprintState !== 'all' && !matchesSprintState(getSprintStateCode(t.sprint || 'Бэклог FCRM'))) return false;
       if (!q) return true;
       return (
         t.key.toLowerCase().includes(q) ||
@@ -5964,6 +7762,7 @@ export function generateContentScriptJs(
         (t.sprint && t.sprint.toLowerCase().includes(q))
       );
     });
+    return { filtered: hideDone ? matching.filter(t => !isDoneTask(t)) : matching, doneCount: matching.filter(isDoneTask).length };
   }
 
   function captureAllScrollPositions() {
@@ -6014,6 +7813,175 @@ export function generateContentScriptJs(
     }
   }
 
+  function prepareNavigationLink(anchor) {
+    const href = (anchor.getAttribute('href') || '').trim();
+    if (!href || href.startsWith('#') || /^(?:javascript|mailto|tel):/i.test(href)) return;
+    let url;
+    try { url = new URL(href, window.location.href); } catch (_) { return; }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+    anchor.setAttribute('target', '_blank');
+    const rel = new Set((anchor.getAttribute('rel') || '').split(' ').filter(Boolean));
+    rel.add('noopener'); rel.add('noreferrer');
+    anchor.setAttribute('rel', Array.from(rel).join(' '));
+  }
+
+  function decorateIssueCopyButtons(root) {
+    root.querySelectorAll('a[href]').forEach(prepareNavigationLink);
+    root.querySelectorAll('.ozon-ext-search-select-trigger span,.ozon-ext-cell-combo-trigger span,#ozon-sb-comp-trigger span,#ozon-sb-epic-trigger span').forEach(span => {
+      if (!span.children.length && /[⌕▾]/.test(span.textContent)) {
+        const label = span.textContent.replace(/[⌕▾]/g,'').trim();
+        span.style.display='inline-flex'; span.style.alignItems='center'; span.style.gap='5px'; span.style.fontSize='11px'; span.style.flexShrink='0';
+        span.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg>' + escapeHtml(label) + '<span class="ozon-ext-search-select-caret" aria-hidden="true"></span>';
+      }
+    });
+    const references = new Map();
+    tasks.forEach(task => {
+      references.set(task.key,task.summary);
+      if (task.epicKey) references.set(task.epicKey,task.epicName || epicNameByKey[task.epicKey]);
+      [...(task.projectTaskLinks || []),...(task.inProjectLinks || []),...(task.otherLinks || [])].forEach(link => references.set(link.key,link.summary));
+    });
+    if (activeDashboardView === 'development') developmentDashboard.copyReferences().forEach((title,key) => references.set(key,title));
+    root.querySelectorAll('a[href*="/browse/"]').forEach(anchor => {
+      const match = /[/]browse[/]([A-Z][A-Z0-9]*-[0-9]+)/i.exec(anchor.getAttribute('href') || '');
+      if (!match || anchor.closest('.ozon-strategy-key') || anchor.nextElementSibling?.classList.contains('ozon-ext-copy-ref') || anchor.parentElement.querySelector('#ozon-copy-task-link')) return;
+      const key = match[1].toUpperCase();
+      const title = references.get(key) || anchor.getAttribute('title') || anchor.textContent.replace(key,'').trim();
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'ozon-ext-copy-ref'; button.title = 'Копировать ссылку и название'; button.setAttribute('aria-label','Копировать ' + key);
+      button.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V3H3v13h5"/></svg>';
+      button.addEventListener('click',async event => {
+        event.preventDefault(); event.stopPropagation(); const url = 'https://jit.o3.ru/browse/' + key;
+        const text = '[' + key + '](' + url + ') ' + (title || '');
+        try {
+          if (window.ClipboardItem && navigator.clipboard.write) {
+            try { await navigator.clipboard.write([new ClipboardItem({'text/plain':new Blob([text],{type:'text/plain'}),'text/html':new Blob(['<a href="' + url + '">' + key + '</a> ' + escapeHtml(title || '')],{type:'text/html'})})]); }
+            catch (_) { await navigator.clipboard.writeText(text); }
+          } else await navigator.clipboard.writeText(text);
+          showSaveToast('✓ Ссылка и название скопированы');
+        } catch (_) { showSaveToast('Не удалось скопировать ссылку: проверьте доступ к буферу обмена'); }
+      });
+      anchor.after(button);
+    });
+  }
+
+  function closeSidebarPickers() {
+    if(!sbEpicComboOpen && !sbCompComboOpen && sbIpCompOpenIdx === null && sbIpSprintOpenIdx === null && !activeSearchSelectId)return;
+    sbEpicComboOpen=false;sbCompComboOpen=false;sbIpCompOpenIdx=null;sbIpSprintOpenIdx=null;activeSearchSelectId='';renderStructure();
+  }
+  function positionSidebarPickers(root) {
+    const body=root.querySelector('#ozon-ext-sidebar-panel');
+    if(body && body.dataset.pickerPositionBound!=='true') {body.dataset.pickerPositionBound='true';body.addEventListener('scroll',event=>{if(!event.target.closest?.('.ozon-ext-combo-popover'))positionSidebarPickers(root);},true);}
+    root.querySelectorAll('#ozon-ext-sidebar-panel .ozon-ext-combo-popover').forEach(popover => {
+      const owner=popover.parentElement;
+      const trigger=owner.querySelector('.ozon-ext-search-select-trigger,.ozon-ext-sb-combo-trigger');
+      if(!trigger)return;
+      const anchor=trigger.getBoundingClientRect();
+      const width=Math.min(Math.max(anchor.width,320),window.innerWidth-24);
+      const height=Math.min(360,window.innerHeight-24);
+      const left=Math.max(12,Math.min(anchor.left,window.innerWidth-width-12));
+      const below=window.innerHeight-anchor.bottom-12,above=anchor.top-12;
+      const useBelow=below>=Math.min(height,240) || below>=above;
+      const available=Math.max(100,Math.min(height,useBelow?below:above));
+      popover.style.setProperty('position','fixed','important');popover.style.setProperty('left',left+'px','important');popover.style.setProperty('right','auto','important');popover.style.setProperty('width',width+'px','important');popover.style.setProperty('min-width','0','important');popover.style.setProperty('max-height',available+'px','important');popover.style.setProperty('overflow','auto','important');popover.style.setProperty('z-index','2147483000','important');
+      popover.style.setProperty('top',(useBelow?anchor.bottom+4:Math.max(12,anchor.top-Math.min(popover.scrollHeight,available)-4))+'px','important');
+      if(popover.querySelector('[data-picker-close]'))return;
+      const close=document.createElement('button');close.setAttribute('data-picker-close','true');close.type='button';close.className='ozon-ext-btn ozon-ext-btn-surface';close.textContent='✕';close.setAttribute('aria-label','Закрыть список');close.style.cssText='position:sticky;top:0;margin-left:auto;display:block;width:26px;min-height:26px;z-index:2;';close.addEventListener('click',event=>{event.stopPropagation();closeSidebarPickers();});popover.prepend(close);
+    });
+  }
+
+  function layoutTaskAttributes(root) {
+    const grid=root.querySelector('#ozon-sb-params-card > .ozon-ext-field-grid');
+    if(!grid || grid.classList.contains('ozon-ext-attributes-columns'))return;
+    const children=Array.from(grid.children); if(children.length!==18)return;
+    const fields=[];
+    for(let index=0;index<children.length;index+=2) {
+      const field=document.createElement('div');field.className='ozon-ext-attribute-field';
+      field.append(children[index],children[index+1]); fields.push(field);
+    }
+    grid.replaceChildren(...[0,3,1,4,2,5,7,8,6].map(index=>fields[index]));
+    fields[6].classList.add('ozon-ext-attribute-labels');
+    grid.classList.add('ozon-ext-attributes-columns');
+  }
+
+  function compactInProjectLinkRows(root) {
+    const header = root.querySelector('#ozon-ext-sidebar-panel [data-sec="ip"]');
+    const section = header && header.closest('.ozon-ext-section-card');
+    const body = header && header.nextElementSibling;
+    if (!section || !body || body.classList.contains('ozon-ext-ip-table-viewport')) return;
+    body.classList.add('ozon-ext-ip-table-viewport');
+    const inner = document.createElement('div'); inner.className = 'ozon-ext-ip-table-body';
+    while (body.firstChild) inner.appendChild(body.firstChild);
+    body.appendChild(inner);
+    const headings = document.createElement('div'); headings.className = 'ozon-ext-ip-table-head';
+    inner.querySelectorAll('.ozon-ext-link-group-header').forEach(group => group.remove());
+    headings.innerHTML = '<span>Задача · Приоритет</span><span>Эпик</span><span>Статус</span><span>Компонент</span><span>Спринт</span><span>Действия</span>';
+    inner.prepend(headings);
+    let widths = [470,90,125,200,245,70];
+    try { const saved = JSON.parse(localStorage.getItem('ozon-ip-column-widths-v3') || 'null'); if (Array.isArray(saved) && saved.length === 6 && saved.every(value => Number.isFinite(value) && value >= 60)) widths = saved; } catch (_) {}
+    const applyWidths = () => { const weights=[...widths]; weights[0]=Math.max(weights[0],...weights.slice(1).map(value=>value*1.6)); inner.style.setProperty('--ozon-ip-columns',weights.map(value => 'minmax(0,' + value + 'fr)').join(' ')); inner.style.setProperty('--ozon-ip-width','0px'); };
+    applyWidths();
+    Array.from(headings.children).forEach((cell,index) => {
+      const handle = document.createElement('span'); handle.className = 'ozon-ip-column-resizer'; handle.setAttribute('role','separator'); handle.setAttribute('aria-label','Ширина: ' + cell.textContent); handle.tabIndex = 0;
+      const save = () => { try { localStorage.setItem('ozon-ip-column-widths-v3',JSON.stringify(widths)); } catch (_) {} };
+      handle.addEventListener('pointerdown',event => { event.preventDefault(); event.stopPropagation(); const start = event.clientX, width = widths[index];
+        const move = ev => { widths[index] = Math.max(index === 0 ? 180 : 60,width + ev.clientX-start); applyWidths(); };
+        const end = () => { document.removeEventListener('pointermove',move); document.removeEventListener('pointerup',end); save(); };
+        document.addEventListener('pointermove',move); document.addEventListener('pointerup',end);
+      });
+      handle.addEventListener('keydown',event => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); widths[index] = Math.max(index === 0 ? 180 : 60,widths[index]+(event.key === 'ArrowRight' ? 10 : -10)); applyWidths(); save(); } });
+      cell.appendChild(handle);
+    });
+    inner.querySelectorAll('.ozon-ext-link-compact-row').forEach(row => {
+      const first = row.children[0];
+      const detail = Array.from(row.children).find(child => child.querySelector('.ozon-ext-sb-combo'));
+      if (!first || !detail) return;
+      const left = first.children[0], actions = first.children[1];
+      const component = detail.querySelector('.ozon-ext-sb-combo');
+      const sprint = detail.querySelector('.ozon-ext-sb-combo:last-child');
+      if (!left || !actions || !component || !sprint) return;
+      const epic = document.createElement('div'); epic.className='ozon-ext-ip-epic-cell';
+      const epicRef = Array.from(left.children).find(child => child.tagName === 'SPAN' && String(child.getAttribute('title') || '').startsWith('Эпик:'));
+      if (epicRef) { const key=epicRef.textContent.trim(); const anchor=document.createElement('a'); anchor.href='/browse/'+encodeURIComponent(key); anchor.className='ozon-mono'; anchor.textContent=key; anchor.title=epicRef.title; epic.appendChild(anchor); epicRef.remove(); } else epic.textContent='—';
+      const secondary = Array.from(row.children).filter(child => child !== first && child !== detail);
+      const status = document.createElement('div'); const badge = actions.querySelector('.ozon-ext-badge');
+      if (badge) { status.appendChild(badge); if (/готово|закрыт|done|closed/i.test(badge.textContent)) row.classList.add('completed'); }
+      Array.from(left.children).filter(child => child.tagName === 'SPAN' && child.style.textOverflow === 'ellipsis').forEach(child => child.classList.add('ozon-ip-summary'));
+      left.classList.add('ozon-ext-ip-task-cell'); actions.classList.add('ozon-ext-ip-action-cell');
+      row.classList.add('ozon-ext-ip-table-row'); row.replaceChildren(left,epic,status,component,sprint,actions);
+      secondary.forEach(child => { child.classList.add('ozon-ext-ip-table-secondary'); row.appendChild(child); });
+      const trigger = component.querySelector('button'); const label = trigger && trigger.querySelector('span');
+      if (label) { label.textContent = label.textContent.replace(/^.*?: /, ''); trigger.title = 'Компонент: ' + label.textContent; }
+    });
+  }
+
+  const taskDetailsSidebar = (${createTaskDetailsSidebar.toString()})({
+    html: buildSidebarHtml,
+    bindEvents: bindSidebarEvents,
+    bindSearch: bindTicketSearchEvents,
+    afterBind: positionSidebarPickers,
+    bindControls: bindSharedTaskControls,
+    enhance: root => { layoutTaskAttributes(root); compactInProjectLinkRows(root); }
+  });
+
+  function renderDashboardNavigation() {
+    return '<nav class="ozon-ext-view-tabs" role="tablist" aria-label="Представление"><button type="button" role="tab" data-dashboard-view="product" aria-selected="' + (activeDashboardView === 'product') + '">Продуктовый бэклог</button><button type="button" role="tab" data-dashboard-view="development" aria-selected="' + (activeDashboardView === 'development') + '">Команды разработки</button><button type="button" role="tab" data-dashboard-view="strategy" aria-selected="' + (activeDashboardView === 'strategy') + '">Стратегическое планирование</button></nav>';
+  }
+
+  function bindDashboardNavigation(root) {
+    root.querySelectorAll('[data-dashboard-view]').forEach(button => button.addEventListener('click', event => {
+      event.stopPropagation();
+      const view = button.getAttribute('data-dashboard-view');
+      if (view === activeDashboardView) return;
+      developmentDashboard.cancel();
+      activeDashboardView = view;
+      activeToolbarFilter = '';
+      activeSearchSelectId = '';
+      activeTableCombo = null;
+      renderStructure();
+      if (view === 'strategy') strategicDashboard.prepareFilters();
+      if (view === 'product') prepareProductFilters();
+    }));
+  }
+
   function renderStructure() {
     let root = document.getElementById('ozon-structure-root');
     if (!isTargetBoardPage() || !isStructureVisible) {
@@ -6027,25 +7995,87 @@ export function generateContentScriptJs(
     }
     root.style.display = 'flex';
 
+    if (activeDashboardView === 'strategy') {
+      const sidebarScroll = captureAllScrollPositions();
+      const scroll = root.querySelector('.ozon-strategy-scroll');
+      const scrollTop = scroll ? scroll.scrollTop : 0;
+      const scrollLeft = scroll ? scroll.scrollLeft : 0;
+      root.innerHTML = renderDashboardNavigation() + strategicDashboard.html();
+      root.querySelector('.ozon-strategy-dashboard')?.insertAdjacentHTML('beforeend',taskDetailsSidebar.html());
+      bindDashboardNavigation(root);
+      strategicDashboard.bind(root);
+      taskDetailsSidebar.bind(root);
+      decorateIssueCopyButtons(root);
+      restoreAllScrollPositions(sidebarScroll);
+      positionSidebarPickers(root);
+      const nextScroll = root.querySelector('.ozon-strategy-scroll');
+      if (nextScroll) { nextScroll.scrollTop = scrollTop; nextScroll.scrollLeft = scrollLeft; }
+      return;
+    }
+
+    if (activeDashboardView === 'development') {
+      const sidebarScroll = captureAllScrollPositions();
+      const tableScroll = root.querySelector('.ozon-dev-table-scroll');
+      const scrollTop = tableScroll ? tableScroll.scrollTop : 0;
+      const scrollLeft = tableScroll ? tableScroll.scrollLeft : 0;
+      root.innerHTML = renderDashboardNavigation() + developmentDashboard.html();
+      root.querySelector('.ozon-dev-content').insertAdjacentHTML('beforeend',taskDetailsSidebar.html());
+      bindDashboardNavigation(root);
+      developmentDashboard.bind(root);
+      taskDetailsSidebar.bind(root);
+      decorateIssueCopyButtons(root);
+      const updatedScroll = root.querySelector('.ozon-dev-table-scroll');
+      if (updatedScroll) { updatedScroll.scrollTop = scrollTop; updatedScroll.scrollLeft = scrollLeft; }
+      restoreAllScrollPositions(sidebarScroll);
+      positionSidebarPickers(root);
+      return;
+    }
+
     // Сохраняем позицию скролла ВСЕХ контейнеров до любых изменений DOM
     const savedScroll = captureAllScrollPositions();
 
-    const filtered = getFilteredTasks();
+    const { filtered, doneCount } = getFilteredTasks();
     const rowsHtml = buildTableRowsHtml(filtered);
-    const sidebarHtml = buildSidebarHtml();
+    const sidebarHtml = taskDetailsSidebar.html();
     const totalTableW = getTotalTableWidth();
 
     const allComponents = getAllComponentOptions();
     const epicMap = getAllEpicOptions();
     const epicKeys = Object.keys(epicMap);
-    const allStatuses = Array.from(new Set([...projectStatusesList, ...tasks.map((t) => t.status).filter(Boolean)])).filter((s) => !isCanceledStatus(s));
+    const allStatuses = Array.from(new Set([...projectStatusesList, ...(productDashboardLoaded ? tasks.map((t) => t.status).filter(Boolean) : [])])).filter((s) => !isCanceledStatus(s));
+    const componentFilterOptions = [{ value: 'all', label: 'Компонент: Все' }, ...allComponents.map(c => ({ value: c, label: c }))];
+    const epicFilterOptions = [{ value: 'all', label: 'Эпик: Все' }, ...epicKeys.map(k => ({ value: k, label: k + ' · ' + (epicMap[k] || '') }))];
+    const statusFilterOptions = [{ value: 'all', label: 'Статус: Все' }, ...allStatuses.map(status => ({ value: status, label: status }))];
+    const issueTypeFilterOptions = [{ value: 'all', label: 'Тип запроса: Все' }, ...Array.from(new Set([...projectIssueTypesList.map(type => type.name), ...(productDashboardLoaded ? tasks.map(task => task.issueTypeName || 'Задача') : [])])).sort((a,b) => a.localeCompare(b, 'ru')).map(name => ({ value: name, label: name }))];
+    const treeLevelOptions = [
+      ...(productGroupingOrder.length ? [{ value: 'sprints', label: 'Уровень: ' + (productGroupingOrder[0] === 'sprint' ? 'Спринты' : 'Компоненты') }] : []),
+      ...(productGroupingOrder.length > 1 ? [{ value: 'components', label: 'Уровень: ' + (productGroupingOrder[1] === 'sprint' ? 'Спринты' : 'Компоненты') }] : []),
+      { value: 'tasks', label: 'Уровень: Задачи' },
+      { value: 'links', label: 'Уровень: Все связи' }
+    ];
+    const sprintFilterOptions = [
+      { value: 'open_future_backlog', label: 'Спринты: Активные, будущие и бэклог' },
+      { value: 'open_future', label: 'Спринты: Активные и будущие' },
+      { value: 'ACTIVE', label: 'Спринты: Только активные' },
+      { value: 'FUTURE', label: 'Спринты: Только будущие' },
+      { value: 'BACKLOG', label: 'Спринты: Только бэклог' },
+      { value: 'CLOSED', label: 'Спринты: Только прошедшие' },
+      { value: 'all', label: 'Спринты: Все, включая прошедшие' },
+    ];
+    const sortFilterOptions = [
+      { value: 'default', label: 'Сортировка: По умолчанию' },
+      { value: 'priority_desc', label: 'Приоритет: Сначала высокий' },
+      { value: 'priority_asc', label: 'Приоритет: Сначала низкий' },
+      { value: 'created_desc', label: 'Дата: Сначала новые' },
+      { value: 'created_asc', label: 'Дата: Сначала старые' },
+    ];
 
     const activeElId = document.activeElement ? document.activeElement.id : null;
     const selStart = document.activeElement && 'selectionStart' in document.activeElement ? document.activeElement.selectionStart : null;
     const selEnd = document.activeElement && 'selectionEnd' in document.activeElement ? document.activeElement.selectionEnd : null;
 
     const colOrderPanelHtml = isColOrderPanelOpen
-      ? \`<div class="ozon-ext-combo-popover" style="right:0;left:auto;min-width:300px;padding:8px;" onclick="event.stopPropagation();">
+      ? \`<div style="padding:0;" onclick="event.stopPropagation();">
            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
              <strong style="font-size:11px;color:#071026;">Настройка порядка столбцов</strong>
              <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-ext-reset-col-order" style="height:20px;padding:1px 6px;font-size:10px;">По умолчанию</button>
@@ -6053,7 +8083,7 @@ export function generateContentScriptJs(
            <div style="display:flex;flex-direction:column;gap:3px;max-height:280px;overflow-y:auto;">
              \${columnOrder
                .map((colId, idx) => {
-                 const meta = COLUMN_META[colId] || { label: colId };
+                 const meta = colId === 'task' ? {label: 'Задача (' + [...productGroupingOrder.map((field) => field === 'sprint' ? 'Спринт' : 'Компонент'), 'Задача'].join(' → ') + ')'} : (COLUMN_META[colId] || { label: colId });
                  return \`
                    <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:3px 6px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:6px;font-size:11px;">
                      <span style="color:#071026;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">\${idx + 1}. \${escapeHtml(meta.label)}</span>
@@ -6070,10 +8100,11 @@ export function generateContentScriptJs(
       : '';
 
     const topBarsHtml = \`
+      \${renderDashboardNavigation()}
       <div class="ozon-ext-header-bar">
         <div style="display:flex;align-items:center;gap:20px;">
-          <strong style="font-size:13.5px;font-weight:700;color:#071026;font-family:var(--ozon-font-display);letter-spacing:-0.01em;">Ozon Bank · FCRM Structure</strong>
-          <a href="#all-sprints" id="ozon-ext-show-all-sprints" style="color:#005BFF;font-size:12px;font-weight:600;text-decoration:none;">Все спринты (\${tasks.filter((t) => !isCanceledStatus(t.status)).length})</a>
+          <strong style="font-size:13.5px;font-weight:700;color:#071026;font-family:var(--ozon-font-display);letter-spacing:-0.01em;">Ozon Bank · FCRM Structure <small title="Версия установленного расширения" style="margin-left:4px;font:500 11px sans-serif;color:#475569;">v${EXTENSION_VERSION}</small></strong>
+          <a href="#all-sprints" id="ozon-ext-show-all-sprints" style="color:#005BFF;font-size:12px;font-weight:600;text-decoration:none;">Все спринты\${productDashboardLoaded ? ' (' + tasks.filter((t) => !isCanceledStatus(t.status)).length + ')' : ''}</a>
           <span style="font-size:11px;color:#64748B;display:inline-flex;align-items:center;gap:4px;" title="Красная скрепка отмечает задачи без привязанной «Задачи проекта»">
             \${getMissingProjectTaskWarnSvg()} <span>— нет «Задачи проекта»</span>
           </span>
@@ -6083,76 +8114,54 @@ export function generateContentScriptJs(
           <span id="ozon-ext-toast" class="ozon-ext-badge ozon-ext-badge-done" style="display:\${saveToastText ? 'inline-flex' : 'none'};font-size:11px;padding:2px 8px;">\${escapeHtml(saveToastText)}</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#64748B;">
-          <span>\${escapeHtml(statusMessage)}</span>
-          <button type="button" class="ozon-ext-btn" id="ozon-ext-reload-board">↻ Обновить доску</button>
+          <span>\${escapeHtml(statusMessage.replace(/^Спринт → Компонент/, productGroupingOrder.length ? productGroupingOrder.map((field) => field === 'sprint' ? 'Спринт' : 'Компонент').join(' → ') : 'Без группировки'))}</span>
+          <button type="button" class="ozon-ext-btn" id="ozon-thread-create">Создать FCRM из треда</button>
+
         </div>
       </div>
 
       <div class="ozon-ext-filter-bar">
         <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;">
-          <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-ext-toggle-all-sprints" title="Развернуть или свернуть все спринты и компоненты">
-            <span style="color:#005BFF;">⇅</span> Развернуть / Свернуть все
-          </button>
+          <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-ext-toggle-col-order"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg> Настройки</button>
 
+          \${renderToolbarFilter("sprint", "Спринты", filterSprintState, sprintFilterOptions, "Поиск режима спринтов...")}
+          <button type="button" class="ozon-ext-btn" id="ozon-ext-reload-board" \${isInitialBoardLoading ? 'disabled' : ''}>\${isInitialBoardLoading ? 'Загружаем…' : productDashboardLoaded ? 'Обновить задачи' : 'Загрузить задачи'}</button>
+          <span class="ozon-product-filter-hint">\${isInitialBoardLoading ? 'Загружаем задачи…' : productDashboardLoaded ? 'Фильтры по загруженным задачам' : '1. Выберите спринты → 2. Загрузите задачи'}</span>
+          <div class="ozon-product-optional-filters" style="display:contents;">
           <div style="position:relative;width:240px;">
-            <input id="ozon-ext-search" type="text" value="\${escapeHtml(searchQuery)}" placeholder="Поиск по ключу, задаче, типу, Заказчик/Owner..." style="width:100%;height:26px;padding-left:10px;" />
+            <input \${!productDashboardLoaded || isInitialBoardLoading ? 'disabled' : ''} id="ozon-ext-search" type="search" value="\${escapeHtml(searchQuery)}" placeholder="Поиск по ключу, задаче, типу, Заказчик/Owner..." style="width:100%;height:26px;padding-left:10px;" />
           </div>
 
-          <select id="ozon-ext-filter-comp" class="ozon-ext-filter-select">
-            <option value="all" \${filterComponent === 'all' ? 'selected' : ''}>Компонент: Все</option>
-            \${allComponents.map((c) => \`<option value="\${escapeHtml(c)}" \${filterComponent === c ? 'selected' : ''}>\${escapeHtml(c)}</option>\`).join('')}
-          </select>
+          \${renderToolbarFilter("component", "Компонент: Все", filterComponent, componentFilterOptions, "Поиск компонента...")}
 
-          <select id="ozon-ext-filter-epic" class="ozon-ext-filter-select">
-            <option value="all" \${filterEpic === 'all' ? 'selected' : ''}>Эпик (FCRM): Все</option>
-            \${epicKeys.map((k) => \`<option value="\${escapeHtml(k)}" \${filterEpic === k ? 'selected' : ''}>\${escapeHtml(k)} · \${escapeHtml(epicMap[k])}</option>\`).join('')}
-          </select>
+          \${renderToolbarFilter("epic", "Эпик: Все", filterEpic, epicFilterOptions, "Поиск эпика по коду или названию...")}
 
-          <select id="ozon-ext-filter-status" class="ozon-ext-filter-select">
-            <option value="all" \${filterStatus === 'all' ? 'selected' : ''}>Статус: Все</option>
-            \${allStatuses.map((s) => \`<option value="\${escapeHtml(s)}" \${filterStatus === s ? 'selected' : ''}>\${escapeHtml(s)}</option>\`).join('')}
-          </select>
+          \${renderToolbarFilter("status", "Статус: Все", filterStatus, statusFilterOptions, "Поиск статуса...")}
 
-          <select id="ozon-ext-filter-sprint-state" class="ozon-ext-filter-select" title="Фильтр по статусу спринтов (включая закрытые/прошедшие)">
-            <option value="all" \${filterSprintState === 'all' ? 'selected' : ''}>Спринты: Все (вкл. Прошедшие)</option>
-            <option value="open_future" \${filterSprintState === 'open_future' ? 'selected' : ''}>Спринты: Активные и Будущие</option>
-            <option value="ACTIVE" \${filterSprintState === 'ACTIVE' ? 'selected' : ''}>Спринты: Только Активные</option>
-            <option value="FUTURE" \${filterSprintState === 'FUTURE' ? 'selected' : ''}>Спринты: Только Будущие</option>
-            <option value="CLOSED" \${filterSprintState === 'CLOSED' ? 'selected' : ''}>Спринты: Только Прошедшие (Закрытые)</option>
-            <option value="BACKLOG" \${filterSprintState === 'BACKLOG' ? 'selected' : ''}>Спринты: Только Бэклог</option>
-          </select>
 
-          <button type="button" class="ozon-ext-btn \${hideEpicTasks ? '' : 'ozon-ext-btn-surface'}" id="ozon-ext-toggle-hide-epics" title="Скрыть или показать задачи с типом Эпик (Epic)">
-            \${hideEpicTasks ? '✓ Скрыты задачи с типом Эпик' : 'Скрыть задачи с типом Эпик'}
-          </button>
 
-          <select id="ozon-ext-sort-by" class="ozon-ext-filter-select" title="Сортировка задач в списке по приоритету или дате создания">
-            <option value="default" \${sortByField === 'default' ? 'selected' : ''}>Сортировка: По умолчанию</option>
-            <option value="priority_desc" \${sortByField === 'priority_desc' ? 'selected' : ''}>Сортировка: Приоритет (сначала высокий)</option>
-            <option value="priority_asc" \${sortByField === 'priority_asc' ? 'selected' : ''}>Сортировка: Приоритет (сначала низкий)</option>
-            <option value="created_desc" \${sortByField === 'created_desc' ? 'selected' : ''}>Сортировка: Дата создания (сначала новые)</option>
-            <option value="created_asc" \${sortByField === 'created_asc' ? 'selected' : ''}>Сортировка: Дата создания (сначала старые)</option>
-          </select>
+          <button type="button" \${!productDashboardLoaded || isInitialBoardLoading ? 'disabled' : ''} id="ozon-ext-toggle-done" aria-pressed="\${hideDone}" class="ozon-ext-btn \${hideDone ? '' : 'ozon-ext-btn-surface'}">\${doneToggleLabel(doneCount)}</button>
+          \${renderToolbarFilter('issue-type', 'Тип запроса: Все', filterIssueType, issueTypeFilterOptions, 'Поиск типа запроса...')}
+
+
 
           \${
-            searchQuery || filterComponent !== 'all' || filterEpic !== 'all' || filterStatus !== 'all' || filterSprintState !== 'all' || hideEpicTasks || sortByField !== 'default'
+            searchQuery || filterComponent !== 'all' || filterEpic !== 'all' || filterStatus !== 'all' || filterSprintState !== 'open_future_backlog' || hideDone || filterIssueType !== 'all' || sortByField !== 'default'
               ? '<button type="button" class="ozon-ext-btn ozon-ext-btn-negative" id="ozon-ext-reset-filters">Сбросить</button>'
               : ''
           }
+          </div>
         </div>
 
-        <div style="display:flex;align-items:center;gap:6px;">
-          <button type="button" class="ozon-ext-btn \${groupByComponentInsideSprint ? '' : 'ozon-ext-btn-surface'}" id="ozon-ext-toggle-comp-group">
-            \${groupByComponentInsideSprint ? '✓ Группировка: Спринт → Компонент' : 'Группировка: Только Спринт'}
-          </button>
-          <div style="position:relative;">
-            <button type="button" class="ozon-ext-btn \${isColOrderPanelOpen ? '' : 'ozon-ext-btn-surface'}" id="ozon-ext-toggle-col-order" title="Настроить последовательность столбцов таблицы">
-              ⇄ Столбцы
-            </button>
-            \${colOrderPanelHtml}
-          </div>
+        \${isColOrderPanelOpen ? \`<aside class="ozon-ext-product-settings" role="dialog" aria-label="Настройки таблицы" style="position:fixed;inset:0 0 0 auto;width:390px;max-width:100vw;z-index:2147483645;display:flex;flex-direction:column;gap:16px;padding:20px;background:#fff;box-shadow:-8px 0 32px #07102620;overflow:auto;">
+          <div style="display:flex;align-items:center;justify-content:space-between;"><strong>Настройки таблицы</strong><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-ext-close-settings" aria-label="Закрыть">✕</button></div>
+          <div><strong>Уровень раскрытия</strong><div style="margin-top:8px;">\${renderToolbarFilter('tree', 'Уровень раскрытия', tableTreeLevel, treeLevelOptions, 'Поиск уровня...')}</div></div>
+          <div><strong>Сортировка</strong><div style="margin-top:8px;">\${renderToolbarFilter("sort", "Сортировка", sortByField, sortFilterOptions, "Поиск варианта сортировки...")}</div></div>
+          <div><strong>Группировка</strong><p style="font-size:11px;color:#64748B;margin:7px 0;">Выберите поля и их порядок.</p>\${[...productGroupingOrder, ...['sprint','component'].filter((field) => !productGroupingOrder.includes(field))].map((field) => { const i = productGroupingOrder.indexOf(field); const label = field === 'sprint' ? 'Спринт' : 'Компонент'; return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0"><label style="display:flex;align-items:center;gap:8px;flex:1;cursor:pointer"><input type="checkbox" data-product-group="' + field + '" ' + (i >= 0 ? 'checked' : '') + '><span>' + label + '</span></label><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-product-move="' + field + '" data-direction="-1" aria-label="Переместить ' + label + ' выше" ' + (i <= 0 ? 'disabled' : '') + '>↑</button><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-product-move="' + field + '" data-direction="1" aria-label="Переместить ' + label + ' ниже" ' + (i < 0 || i === productGroupingOrder.length - 1 ? 'disabled' : '') + '>↓</button></div>'; }).join('')}</div>
+          <div><strong>Столбцы</strong><p style="font-size:11px;color:#64748B;">Ширину можно менять за границу заголовка таблицы.</p>\${colOrderPanelHtml}</div>
           <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-ext-reset-cols">Сбросить ширину</button>
-        </div>
+          <button type="button" class="ozon-ext-btn" id="ozon-ext-done-settings">Готово</button>
+        </aside>\` : ''}
       </div>
     \`;
 
@@ -6166,7 +8175,7 @@ export function generateContentScriptJs(
     const theadRowHtml = columnOrder
       .map((colId) => {
         const w = Number(colWidths[colId]) || 130;
-        const meta = COLUMN_META[colId] || { label: colId, accent: false };
+        const meta = colId === 'task' ? { label: 'Задача (' + [...productGroupingOrder.map((field) => field === 'sprint' ? 'Спринт' : 'Компонент'), 'Задача'].join(' → ') + ')', accent: false } : (COLUMN_META[colId] || { label: colId, accent: false });
         return \`<th data-col="\${escapeHtml(colId)}" draggable="true" title="Перетащите заголовок для изменения порядка столбцов" style="width:\${w}px;min-width:\${w}px;max-width:\${w}px;cursor:grab;\${meta.accent ? 'color:#005BFF !important;' : ''}">\${escapeHtml(meta.label)}<div class="ozon-ext-col-resizer" data-col="\${escapeHtml(colId)}"></div></th>\`;
       })
       .join('');
@@ -6181,9 +8190,9 @@ export function generateContentScriptJs(
 
       const mainTable = document.getElementById('ozon-ext-main-table');
       if (mainTable) {
-        mainTable.style.setProperty('width', totalTableW + 'px', 'important');
+        mainTable.style.setProperty('width', 'max(100%, ' + totalTableW + 'px)', 'important');
         mainTable.style.setProperty('min-width', totalTableW + 'px', 'important');
-        mainTable.style.setProperty('max-width', totalTableW + 'px', 'important');
+        mainTable.style.setProperty('max-width', 'none', 'important');
       }
       const colgroupEl = document.getElementById('ozon-ext-colgroup');
       if (colgroupEl) colgroupEl.innerHTML = colgroupHtml;
@@ -6200,12 +8209,20 @@ export function generateContentScriptJs(
         if (existingSbPanel) existingSbPanel.remove();
       } else if (existingSbPanel) {
         // Обновляем внутренности существующего <aside id="ozon-ext-sidebar-panel"> без пересоздания самого скролл-элемента!
+        const currentImproveButton = existingSbPanel.querySelector('.o3ds-btn');
+        const keepImproveButton = currentImproveButton && currentImproveButton.getAttribute('data-issue-key') === selectedTaskKey;
+        if (keepImproveButton) currentImproveButton.remove();
         const tmp = document.createElement('div');
         tmp.innerHTML = sidebarHtml;
         const parsedAside = tmp.querySelector('#ozon-ext-sidebar-panel');
         if (parsedAside) {
           existingSbPanel.style.width = sidebarWidth + 'px';
           existingSbPanel.innerHTML = parsedAside.innerHTML;
+          const refreshedSummaryInput = existingSbPanel.querySelector('#ozon-sb-summary');
+          if (keepImproveButton && refreshedSummaryInput) {
+            refreshedSummaryInput.dataset.o3dsMounted = '1';
+            refreshedSummaryInput.insertAdjacentElement('afterend', currentImproveButton);
+          }
         }
       } else {
         const tmp = document.createElement('div');
@@ -6221,7 +8238,7 @@ export function generateContentScriptJs(
         </div>
         <div class="ozon-ext-workspace" id="ozon-ext-workspace">
           <div class="ozon-ext-table-pane" id="ozon-ext-table-pane">
-            <table class="ozon-ext-table" id="ozon-ext-main-table" style="width:\${totalTableW}px !important;min-width:\${totalTableW}px !important;max-width:\${totalTableW}px !important;">
+            <table class="ozon-ext-table" id="ozon-ext-main-table" style="width:max(100%, \${totalTableW}px) !important;min-width:\${totalTableW}px !important;max-width:none !important;">
               <colgroup id="ozon-ext-colgroup">
                 \${colgroupHtml}
               </colgroup>
@@ -6243,7 +8260,9 @@ export function generateContentScriptJs(
     // Восстанавливаем позицию прокрутки левой панели задач и правого сайдбара
     restoreAllScrollPositions(savedScroll);
 
+    decorateIssueCopyButtons(root);
     bindStructureEvents(root);
+    bindDashboardNavigation(root);
 
     // Автоматически подстраиваем высоту описания под текст (если открыт режим редактирования)
     const descEl = document.getElementById('ozon-sb-description');
@@ -6269,17 +8288,376 @@ export function generateContentScriptJs(
     }
 
     restoreAllScrollPositions(savedScroll);
+    positionSidebarPickers(root);
+  }
+
+  async function refreshLinksWithoutSkeleton(sourceKey) {
+    const response = await fetch('/rest/api/2/issue/' + encodeURIComponent(sourceKey) + '?fields=' + getBoardFieldsParam(), { credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json'} });
+    if (!response.ok) throw new Error('Связь сохранена, но не удалось обновить список.');
+    const raw = await response.json();
+    await syncStrategyLinks(raw);
+    syncStrategyIssue(raw);
+    const [enriched, remoteLinks] = await Promise.all([normalizeAndEnrichJiraIssues([raw]), loadRemoteIssueLinks(sourceKey)]);
+    if (!enriched[0]) throw new Error('Связь сохранена, но не удалось обновить список.');
+    const updated = enriched[0];
+    tasks = tasks.map((item) => item.key === sourceKey ? Object.assign({}, item, {projectTaskLinks:updated.projectTaskLinks, inProjectLinks:updated.inProjectLinks, otherLinks:[...(updated.otherLinks || []), ...remoteLinks]}) : item);
+    renderStructure();
+  }
+
+  function bindTicketSearchEvents(root) {
+    root.querySelectorAll('[data-thread-link-url]').forEach(button => {
+      button.addEventListener('click', async () => {
+        const source = button.getAttribute('data-issue-key');
+        const url = button.getAttribute('data-thread-link-url');
+        try {
+          if (!source || !url || !['http:', 'https:'].includes(new URL(url).protocol)) throw new Error('Некорректная ссылка на сообщение');
+          button.disabled = true;
+          const response = await fetch('/rest/api/2/issue/' + encodeURIComponent(source) + '/remotelink', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({object:{url,title:'Сообщение chatZone'}})});
+          if (!response.ok) throw new Error('Jira вернула ошибку ' + response.status);
+          try { await refreshLinksWithoutSkeleton(source); } catch (error) { showSaveToast(error.message); return; }
+          showSaveToast('✓ Ссылка на сообщение добавлена');
+        } catch (error) { button.disabled = false; showSaveToast('Не удалось добавить ссылку: ' + (error.message || error)); }
+      });
+    });
+    root.querySelectorAll('[data-similar-link]').forEach(button => {
+      button.addEventListener('click', async () => {
+        const source = button.getAttribute('data-issue-key');
+        const target = button.getAttribute('data-similar-link');
+        if (!source || !target || source === target) { showSaveToast('Выберите другую задачу'); return; }
+        button.disabled = true;
+        try {
+          const linked = await createIssueLinkInJira(source, target, 'linkedTask', true, true);
+          if (linked) { try { await refreshLinksWithoutSkeleton(source); } catch (error) { showSaveToast(error.message); return; } showSaveToast('Связь создана'); }
+          else button.disabled = false;
+        } catch (error) { button.disabled = false; showSaveToast('Не удалось создать связь: ' + (error.message || error)); }
+      });
+    });
+    root.querySelectorAll('[data-ticket-search-toggle]').forEach(button => {
+      button.addEventListener('click', () => {
+        const state = getTicketSearchState(button.getAttribute('data-issue-key'), button.getAttribute('data-ticket-search-toggle'));
+        state.open = !state.open;
+        renderStructure();
+      });
+    });
+    root.querySelectorAll('[data-ticket-search-channels]').forEach(input => {
+      input.addEventListener('input', () => {
+        getTicketSearchState(input.getAttribute('data-ticket-search-channels'), 'threads').channels = input.value;
+      });
+    });
+    root.querySelectorAll('[data-ticket-search-run]').forEach(button => {
+      button.addEventListener('click', async () => {
+        const key = button.getAttribute('data-issue-key');
+        const kind = button.getAttribute('data-ticket-search-run');
+        const state = getTicketSearchState(key, kind);
+        if (state.loading) return;
+        state.error = '';
+        if (kind === 'threads') {
+          try {
+            addThreadChannels(state);
+            const queue = state.choices.filter(choice => choice.checked).map(choice => choice.url);
+            if (!queue.length) throw new Error('Выберите хотя бы один канал');
+            state.queue = queue;
+            state.index = 0;
+            state.history = [];
+            state.reply = '';
+            await runThreadChannelStep(key);
+          } catch (error) {
+            state.error = String(error.message || error);
+            renderStructure();
+          }
+          return;
+        }
+        state.loading = true;
+        state.items = null;
+        state.errors = [];
+        state.raw = '';
+        renderStructure();
+        try {
+          const text = await new Promise((resolve, reject) => {
+            if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) { reject(new Error('Поиск доступен в установленном расширении Chrome')); return; }
+            chrome.runtime.sendMessage({type:'o3ds:chat', mode:'search_fcrm', issueKey:key, approvedDescription:'{}'}, response => {
+              const error = chrome.runtime.lastError;
+              if (error || !response?.ok) reject(new Error(error?.message || response?.error || 'Нет ответа DeepSeek'));
+              else resolve(response.text || '');
+            });
+          });
+          try {
+            const result = parseTicketSearchResponse(String(text), kind, key);
+            state.items = result.items;
+            state.errors = result.errors;
+          } catch (error) {
+            state.error = String(error.message || error);
+            state.raw = String(text);
+          }
+        } catch (error) {
+          state.error = String(error.message || error);
+        } finally {
+          state.loading = false;
+          if (selectedTaskKey === key) renderStructure();
+        }
+      });
+    });
+    root.querySelectorAll('[data-thread-channel-check]').forEach(input => {
+      input.addEventListener('change', () => {
+        const state = getTicketSearchState(input.getAttribute('data-issue-key'), 'threads');
+        if (state.loading || state.queue.length) return;
+        state.choices[Number(input.getAttribute('data-thread-channel-check'))].checked = input.checked;
+      });
+    });
+    root.querySelectorAll('[data-thread-channel-move]').forEach(button => {
+      button.addEventListener('click', () => {
+        const state = getTicketSearchState(button.getAttribute('data-issue-key'), 'threads');
+        if (state.loading || state.queue.length) return;
+        const from = Number(button.getAttribute('data-thread-channel-move'));
+        const to = from + Number(button.getAttribute('data-direction'));
+        if (to < 0 || to >= state.choices.length) return;
+        const [choice] = state.choices.splice(from, 1);
+        state.choices.splice(to, 0, choice);
+        renderStructure();
+      });
+    });
+    root.querySelectorAll('[data-thread-channel-row]').forEach(row => {
+      row.addEventListener('dragstart', event => {
+        const key = row.getAttribute('data-issue-key');
+        const state = getTicketSearchState(key, 'threads');
+        if (state.loading || state.queue.length) { event.preventDefault(); return; }
+        draggedThreadChannel = { key, index: Number(row.getAttribute('data-thread-channel-row')) };
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', String(draggedThreadChannel.index));
+      });
+      row.addEventListener('dragover', event => {
+        if (!draggedThreadChannel || draggedThreadChannel.key !== row.getAttribute('data-issue-key')) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+      });
+      row.addEventListener('drop', event => {
+        event.preventDefault();
+        const key = row.getAttribute('data-issue-key');
+        const state = getTicketSearchState(key, 'threads');
+        if (!draggedThreadChannel || draggedThreadChannel.key !== key || state.loading || state.queue.length) return;
+        const [choice] = state.choices.splice(draggedThreadChannel.index, 1);
+        state.choices.splice(Number(row.getAttribute('data-thread-channel-row')), 0, choice);
+        draggedThreadChannel = null;
+        renderStructure();
+      });
+      row.addEventListener('dragend', () => { draggedThreadChannel = null; });
+    });
+    root.querySelectorAll('[data-thread-channels-add]').forEach(button => {
+      button.addEventListener('click', () => {
+        const state = getTicketSearchState(button.getAttribute('data-issue-key'), 'threads');
+        if (state.loading || state.queue.length) return;
+        try { addThreadChannels(state); state.error = ''; }
+        catch (error) { state.error = String(error.message || error); }
+        renderStructure();
+      });
+    });
+    root.querySelectorAll('[data-thread-search-next]').forEach(button => {
+      button.addEventListener('click', () => {
+        const key = button.getAttribute('data-issue-key');
+        const state = getTicketSearchState(key, 'threads');
+        if (state.loading || state.index + 1 >= state.queue.length) return;
+        state.index++;
+        runThreadChannelStep(key);
+      });
+    });
+    root.querySelectorAll('[data-thread-search-retry]').forEach(button => {
+      button.addEventListener('click', () => {
+        const key = button.getAttribute('data-issue-key');
+        const index = Number(button.getAttribute('data-thread-search-retry'));
+        if (!Number.isInteger(index) || index < 0) return;
+        runThreadChannelStep(key, '', index);
+      });
+    });
+    root.querySelectorAll('[data-thread-search-reset]').forEach(button => {
+      button.addEventListener('click', () => {
+        const state = getTicketSearchState(button.getAttribute('data-issue-key'), 'threads');
+        if (state.loading) return;
+        state.queue = [];
+        state.index = -1;
+        state.error = '';
+        renderStructure();
+      });
+    });
+    root.querySelectorAll('[data-thread-search-reply]').forEach(input => {
+      input.addEventListener('input', () => {
+        const key = input.getAttribute('data-thread-search-reply');
+        const state = getTicketSearchState(key, 'threads');
+        state.reply = input.value;
+        const button = root.querySelector('[data-thread-search-answer][data-issue-key="' + key + '"]');
+        if (button) button.disabled = state.loading || !state.reply.trim();
+      });
+    });
+    root.querySelectorAll('[data-thread-search-answer]').forEach(button => {
+      button.addEventListener('click', () => {
+        const key = button.getAttribute('data-issue-key');
+        const state = getTicketSearchState(key, 'threads');
+        if (state.loading || !state.reply.trim()) return;
+        runThreadChannelStep(key, state.reply.trim());
+      });
+    });
+  }
+
+  function bindSharedTaskControls(root) {
+    root.querySelectorAll('[data-action="generate-links"]').forEach(button => {
+      button.addEventListener('click', async event => {
+        event.stopPropagation();
+        const keys = Array.from(new Set((button.getAttribute('data-task-keys') || '').split(',').filter(key => key && !generatingLinkKeys.has(key))));
+        if (!keys.length) {
+          showLinksSnackbar('Эти задачи уже обрабатываются');
+          return;
+        }
+        keys.forEach(key => generatingLinkKeys.add(key));
+        const results = [];
+        const updateSnackbar = showLinksSnackbar('Генерирую связи для ' + keys.length + ' задач. Можно продолжать работу.');
+        renderStructure();
+        try {
+          for (let i = 0; i < keys.length; i++) {
+            const key = keys[i];
+            try {
+              const text = await new Promise((resolve, reject) => {
+                if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
+                  reject(new Error('Генерация доступна в установленном расширении Chrome'));
+                  return;
+                }
+                chrome.runtime.sendMessage({ type: 'o3ds:chat', mode: 'links', issueKey: key }, response => {
+                  const error = chrome.runtime.lastError;
+                  if (error || !response?.ok) reject(new Error(error?.message || response?.error || 'Нет ответа DeepSeek'));
+                  else resolve(response.text || 'DeepSeek вернул пустой ответ');
+                });
+              });
+              results.push(key + '\\n' + text);
+              await refreshGeneratedTaskLinks(key);
+            } catch (error) {
+              results.push(key + ' · Ошибка: ' + String(error.message || error));
+            } finally {
+              generatingLinkKeys.delete(key);
+              updateSnackbar(results.map(result => renderStructuredAnswer(result, 'links', renderAnswerMarkup)).join(''), true);
+              renderStructure();
+            }
+          }
+        } finally {
+          keys.forEach(key => generatingLinkKeys.delete(key));
+        }
+      });
+    });
+
+    root.querySelectorAll('[data-action="toggle-search-select"]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const id = button.getAttribute('data-select-id') || '';
+        activeSearchSelectId = activeSearchSelectId === id ? '' : id;
+        searchSelectQuery = '';
+        activeToolbarFilter = '';
+        sbEpicComboOpen = false;
+        sbCompComboOpen = false;
+        sbIpCompOpenIdx = null;
+        sbIpSprintOpenIdx = null;
+        renderStructure();
+        if (activeSearchSelectId) document.getElementById('ozon-search-select-search')?.focus();
+      });
+    });
+    const searchSelectInput = document.getElementById('ozon-search-select-search');
+    if (searchSelectInput) {
+      searchSelectInput.addEventListener('click', (event) => event.stopPropagation());
+      searchSelectInput.addEventListener('input', (event) => {
+        searchSelectQuery = event.target.value;
+        renderStructure();
+      });
+    }
+    root.querySelectorAll('[data-action="pick-search-select"]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const id = button.getAttribute('data-select-id') || '';
+        const value = button.getAttribute('data-value') || '';
+        if (id.startsWith('table-sprint-')) {
+          const key = id.slice('table-sprint-'.length);
+          tasks = tasks.map(task => task.key === key ? Object.assign({}, task, { sprint: value }) : task);
+          saveTaskOverride(key, { sprint: value });
+          updateIssueSprintInJira(key, value);
+        } else if (selectedTaskKey) {
+          const key = selectedTaskKey;
+          if (id === 'sidebar-status') {
+            tasks = tasks.map(task => task.key === key ? Object.assign({}, task, { status: value }) : task);
+            saveTaskOverride(key, { status: value });
+            transitionIssueStatusInJira(key, value, button.getAttribute('data-transition-id') || null);
+          } else if (id === 'sidebar-issuetype') {
+            const typeId = issueTypeIdByName[value] || issueTypeIdByName[String(value).toLowerCase()] || '';
+            tasks = tasks.map(task => task.key === key ? Object.assign({}, task, { issueTypeName: value, issueTypeId: typeId }) : task);
+            saveTaskOverride(key, { issueTypeName: value, issueTypeId: typeId });
+            updateIssueTypeInJira(key, value);
+          } else if (id === 'sidebar-priority') {
+            tasks = tasks.map(task => task.key === key ? Object.assign({}, task, { priority: value }) : task);
+            saveTaskOverride(key, { priority: value });
+            fetch('/rest/api/2/issue/' + encodeURIComponent(key), {
+              method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ fields: { priority: { name: value } } })
+            }).catch(() => {});
+            showSaveToast('✓ Приоритет ' + key + ' → ' + value);
+          } else if (id === 'sidebar-sprint') {
+            tasks = tasks.map(task => task.key === key ? Object.assign({}, task, { sprint: value }) : task);
+            saveTaskOverride(key, { sprint: value });
+            updateIssueSprintInJira(key, value);
+          }
+        }
+        activeSearchSelectId = '';
+        searchSelectQuery = '';
+        renderStructure();
+      });
+    });
+
   }
 
   function bindStructureEvents(root) {
+    root.querySelector('#ozon-thread-create')?.addEventListener('click', openThreadCreationSidebar);
+    root.querySelectorAll('[data-action="toggle-toolbar-filter"]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const id = button.getAttribute('data-filter');
+        activeToolbarFilter = activeToolbarFilter === id ? '' : id;
+        toolbarFilterSearch = '';
+        renderStructure();
+        if (activeToolbarFilter) document.getElementById('ozon-toolbar-filter-search')?.focus();
+      });
+    });
+    const toolbarFilterSearchEl = document.getElementById('ozon-toolbar-filter-search');
+    if (toolbarFilterSearchEl) {
+      toolbarFilterSearchEl.addEventListener('input', (event) => {
+        const caretStart = event.target.selectionStart, caretEnd = event.target.selectionEnd;
+        toolbarFilterSearch = event.target.value;
+        renderStructure();
+        const nextSearch = document.getElementById('ozon-toolbar-filter-search');
+        if (nextSearch) { nextSearch.focus({preventScroll:true}); if (caretStart != null && caretEnd != null) nextSearch.setSelectionRange(caretStart, caretEnd); }
+      });
+    }
+    root.querySelectorAll('[data-action="pick-toolbar-filter"]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const filter = button.getAttribute('data-filter');
+        const value = button.getAttribute('data-value');
+        if (filter === 'component') filterComponent = value;
+        if (filter === 'epic') filterEpic = value;
+        if (filter === 'status') filterStatus = value;
+        if (filter === 'sprint') filterSprintState = value;
+        if (filter === 'sort') sortByField = value;
+        if (filter === 'issue-type') filterIssueType = value;
+        if (filter === 'tree') applyTableTreeLevel(value);
+        activeToolbarFilter = '';
+        toolbarFilterSearch = '';
+        if (filter === 'sprint' && productDashboardLoaded) { const covered = {all:['all','CLOSED','ACTIVE','FUTURE','BACKLOG','open_future','open_future_backlog'],open_future_backlog:['open_future_backlog','open_future','ACTIVE','FUTURE','BACKLOG'],open_future:['open_future','ACTIVE','FUTURE'],ACTIVE:['ACTIVE'],FUTURE:['FUTURE'],BACKLOG:['BACKLOG'],CLOSED:['CLOSED']}; statusMessage = (covered[loadedSprintMode] || []).includes(value) ? '' : 'Для выбранных спринтов нажмите «Обновить задачи»'; }
+        renderStructure();
+      });
+    });
+
     const searchEl = document.getElementById('ozon-ext-search');
     if (searchEl) {
       searchEl.addEventListener('input', (e) => {
         searchQuery = e.target.value;
+        treeLevelApplied = false;
+        tableTreeLevel = 'manual';
         const tbody = document.getElementById('ozon-ext-tbody');
         if (tbody) {
           const saved = captureAllScrollPositions();
-          tbody.innerHTML = buildTableRowsHtml(getFilteredTasks());
+          const { filtered, doneCount } = getFilteredTasks();
+          tbody.innerHTML = buildTableRowsHtml(filtered);
+          document.getElementById("ozon-ext-toggle-done").textContent = doneToggleLabel(doneCount);
           bindTableBodyEvents(tbody);
           restoreAllScrollPositions(saved);
         }
@@ -6290,37 +8668,18 @@ export function generateContentScriptJs(
     if (showAllSprintsLink) {
       showAllSprintsLink.addEventListener('click', (e) => {
         e.preventDefault();
+        activeToolbarFilter = '';
+        toolbarFilterSearch = '';
         expandedSprints = {};
         expandedComponents = {};
         searchQuery = '';
         filterComponent = 'all';
         filterEpic = 'all';
         filterStatus = 'all';
-        filterSprintState = 'all';
-        hideEpicTasks = false;
+        filterSprintState = 'open_future_backlog';
+        hideDone = false;
+        filterIssueType = 'all';
         sortByField = 'default';
-        renderStructure();
-      });
-    }
-
-    const toggleAllSprintsBtn = document.getElementById('ozon-ext-toggle-all-sprints');
-    if (toggleAllSprintsBtn) {
-      toggleAllSprintsBtn.addEventListener('click', () => {
-        const allSp = getAllSprintOptions();
-        const anyExpanded = Object.keys(expandedSprints).some((k) => expandedSprints[k]);
-        if (anyExpanded) {
-          expandedSprints = {};
-          expandedComponents = {};
-        } else {
-          allSp.forEach((sp) => {
-            expandedSprints[sp] = true;
-          });
-          tasks.forEach((t) => {
-            const sp = t.sprint || 'Бэклог FCRM';
-            const cName = t.component || 'Без компонента';
-            expandedComponents[sp + '::' + cName] = true;
-          });
-        }
         renderStructure();
       });
     }
@@ -6357,14 +8716,10 @@ export function generateContentScriptJs(
       });
     }
 
-    const toggleHideEpicsBtn = document.getElementById('ozon-ext-toggle-hide-epics');
-    if (toggleHideEpicsBtn) {
-      toggleHideEpicsBtn.addEventListener('click', () => {
-        hideEpicTasks = !hideEpicTasks;
-        renderStructure();
-      });
-    }
-
+    document.getElementById("ozon-ext-toggle-done").onclick = () => {
+      hideDone = !hideDone;
+      renderStructure();
+    };
     const sortByEl = document.getElementById('ozon-ext-sort-by');
     if (sortByEl) {
       sortByEl.addEventListener('change', (e) => {
@@ -6380,20 +8735,23 @@ export function generateContentScriptJs(
         filterComponent = 'all';
         filterEpic = 'all';
         filterStatus = 'all';
-        filterSprintState = 'all';
-        hideEpicTasks = false;
+        filterSprintState = 'open_future_backlog';
+        hideDone = false;
+        filterIssueType = 'all';
         sortByField = 'default';
+        activeToolbarFilter = '';
+        toolbarFilterSearch = '';
         renderStructure();
       });
     }
 
-    const toggleCompGroupBtn = document.getElementById('ozon-ext-toggle-comp-group');
-    if (toggleCompGroupBtn) {
-      toggleCompGroupBtn.addEventListener('click', () => {
-        groupByComponentInsideSprint = !groupByComponentInsideSprint;
-        renderStructure();
-      });
-    }
+    ['ozon-ext-close-settings', 'ozon-ext-done-settings'].forEach((id) => {
+      document.getElementById(id)?.addEventListener('click', (event) => { event.stopPropagation(); isColOrderPanelOpen = false; activeToolbarFilter = ''; renderStructure(); });
+    });
+
+    const saveProductGrouping = () => { localStorage.setItem(productGroupingStorage, JSON.stringify(productGroupingOrder)); groupByComponentInsideSprint = productGroupingOrder.length > 1; productExpandedGroups = {}; expandedSprints = {}; expandedComponents = {}; tableTreeLevel = 'sprints'; treeLevelApplied = false; renderStructure(); };
+    root.querySelectorAll('[data-product-group]').forEach((input) => input.addEventListener('change', () => { const field = input.getAttribute('data-product-group'); productGroupingOrder = input.checked ? [...productGroupingOrder, field] : productGroupingOrder.filter((value) => value !== field); saveProductGrouping(); }));
+    root.querySelectorAll('[data-product-move]').forEach((button) => button.addEventListener('click', () => { const index = productGroupingOrder.indexOf(button.getAttribute('data-product-move')); const next = index + Number(button.getAttribute('data-direction')); if (index < 0 || next < 0 || next >= productGroupingOrder.length) return; [productGroupingOrder[index], productGroupingOrder[next]] = [productGroupingOrder[next], productGroupingOrder[index]]; saveProductGrouping(); }));
 
     const toggleColOrderBtn = document.getElementById('ozon-ext-toggle-col-order');
     if (toggleColOrderBtn) {
@@ -6524,9 +8882,9 @@ export function generateContentScriptJs(
           const totalW = getTotalTableWidth();
           const tableEl = document.getElementById('ozon-ext-main-table');
           if (tableEl) {
-            tableEl.style.setProperty('width', totalW + 'px', 'important');
+            tableEl.style.setProperty('width', 'max(100%, ' + totalW + 'px)', 'important');
             tableEl.style.setProperty('min-width', totalW + 'px', 'important');
-            tableEl.style.setProperty('max-width', totalW + 'px', 'important');
+            tableEl.style.setProperty('max-width', 'none', 'important');
           }
         }
 
@@ -6549,40 +8907,34 @@ export function generateContentScriptJs(
       bindTableBodyEvents(tbody);
     }
 
-    bindSidebarEvents(root);
+    taskDetailsSidebar.bind(root);
   }
 
   function bindTableBodyEvents(tbody) {
+    tbody.querySelectorAll('.ozon-ext-product-group').forEach((row) => row.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); const key = row.getAttribute('data-group-key'); if (!key) return; const depth = JSON.parse(key).length - 1; const defaultExpanded = treeLevelApplied && (tableTreeLevel === 'tasks' || tableTreeLevel === 'links' || (tableTreeLevel === 'components' && depth === 0)); const current = Object.prototype.hasOwnProperty.call(productExpandedGroups, key) ? productExpandedGroups[key] : (defaultExpanded || (!treeLevelApplied && Boolean(searchQuery.trim()))); productExpandedGroups[key] = !current; renderStructure(); }));
     tbody.querySelectorAll('.ozon-ext-sprint-row').forEach((row) => {
+      if (row.classList.contains('ozon-ext-product-group')) return;
       row.addEventListener('click', (e) => {
         e.preventDefault();
         const sp = row.getAttribute('data-sprint');
         if (!sp) return;
+        tableTreeLevel = 'manual';
         const wasExpanded = Boolean(expandedSprints[sp]);
         expandedSprints[sp] = !wasExpanded;
-        if (!wasExpanded) {
-          reloadSingleSprintFromJira(sp);
-        } else {
-          renderStructure();
-        }
+        renderStructure();
       });
     });
 
     tbody.querySelectorAll('.ozon-ext-comp-group-row').forEach((row) => {
+      if (row.classList.contains('ozon-ext-product-group')) return;
       row.addEventListener('click', (e) => {
         e.preventDefault();
         const cg = row.getAttribute('data-comp-group');
         if (!cg) return;
+        tableTreeLevel = 'manual';
         const wasExpanded = Boolean(expandedComponents[cg]);
         expandedComponents[cg] = !wasExpanded;
-        if (!wasExpanded) {
-          const parts = cg.split('::');
-          const spName = parts[0] || '';
-          const cName = parts.slice(1).join('::') || '';
-          reloadSingleComponentFromJira(spName, cName);
-        } else {
-          renderStructure();
-        }
+        renderStructure();
       });
     });
 
@@ -6600,10 +8952,11 @@ export function generateContentScriptJs(
 
     // По клику на отдельную кнопку «◨ Детали» — открываем/закрываем боковую панель деталей задачи
     tbody.querySelectorAll('button[data-action="open-sidebar"]').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
+      btn.addEventListener('click', async (e) => {
         e.stopPropagation();
         const key = btn.getAttribute('data-key');
         if (!key) return;
+        if (isSidebarOpen && !await confirmSidebarExit()) return;
         activeTableCombo = null;
         if (selectedTaskKey === key && isSidebarOpen) {
           isSidebarOpen = false;
@@ -6612,6 +8965,7 @@ export function generateContentScriptJs(
           selectedTaskKey = key;
           isSidebarOpen = true;
           isEditingDescription = false;
+          collapsedSidebarSections.pt = true;
           reloadSingleTaskFromJira(key);
         }
       });
@@ -6674,11 +9028,14 @@ export function generateContentScriptJs(
       });
     });
 
-    // Открытие Input-Select для Эпика (FCRM) прямо в ячейке таблицы
+    tbody.querySelectorAll('[data-action="close-table-epic"]').forEach(button => {
+      button.addEventListener('click', event => { event.stopPropagation(); activeTableCombo = null; renderStructure(); });
+    });
+    // Открытие выбора эпика FCRM
     tbody.querySelectorAll('[data-action="open-table-epic-combo"]').forEach((trigger) => {
       trigger.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (e.target.closest('.ozon-ext-combo-popover')) return;
+        if (e.target.closest('a, .ozon-ext-combo-popover')) return;
         const key = trigger.getAttribute('data-key');
         if (activeTableCombo && activeTableCombo.type === 'epic' && activeTableCombo.taskKey === key) {
           activeTableCombo = null;
@@ -6832,8 +9189,8 @@ export function generateContentScriptJs(
         const key = item.getAttribute('data-key');
         const newComp = item.getAttribute('data-comp') || 'Без компонента';
         activeTableCombo = null;
-        tasks = tasks.map((t) => (t.key === key ? Object.assign({}, t, { component: newComp }) : t));
-        saveTaskOverride(key, { component: newComp });
+        tasks = tasks.map((t) => (t.key === key ? Object.assign({}, t, { component: newComp, components: newComp && newComp !== 'Без компонента' ? [newComp] : [] }) : t));
+        saveTaskOverride(key, { component: newComp, components: newComp && newComp !== 'Без компонента' ? [newComp] : [] });
 
         const compsPayload = newComp && newComp !== 'Без компонента' ? [{ name: newComp }] : [];
         fetch('/rest/api/2/issue/' + encodeURIComponent(key), {
@@ -6887,7 +9244,6 @@ export function generateContentScriptJs(
         const key = sel.getAttribute('data-key');
         const newSp = e.target.value;
         tasks = tasks.map((t) => (t.key === key ? Object.assign({}, t, { sprint: newSp }) : t));
-        issueSprintOverrideMap[key] = newSp;
         saveTaskOverride(key, { sprint: newSp });
         updateIssueSprintInJira(key, newSp);
         renderStructure();
@@ -6929,7 +9285,26 @@ export function generateContentScriptJs(
     });
   }
 
+  let designTaskEventBound = false;
   function bindSidebarEvents(root) {
+    if (!designTaskEventBound) {
+      designTaskEventBound = true;
+      document.addEventListener('ozon-fcrm-create-design-task-request', async (event) => {
+        let detail = event && event.detail || {};
+        if (typeof detail === 'string') { try { detail = JSON.parse(detail); } catch { detail = {}; } }
+        if (!detail.issueKey || !detail.summary || !detail.description) return;
+        try {
+          const created = await createDesignIssueFromSidebar(detail.issueKey, detail.summary, detail.description);
+          document.dispatchEvent(new CustomEvent('ozon-fcrm-design-task-result', {
+            detail: JSON.stringify({ issueKey: detail.issueKey, ok: true, key: created.key, linked: created.linked })
+          }));
+        } catch (error) {
+          document.dispatchEvent(new CustomEvent('ozon-fcrm-design-task-result', {
+            detail: JSON.stringify({ issueKey: detail.issueKey, ok: false, error: error && error.message ? error.message : 'Не удалось создать задачу FTD' })
+          }));
+        }
+      });
+    }
     if (!isSidebarOpen || !selectedTaskKey) return;
     const task = tasks.find((t) => t.key === selectedTaskKey);
     if (!task) return;
@@ -6937,14 +9312,16 @@ export function generateContentScriptJs(
     const sbResizer = document.getElementById('ozon-ext-sidebar-resizer');
     const sbPanel = document.getElementById('ozon-ext-sidebar-panel');
     if (sbResizer && sbPanel) {
+      sbResizer.style.right = sidebarWidth + 'px';
       sbResizer.addEventListener('mousedown', (e) => {
         e.preventDefault();
         sbResizer.classList.add('active');
 
         function onMove(moveEv) {
-          const nextW = Math.max(340, Math.min(860, window.innerWidth - moveEv.clientX));
+          const nextW = Math.max(340, window.innerWidth - moveEv.clientX);
           sidebarWidth = nextW;
           sbPanel.style.width = nextW + 'px';
+          sbResizer.style.right = nextW + 'px';
         }
 
         function onUp() {
@@ -6963,8 +9340,10 @@ export function generateContentScriptJs(
 
     const closeBtn = document.getElementById('ozon-ext-sidebar-close');
     if (closeBtn) {
-      closeBtn.addEventListener('click', () => {
+      closeBtn.addEventListener('click', async () => {
+        if (!await confirmSidebarExit()) return;
         isSidebarOpen = false;
+        isEditingDescription = false;
         renderStructure();
       });
     }
@@ -6972,9 +9351,89 @@ export function generateContentScriptJs(
     const refreshBtn = document.getElementById('ozon-ext-sidebar-refresh');
     if (refreshBtn) {
       refreshBtn.addEventListener('click', () => {
-        reloadSingleTaskFromJira(selectedTaskKey);
+        reloadSingleTaskFromJira(selectedTaskKey, true, true);
       });
     }
+
+    root.querySelectorAll('[data-action="refresh-sidebar-section"]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        refreshSidebarSection(task.key, button.getAttribute('data-section'));
+      });
+    });
+
+    document.getElementById('ozon-copy-task-link')?.addEventListener('click', async () => {
+      const url = 'https://jit.o3.ru/browse/' + encodeURIComponent(task.key);
+      const text = '[' + task.key + '](' + url + ') ' + task.summary;
+      try {
+        await navigator.clipboard.writeText(text);
+        showSaveToast('✓ Ссылка и название скопированы');
+      } catch (_) {
+        showSaveToast('Не удалось скопировать ссылку: доступ к буферу обмена запрещён');
+      }
+    });
+
+    root.querySelectorAll('[data-action="move-other-to-ip"]').forEach((button) => {
+      button.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        const sourceKey = task.key;
+        const targetKey = button.getAttribute('data-link-key');
+        const linkId = button.getAttribute('data-jira-link-id');
+        button.disabled = true;
+        try {
+          // Save the new relation before deleting the old one, so a failed POST never loses it.
+          if (!await createIssueLinkInJira(sourceKey, targetKey, 'inProject', true)) throw new Error('Не удалось создать связь «В проекте». Исходная связь сохранена.');
+          if (!await deleteIssueLinkInJira(sourceKey, targetKey, linkId)) throw new Error('Связь «В проекте» создана, но исходную связь удалить не удалось');
+          await reloadSingleTaskFromJira(sourceKey, true);
+          showSaveToast('✓ Тип связи с ' + targetKey + ' изменён на «В проекте»');
+        } catch (error) {
+          showSaveToast(error.message);
+          button.disabled = false;
+        }
+      });
+    });
+
+    root.querySelectorAll('[data-action="change-link-type"], [data-action="delete-link"]').forEach((button) => {
+      button.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        const sourceKey = task.key, targetKey = button.getAttribute('data-link-key');
+        const linkId = button.getAttribute('data-jira-link-id');
+        const category = button.getAttribute('data-link-type');
+        const message = button.closest('.ozon-link-actions-menu')?.querySelector('.ozon-link-action-message');
+        if (!/^\\d+$/.test(String(linkId || ''))) { if (message) message.textContent = 'Не удалось определить связь в Jira. Обновите задачу.'; return; }
+        button.disabled = true;
+        if (message) { message.style.color = '#64748B'; message.textContent = 'Сохраняем…'; }
+        try {
+          if (category && !await createIssueLinkInJira(sourceKey, targetKey, category, true, true)) throw new Error('Не удалось создать выбранный тип связи. Исходная связь сохранена.');
+          if (!await deleteIssueLinkInJira(sourceKey, targetKey, linkId)) throw new Error(category ? 'Новая связь создана, но исходную удалить не удалось.' : 'Не удалось удалить связь.');
+          await refreshLinksWithoutSkeleton(sourceKey);
+        } catch (error) { if (message) { message.style.color = '#D92D20'; message.textContent = error.message; } showSaveToast(error.message); button.disabled = false; }
+      });
+    });
+    root.querySelectorAll('.ozon-link-actions').forEach((details) => {
+      details.addEventListener('toggle', () => {
+        if (!details.open) return;
+        root.querySelectorAll('.ozon-link-actions[open]').forEach((other) => { if (other !== details) other.open = false; });
+        const menu = details.querySelector('.ozon-link-actions-menu');
+        const rect = details.getBoundingClientRect();
+        if (menu) {
+          const width = menu.offsetWidth, height = menu.offsetHeight;
+          menu.style.left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)) + 'px';
+          menu.style.top = Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - height - 8)) + 'px';
+          menu.style.right = 'auto';
+        }
+      });
+    });
+    root.querySelectorAll('[data-action="delete-remote-link"]').forEach((button) => {
+      button.addEventListener('click', async (event) => {
+        event.stopPropagation(); button.disabled = true;
+        try {
+          const response = await fetch('/rest/api/2/issue/' + encodeURIComponent(task.key) + '/remotelink/' + encodeURIComponent(button.getAttribute('data-remote-id')), {method:'DELETE',credentials:'same-origin'});
+          if (!response.ok) throw new Error('Не удалось удалить веб-ссылку');
+          await refreshLinksWithoutSkeleton(task.key);
+        } catch (error) { showSaveToast(error.message); button.disabled = false; }
+      });
+    });
 
     const expandBtn = document.getElementById('ozon-ext-sidebar-expand');
     if (expandBtn) {
@@ -6986,6 +9445,9 @@ export function generateContentScriptJs(
     }
 
     // Сворачивание / разворачивание секций-аккордеонов в сайдбаре (с сохранением позиции скролла!)
+    root.querySelectorAll('[data-action="toggle-description-length"]').forEach((button) => {
+      button.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); expandedSidebarDescriptions.has(task.key) ? expandedSidebarDescriptions.delete(task.key) : expandedSidebarDescriptions.add(task.key); renderStructure(); });
+    });
     root.querySelectorAll('[data-action="toggle-sb-section"]').forEach((head) => {
       head.addEventListener('click', (e) => {
         if (e.target.closest('button') || e.target.closest('a')) return;
@@ -6995,6 +9457,9 @@ export function generateContentScriptJs(
         if (!sec) return;
         collapsedSidebarSections[sec] = !collapsedSidebarSections[sec];
         renderStructure();
+        if (sec === 'pt_quick' && collapsedSidebarSections[sec] === false && !umbCatalogReady && !umbCatalogRequest) {
+          umbCatalogRequest = loadUmbEpicTasksFromJira().finally(() => { umbCatalogRequest = null; if (isSidebarOpen) renderStructure(); });
+        }
       });
     });
 
@@ -7011,28 +9476,38 @@ export function generateContentScriptJs(
     });
 
     function updateCurrentTask(patch) {
+      if (Object.prototype.hasOwnProperty.call(patch, 'component')) patch.components = patch.component && patch.component !== 'Без компонента' ? [patch.component] : [];
       tasks = tasks.map((t) => (t.key === selectedTaskKey ? Object.assign({}, t, patch) : t));
       saveTaskOverride(selectedTaskKey, patch);
     }
 
-    function saveSummaryNow() {
+    async function saveSummaryNow() {
       const sumInput = document.getElementById('ozon-sb-summary');
       if (!sumInput) return;
       const val = sumInput.value.trim();
       if (!val) return;
-      updateCurrentTask({ summary: val });
-      fetch('/rest/api/2/issue/' + encodeURIComponent(selectedTaskKey), {
-        method: 'PUT',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields: { summary: val } })
-      }).catch(() => {});
-      showSaveToast('✓ Название ' + selectedTaskKey + ' сохранено');
-      renderStructure();
+      const key = selectedTaskKey;
+      const button = document.getElementById('ozon-sb-save-summary');
+      if (button) button.disabled = true;
+      try {
+      await saveSidebarFields(key, {summary: val});
+      showSaveToast('✓ Название ' + key + ' сохранено');
+      if (selectedTaskKey === key) renderStructure();
+      } catch (error) {
+        showSaveToast('Не удалось сохранить название: ' + (error.message || 'ошибка запроса'));
+        if (button) button.disabled = false;
+      }
     }
 
     const sumInput = document.getElementById('ozon-sb-summary');
     if (sumInput) {
+      sumInput.addEventListener('input', () => {
+        const draft = sidebarDraft(selectedTaskKey);
+        const original = tasks.find((task) => task.key === selectedTaskKey)?.summary || '';
+        if (sumInput.value === original) delete draft.summary; else draft.summary = sumInput.value;
+        const button = document.getElementById('ozon-sb-save-summary');
+        if (button) { button.disabled = !sumInput.value.trim() || sumInput.value.trim() === original.trim(); button.style.display = button.disabled ? 'none' : ''; }
+      });
       sumInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
@@ -7045,6 +9520,52 @@ export function generateContentScriptJs(
     if (saveSumBtn) {
       saveSumBtn.addEventListener('click', saveSummaryNow);
     }
+
+    const labelForm = document.getElementById('ozon-sb-label-form');
+    const labelInput = document.getElementById('ozon-sb-label-input');
+    bindLabelSuggestions(labelInput);
+    async function changeSidebarLabel(label, operation) {
+      const key = selectedTaskKey;
+      const container = document.getElementById('ozon-sb-labels');
+      const errorEl = document.getElementById('ozon-sb-label-error');
+      if (!container || container.dataset.busy === '1') return;
+      if (!label || /\\s/.test(label)) {
+        if (errorEl) { errorEl.hidden = false; errorEl.textContent = 'Метка не должна быть пустой или содержать пробелы.'; }
+        return;
+      }
+      if (errorEl) errorEl.hidden = true;
+      container.dataset.busy = '1';
+      container.querySelectorAll('button, input').forEach((el) => { el.disabled = true; });
+      try {
+        const response = await fetch('/rest/api/2/issue/' + encodeURIComponent(key), {
+          method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ update: { labels: [{ [operation]: label }] } })
+        });
+        if (!response.ok) throw new Error('Ошибка Jira: ' + response.status);
+        const fresh = await fetch('/rest/api/2/issue/' + encodeURIComponent(key) + '?fields=labels', { credentials: 'same-origin', cache: 'no-store' });
+        if (!fresh.ok) throw new Error('Не удалось проверить сохранение меток');
+        const data = await fresh.json();
+        const labels = data.fields && Array.isArray(data.fields.labels) ? data.fields.labels : null;
+        if (!labels || labels.includes(label) !== (operation === 'add')) throw new Error('Jira не подтвердила изменение метки');
+        tasks = tasks.map((t) => t.key === key ? Object.assign({}, t, { labels }) : t);
+        const strategyIssue = strategicDashboard.getState().issues.find((issue) => issue.key === key);
+        if (strategyIssue && strategyIssue.fields) { strategyIssue.fields.labels = labels; strategicDashboard.invalidateGraph(); }
+        saveTaskOverride(key, { labels });
+        if (selectedTaskKey === key) renderStructure();
+      } catch (error) {
+        if (errorEl && selectedTaskKey === key) { errorEl.hidden = false; errorEl.textContent = error.message || 'Не удалось изменить метку'; }
+      } finally {
+        container.dataset.busy = '0';
+        container.querySelectorAll('button, input').forEach((el) => { el.disabled = false; });
+      }
+    }
+    if (labelForm) labelForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      changeSidebarLabel(labelInput ? labelInput.value.trim() : '', 'add');
+    });
+    root.querySelectorAll('[data-sb-remove-label]').forEach((button) => {
+      button.addEventListener('click', () => changeSidebarLabel(button.getAttribute('data-sb-remove-label') || '', 'remove'));
+    });
 
     // Переключение режима Просмотр / Редактирование описания задачи
     const toggleEditDescBtn = document.getElementById('ozon-sb-toggle-edit-desc');
@@ -7071,6 +9592,7 @@ export function generateContentScriptJs(
     if (cancelDescBtn) {
       cancelDescBtn.addEventListener('click', (e) => {
         e.preventDefault();
+        delete sidebarDraft(selectedTaskKey).description;
         isEditingDescription = false;
         renderStructure();
       });
@@ -7080,25 +9602,29 @@ export function generateContentScriptJs(
     const descArea = document.getElementById('ozon-sb-description');
     if (descArea) {
       descArea.addEventListener('input', () => {
+        const draft = sidebarDraft(selectedTaskKey);
+        const original = tasks.find((task) => task.key === selectedTaskKey)?.description || '';
+        if (descArea.value === original) delete draft.description; else draft.description = descArea.value;
         descArea.style.height = 'auto';
         descArea.style.height = Math.max(90, descArea.scrollHeight) + 'px';
       });
     }
 
-    function saveDescriptionNow() {
+    async function saveDescriptionNow() {
       const descEl = document.getElementById('ozon-sb-description');
       if (!descEl) return;
       const val = descEl.value;
-      isEditingDescription = false;
-      updateCurrentTask({ description: val });
-      fetch('/rest/api/2/issue/' + encodeURIComponent(selectedTaskKey), {
-        method: 'PUT',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields: { description: val } })
-      }).catch(() => {});
-      showSaveToast('✓ Описание ' + selectedTaskKey + ' сохранено в Jira');
-      renderStructure();
+      const key = selectedTaskKey;
+      const buttons = [document.getElementById('ozon-sb-save-description'), document.getElementById('ozon-sb-save-description-bottom')].filter(Boolean);
+      buttons.forEach((button) => { button.disabled = true; });
+      try {
+        await saveSidebarFields(key, {description: val});
+        showSaveToast('✓ Описание ' + key + ' сохранено в Jira');
+        if (selectedTaskKey === key) { isEditingDescription = false; renderStructure(); }
+      } catch (error) {
+        showSaveToast('Не удалось сохранить описание: ' + (error.message || 'ошибка запроса'));
+        buttons.forEach((button) => { button.disabled = false; });
+      }
     }
 
     const saveDescBtn = document.getElementById('ozon-sb-save-description');
@@ -7174,7 +9700,6 @@ export function generateContentScriptJs(
     if (spSelect) {
       spSelect.addEventListener('change', (e) => {
         const newSp = e.target.value;
-        issueSprintOverrideMap[selectedTaskKey] = newSp;
         updateCurrentTask({ sprint: newSp });
         updateIssueSprintInJira(selectedTaskKey, newSp);
         renderStructure();
@@ -7185,7 +9710,6 @@ export function generateContentScriptJs(
     root.querySelectorAll('button[data-action="quick-sprint-chip"]').forEach((chip) => {
       chip.addEventListener('click', () => {
         const targetSp = chip.getAttribute('data-sprint') || 'Бэклог FCRM';
-        issueSprintOverrideMap[selectedTaskKey] = targetSp;
         updateCurrentTask({ sprint: targetSp });
         updateIssueSprintInJira(selectedTaskKey, targetSp);
         renderStructure();
@@ -7242,6 +9766,7 @@ export function generateContentScriptJs(
     if (sbEpicTrigger) {
       sbEpicTrigger.addEventListener('click', (e) => {
         e.stopPropagation();
+        if (e.target.closest('a')) return;
         sbEpicComboOpen = !sbEpicComboOpen;
         sbCompComboOpen = false;
         sbIpCompOpenIdx = null;
@@ -7276,58 +9801,19 @@ export function generateContentScriptJs(
         sbEpicComboOpen = false;
         sbEpicSearchQuery = '';
         updateCurrentTask({ epicKey: epKey, epicName: epName });
+        const obprojectSourceKey = isEpicIssueType(task.issueTypeName) ? selectedTaskKey : epKey;
+        if (obprojectSourceKey) loadEpicObprojectDetails(obprojectSourceKey);
         renderStructure();
         await updateIssueEpicInJira(selectedTaskKey, epKey);
         renderStructure();
       });
     });
 
-    async function applyManualEpicFromInputs() {
-      const kInp = document.getElementById('ozon-sb-epic-key-input');
-      const nInp = document.getElementById('ozon-sb-epic-name');
-      const epKey = kInp ? kInp.value.trim().toUpperCase() : '';
-      const epicMap = getAllEpicOptions();
-      const customName = nInp ? nInp.value.trim() : '';
-      const epName = epKey ? customName || epicMap[epKey] || epicNameByKey[epKey] || epKey : 'Без эпика';
-      if (epKey && epName && epName !== 'Без эпика') {
-        epicNameByKey[epKey] = epName;
-      }
-      updateCurrentTask({ epicKey: epKey, epicName: epName });
-      renderStructure();
-      await updateIssueEpicInJira(selectedTaskKey, epKey);
-      renderStructure();
-    }
-
-    const saveEpicBtn = document.getElementById('ozon-sb-save-epic-btn');
-    if (saveEpicBtn) {
-      saveEpicBtn.addEventListener('click', applyManualEpicFromInputs);
-    }
-
-    const epicKeyInput = document.getElementById('ozon-sb-epic-key-input');
-    if (epicKeyInput) {
-      epicKeyInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          applyManualEpicFromInputs();
-        }
-      });
-      epicKeyInput.addEventListener('change', applyManualEpicFromInputs);
-    }
-
-    const epicNameInput = document.getElementById('ozon-sb-epic-name');
-    if (epicNameInput) {
-      epicNameInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          applyManualEpicFromInputs();
-        }
-      });
-    }
-
     function saveAssigneeNow() {
       const userSearchInput = document.getElementById('ozon-sb-user-search');
       if (!userSearchInput) return;
       const val = userSearchInput.value.trim() || 'Не назначен';
+      if (val === task.assignee.name) return;
       const firstMatch = searchedUsersResults[0];
       const chosenDisplay = val === 'Не назначен' ? 'Не назначен' : firstMatch ? firstMatch.displayName : val;
       const chosenLogin = val === 'Не назначен' ? null : firstMatch ? firstMatch.name : null;
@@ -7372,17 +9858,16 @@ export function generateContentScriptJs(
           saveAssigneeNow();
         }
       });
-    }
-
-    const saveAssigneeBtn = document.getElementById('ozon-sb-save-assignee');
-    if (saveAssigneeBtn) {
-      saveAssigneeBtn.addEventListener('click', saveAssigneeNow);
+      userSearchInput.addEventListener('blur', () => setTimeout(() => {
+        if (document.getElementById('ozon-sb-user-search')) saveAssigneeNow();
+      }, 160));
     }
 
     function saveCustomerNow() {
       const customerInput = document.getElementById('ozon-sb-customer');
       if (!customerInput) return;
       const val = customerInput.value.trim() || 'Не указан';
+      if (val === task.customer.name) return;
       searchedCustomerResults = [];
       updateCurrentTask({ customer: Object.assign({}, task.customer, { name: val }) });
       updateIssueCustomerInJira(selectedTaskKey, val, null);
@@ -7423,11 +9908,9 @@ export function generateContentScriptJs(
           saveCustomerNow();
         }
       });
-    }
-
-    const saveCustBtn = document.getElementById('ozon-sb-save-customer');
-    if (saveCustBtn) {
-      saveCustBtn.addEventListener('click', saveCustomerNow);
+      customerInput.addEventListener('blur', () => setTimeout(() => {
+        if (document.getElementById('ozon-sb-customer')) saveCustomerNow();
+      }, 160));
     }
 
     const umbSearch = document.getElementById('ozon-sb-umb-search');
@@ -7529,7 +10012,8 @@ export function generateContentScriptJs(
           sbIpCompOpenIdx = null;
           renderStructure();
         } else {
-          sbIpCompOpenIdx = idx;
+          developmentDashboard.dismissEditor();
+        sbIpCompOpenIdx = idx;
           sbIpCompSearchQuery = '';
           sbEpicComboOpen = false;
           sbCompComboOpen = false;
@@ -7572,11 +10056,36 @@ export function generateContentScriptJs(
         }
         showSaveToast('✓ Компонент ' + (lKey || '') + ' → ' + newComp);
         renderStructure();
-        const updatedLnk = nextIp[idx];
-        if (updatedLnk) {
-          await loadSprintsForLinkedIssue(updatedLnk);
-          renderStructure();
-        }
+        // Available sprints are fetched when the sprint selector is opened.
+      });
+    });
+
+    root.querySelectorAll('[data-action="open-ip-sprint-combo"]').forEach((trigger) => {
+      trigger.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        const idx = Number(trigger.getAttribute('data-link-idx'));
+        if (sbIpSprintOpenIdx === idx) { sbIpSprintOpenIdx = null; renderStructure(); return; }
+        developmentDashboard.dismissEditor();
+        sbIpSprintOpenIdx = idx;
+        renderStructure();
+        const link = task.inProjectLinks[idx];
+        if (link) { await loadSprintsForLinkedIssue(link); renderStructure(); }
+      });
+    });
+    const sprintSearch = document.getElementById('ozon-sb-ip-sprint-search');
+    if (sprintSearch) { sprintSearch.addEventListener('click', e => e.stopPropagation()); sprintSearch.addEventListener('input', e => { sbIpSprintSearchQuery = e.target.value; renderStructure(); }); }
+    root.querySelectorAll('[data-action="pick-ip-sprint"]').forEach((item) => {
+      item.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const idx = Number(item.getAttribute('data-link-idx'));
+        const linkKey = item.getAttribute('data-link-key');
+        const sprint = item.getAttribute('data-sprint');
+        const nextIp = task.inProjectLinks.map((link, i) => i === idx ? Object.assign({}, link, { sprint }) : link);
+        tasks = tasks.map(t => t.key === selectedTaskKey ? Object.assign({}, t, { inProjectLinks: nextIp }) : t);
+        sbIpSprintOpenIdx = null;
+        sbIpSprintSearchQuery = '';
+        updateIssueSprintInJira(linkKey, sprint);
+        renderStructure();
       });
     });
 
@@ -7616,6 +10125,132 @@ export function generateContentScriptJs(
         }
       });
     });
+
+    root.querySelectorAll('[data-action="toggle-front-design"]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const details = button.closest('.ozon-ext-link-compact-row')?.querySelector('[data-front-design-details]');
+        if (!details) return;
+        details.hidden = !details.hidden;
+        button.setAttribute('aria-expanded', String(!details.hidden));
+      });
+    });
+    root.querySelectorAll('[data-action="link-front-design"]').forEach((button) => {
+      button.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const frontKey = button.getAttribute('data-front-key');
+        const designKey = button.getAttribute('data-design-key');
+        button.disabled = true;
+        const linked = await createIssueLinkInJira(frontKey, designKey, 'linkedTask');
+        if (linked) {
+          delete frontDesignLinksByKey[frontKey];
+          await loadFrontDesignRelation(frontKey);
+          renderStructure();
+        } else {
+          button.disabled = false;
+          showSaveToast('Не удалось связать фронтовую задачу с дизайном');
+        }
+      });
+    });
+
+    root.querySelectorAll('[data-action="toggle-create-in-project-menu"]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        createInProjectMenuOpen = !createInProjectMenuOpen;
+        otherLinkMenuOpen = false;
+        renderStructure();
+      });
+    });
+    root.querySelectorAll('[data-action="toggle-other-link-menu"]').forEach((button) => {
+      button.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); otherLinkMenuOpen = !otherLinkMenuOpen; createInProjectMenuOpen = false; renderStructure(); });
+    });
+    root.querySelectorAll('[data-action="start-create-link"]').forEach((button) => {
+      button.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); linkCreateDraft = {kind:button.getAttribute('data-link-kind'), sourceKey:task.key}; createInProjectMenuOpen = false; otherLinkMenuOpen = false; renderStructure(); });
+    });
+    root.querySelectorAll('[data-action="close-link-create"]').forEach((button) => {
+      button.addEventListener('click', (event) => { if (event.target !== button) return; event.preventDefault(); event.stopPropagation(); linkCreateDraft = null; renderStructure(); });
+    });
+    const linkCreateForm = root.querySelector('#ozon-link-create-form');
+    linkCreateForm?.addEventListener('submit', async (event) => {
+      event.preventDefault(); event.stopPropagation();
+      if (!linkCreateDraft) return;
+      const draft = linkCreateDraft;
+      const message = linkCreateForm.querySelector('#ozon-link-create-message');
+      const submit = linkCreateForm.querySelector('[type="submit"]');
+      const fail = (text) => { message.textContent = text; message.hidden = false; submit.disabled = false; submit.textContent = 'Связать'; };
+      const key = String(linkCreateForm.querySelector('#ozon-link-create-key')?.value || '').trim().toUpperCase();
+      const url = String(linkCreateForm.querySelector('#ozon-link-create-url')?.value || '').trim();
+      const title = String(linkCreateForm.querySelector('#ozon-link-create-title')?.value || '').trim();
+      if (draft.kind !== 'web' && !/^[A-Z][A-Z0-9]*-\\d+$/.test(key)) { fail('Введите ключ задачи, например FCRM-1234.'); return; }
+      if (draft.kind === 'web') { try { if (!['http:', 'https:'].includes(new URL(url).protocol) || !title) throw new Error(); } catch (_) { fail('Укажите ссылку http или https и её название.'); return; } }
+      submit.disabled = true; submit.textContent = 'Сохраняем…'; message.hidden = true;
+      try {
+        if (draft.kind === 'web') {
+          const response = await fetch('/rest/api/2/issue/' + encodeURIComponent(draft.sourceKey) + '/remotelink', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({object:{url,title}})});
+          if (!response.ok) throw new Error('Не удалось добавить ссылку в Jira (HTTP ' + response.status + ').');
+        } else if (!await createIssueLinkInJira(draft.sourceKey, key, draft.kind, true, true)) throw new Error('Не удалось создать связь в Jira. Проверьте ключ и доступный тип связи.');
+        if (linkCreateDraft === draft) linkCreateDraft = null;
+        await refreshLinksWithoutSkeleton(draft.sourceKey);
+        showSaveToast('✓ Связь добавлена');
+      } catch (error) { if (linkCreateDraft === draft) fail(error.message || 'Не удалось добавить связь.'); else showSaveToast(error.message); }
+    });
+
+    root.querySelectorAll('[data-action="start-create-issue"]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const kind = button.getAttribute('data-create-kind');
+        if (kind === 'design') {
+          createInProjectMenuOpen = false;
+          renderStructure();
+          document.dispatchEvent(new CustomEvent('ozon-fcrm-start-design-task', { detail: JSON.stringify({ issueKey: selectedTaskKey }) }));
+        } else {
+          beginSidebarIssueCreate(kind);
+        }
+      });
+    });
+
+    root.querySelectorAll('[data-action="close-create-issue"]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        issueCreateDraft = null;
+        issueCreateBusy = false;
+        issueCreateLoading = false;
+        renderStructure();
+      });
+    });
+
+    const createSummaryInput = document.getElementById('ozon-create-issue-summary');
+    if (createSummaryInput) createSummaryInput.addEventListener('input', (event) => { if (issueCreateDraft) issueCreateDraft.summary = event.target.value; });
+    const createDescriptionInput = document.getElementById('ozon-create-issue-description');
+    if (createDescriptionInput) createDescriptionInput.addEventListener('input', (event) => { if (issueCreateDraft) issueCreateDraft.description = event.target.value; });
+    const createComponentSearch = document.getElementById('ozon-create-issue-component-search');
+    if (createComponentSearch) createComponentSearch.addEventListener('input', (event) => {
+      if (!issueCreateDraft) return;
+      issueCreateDraft.componentQuery = event.target.value;
+      renderStructure();
+    });
+    root.querySelectorAll('[data-action="pick-create-component"]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!issueCreateDraft) return;
+        issueCreateDraft.componentId = button.getAttribute('data-component-id');
+        issueCreateDraft.error = '';
+        renderStructure();
+      });
+    });
+    const createIssueForm = document.getElementById('ozon-create-issue-form');
+    if (createIssueForm) {
+      createIssueForm.addEventListener('click', (event) => event.stopPropagation());
+      createIssueForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        submitSidebarIssueCreate();
+      });
+    }
 
     const addIpBtn = document.getElementById('ozon-add-ip-btn');
     if (addIpBtn) {
@@ -7671,32 +10306,598 @@ export function generateContentScriptJs(
 
   function init() {
     if (!isTargetBoardPage()) return;
+    document.addEventListener('click', (event) => {
+      const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null;
+      if (anchor && anchor.closest('#ozon-structure-root, .ozon-component-editor, #ozon-thread-sidebar')) prepareNavigationLink(anchor);
+    }, true);
     ensureGoogleFontsLoaded();
     injectToggleButton();
     renderStructure();
-    loadBoardIssuesFromJira();
+    function addEditorTaskContext(panel, key) {
+      const task = tasks.find((item) => item.key === key);
+      const issue = strategicDashboard.getState().issues.find((item) => item.key === key);
+      const summary = task?.summary || issue?.fields?.summary || '';
+      if (summary) panel.querySelector('.component-editor-head')?.insertAdjacentHTML('afterend', '<div class="component-editor-context" title="' + escapeHtml(summary) + '">' + escapeHtml(summary) + '</div>');
+    }
+    let priorityEditor = null;
+    async function openPriorityEditor(key) {
+      if (!key) return;
+      priorityEditor?.remove();
+      const panel = document.createElement('aside'); priorityEditor = panel;
+      panel.className = 'ozon-component-editor ozon-priority-editor'; panel.setAttribute('role', 'dialog');
+      panel.setAttribute('aria-label', 'Приоритет задачи ' + key);
+      panel.style.cssText = 'position:fixed;z-index:2147483646;right:0;top:0;bottom:0;height:100vh;width:min(500px,100vw);background:#fff;box-shadow:-8px 0 24px #0f172a22;padding:20px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;font:13px Arial,sans-serif;color:#071026';
+      panel.innerHTML = '<div class="component-editor-head"><strong>Приоритет задачи · ' + escapeHtml(key) + '</strong><button type="button" class="component-editor-close" data-close aria-label="Закрыть">✕</button></div><div role="status">Загружаем приоритеты…</div>';
+      document.body.appendChild(panel);
+      panel.querySelector('[data-close]').onclick = () => panel.remove();
+      panel.addEventListener('pointerdown', event => event.stopPropagation());
+      panel.addEventListener('click', event => event.stopPropagation());
+      try {
+        const [response, options] = await Promise.all([fetch('/rest/api/2/issue/' + encodeURIComponent(key) + '?fields=priority', {credentials:'same-origin',headers:{Accept:'application/json'},cache:'no-store'}), jiraPriorityService.options(key)]);
+        if (!response.ok) throw new Error('Не удалось загрузить приоритет: HTTP ' + response.status);
+        const issue = await response.json(); if (!panel.isConnected) return;
+        const current = issue.fields?.priority || {};
+        const isCurrent = option => option.value?.id && current.id ? String(option.value.id) === String(current.id) : option.label === current.name;
+        panel.innerHTML = '<div class="component-editor-head"><strong>Приоритет задачи · ' + escapeHtml(key) + '</strong><button type="button" class="component-editor-close" data-close aria-label="Закрыть">✕</button></div><div class="ozon-sprint-current"><span>Текущий приоритет</span><strong>' + jiraPriorityService.icon(current.name || '') + ' ' + escapeHtml(current.name || 'Не указан') + '</strong></div><div class="component-editor-caption">Выберите приоритет</div><div class="component-editor-list">' + options.map((option,index) => '<button type="button" class="component-editor-option ' + (isCurrent(option) ? 'is-selected' : '') + '" data-index="' + index + '" aria-pressed="' + Boolean(isCurrent(option)) + '">' + jiraPriorityService.icon(option.label) + '<span>' + escapeHtml(option.label) + '</span></button>').join('') + '</div><div data-error role="alert" style="color:#d92d20"></div>';
+        addEditorTaskContext(panel, key);
+        panel.querySelector('[data-close]').onclick = () => panel.remove();
+        panel.querySelectorAll('[data-index]').forEach(button => button.addEventListener('click', async () => {
+          const option = options[Number(button.getAttribute('data-index'))]; if (!option) return;
+          panel.querySelectorAll('[data-index]').forEach(item => { item.disabled = true; });
+          try {
+            const priority = await jiraPriorityService.save(key, option.value);
+            tasks = tasks.map(task => { const updated = task.key === key ? Object.assign({}, task, {priority:priority.name}) : task; const next = Object.assign({}, updated); ['projectTaskLinks','inProjectLinks','otherLinks'].forEach(field => { if (Array.isArray(updated[field])) next[field] = updated[field].map(link => link.key === key ? Object.assign({}, link, {priority:priority.name}) : link); }); return next; });
+            if (tasks.some(task => task.key === key)) saveTaskOverride(key, {priority:priority.name});
+            const strategicIssue = strategicDashboard.getState().issues.find(item => item.key === key); if (strategicIssue?.fields) { strategicIssue.fields.priority = priority; strategicDashboard.invalidateGraph(); }
+            developmentDashboard.getState().groups.forEach(group => group.issues.forEach(item => { if (item.key === key) item.priority = priority.name; if (item.epicKey === key) item.epicPriority = priority.name; (item.links || []).forEach(link => { if (link.key === key) link.priority = priority.name; }); }));
+            panel.remove(); renderStructure(); showSaveToast('Приоритет ' + key + ' сохранён');
+          } catch (error) { if (panel.isConnected) { panel.querySelector('[data-error]').textContent = error.message || 'Не удалось изменить приоритет'; panel.querySelectorAll('[data-index]').forEach(item => { item.disabled = false; }); } }
+        }));
+      } catch (error) { if (panel.isConnected) panel.querySelector('[role="status"]').textContent = error.message || 'Не удалось загрузить приоритет'; }
+    }
+    document.addEventListener('click', event => {
+      const button = event.target instanceof Element ? event.target.closest('[data-priority-key], [data-dev-action="edit-priority"], [data-strategy-action="priority"]') : null;
+      if (!button || !button.closest('#ozon-structure-root')) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      openPriorityEditor(button.getAttribute('data-priority-key') || button.getAttribute('data-key'));
+    }, true);
+    document.addEventListener('pointerdown', event => { if (priorityEditor?.isConnected && event.target instanceof Element && !priorityEditor.contains(event.target)) { priorityEditor.remove(); priorityEditor = null; } }, true);
+    // Общий редактор компонентов для таблиц и связей во всех представлениях.
+    let componentEditor = null;
+    async function openComponentEditor(key) {
+      if (!key) return;
+      componentEditor?.remove();
+      const panel = document.createElement('aside');
+      componentEditor = panel;
+      panel.setAttribute('role', 'dialog');
+      panel.setAttribute('aria-label', 'Компоненты задачи ' + key);
+      panel.className = 'ozon-component-editor';
+      panel.style.cssText = 'position:fixed;z-index:2147483646;right:0;top:0;left:auto;bottom:0;height:100vh;width:min(500px,100vw);background:#fff;box-shadow:-8px 0 24px #0f172a22;padding:20px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;font:13px Arial,sans-serif;color:#071026;';
+      panel.innerHTML = '<div class="component-editor-head"><strong>Компоненты задачи · ' + escapeHtml(key) + '</strong><button type="button" class="component-editor-close" data-close aria-label="Закрыть">✕</button></div><div role="status">Загружаем компоненты…</div>';
+      document.body.appendChild(panel);
+      panel.addEventListener('pointerdown', (event) => event.stopPropagation());
+      panel.addEventListener('click', (event) => event.stopPropagation());
+      panel.querySelector('[data-close]').onclick = () => panel.remove();
+      try {
+        const project = getIssueProjectKey(key);
+        const [issueResponse, optionsResponse] = await Promise.all([
+          fetch('/rest/api/2/issue/' + encodeURIComponent(key) + '?fields=components', {credentials:'same-origin',cache:'no-store'}),
+          fetch('/rest/api/2/project/' + encodeURIComponent(project) + '/components', {credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json'}})
+        ]);
+        if (!issueResponse.ok || !optionsResponse.ok) throw new Error('Не удалось загрузить компоненты из Jira');
+        const issue = await issueResponse.json();
+        const records = await optionsResponse.json();
+        if (!Array.isArray(records)) throw new Error('Jira вернула некорректный список компонентов');
+        const options = records.filter((item) => item && item.id && item.name && item.archived !== true && item.deleted !== true && (!item.project || String(item.project).toUpperCase() === project));
+        if (window.__ozonPreviewApi) {
+          const visible = tasks.find((item) => item.key === key);
+          const display = String(visible?.component || '').trim();
+          if (display && display !== 'Без компонента') {
+            const byName = new Map(options.map((item) => [String(item.name), item]));
+            let rest = display;
+            const resolved = [];
+            const ordered = [...byName.keys()].sort((a,b) => b.length - a.length);
+            while (rest) {
+              const match = ordered.find((name) => rest === name || rest.startsWith(name + ', '));
+              if (!match) { resolved.length = 0; break; }
+              resolved.push(byName.get(match));
+              rest = rest.slice(match.length).replace(/^, /, '');
+            }
+            if (resolved.length) issue.fields.components = resolved;
+          } else if (visible && display === 'Без компонента') issue.fields.components = [];
+        }
+        if (!panel.isConnected) return;
+        const currentComponents = issue.fields?.components || [];
+        const matchOption = (c) => options.find((option) => (c.id && String(option.id) === String(c.id)) || (c.name && option.name === c.name));
+        const selected = new Set(currentComponents.map((c) => { const option = matchOption(c); return String(option?.id || option?.name || c.id || c.name); }));
+        const unavailable = currentComponents.filter((c) => !matchOption(c)).map((c) => Object.assign({}, c, {unavailable:true}));
+        const allOptions = [...unavailable, ...options];
+        panel.innerHTML = '<div class="component-editor-head"><strong>Компоненты задачи · ' + escapeHtml(key) + '</strong><button type="button" class="component-editor-close" data-close aria-label="Закрыть">✕</button></div><div class="component-editor-search"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.7"/><path d="m13 13 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><input type="search" data-search placeholder="Поиск компонента…" aria-label="Поиск компонента"></div><div class="component-editor-caption"><span>Выберите компоненты</span><span data-count></span></div><div data-list class="component-editor-list"></div><div data-error role="alert" style="color:#d92d20"></div><div class="component-editor-footer"><button type="button" data-cancel class="component-editor-button">Отмена</button><button type="button" data-save class="component-editor-button primary">Сохранить</button></div>';
+        addEditorTaskContext(panel, key);
+        const list = panel.querySelector('[data-list]');
+        const search = panel.querySelector('[data-search]');
+        function renderOptions() {
+          const query = search.value.trim().toLowerCase();
+          const filtered = allOptions.filter((c) => (!c.unavailable || selected.has(String(c.id || c.name))) && String(c.name || '').toLowerCase().includes(query))
+            .sort((a, b) => Number(selected.has(String(b.id || b.name))) - Number(selected.has(String(a.id || a.name))));
+          panel.querySelector('[data-count]').textContent = 'Выбрано: ' + selected.size;
+          list.innerHTML = filtered.length ? filtered.map((c) => '<label class="component-editor-option ' + (selected.has(String(c.id || c.name)) ? 'is-selected' : '') + '"><input type="checkbox" data-component-id="' + escapeHtml(String(c.id || c.name)) + '" ' + (selected.has(String(c.id || c.name)) ? 'checked' : '') + '><span>' + escapeHtml(c.name || '') + (c.unavailable ? ' <span style="color:#71839b;font-size:11px;font-weight:400">· недоступен для добавления</span>' : '') + '</span></label>').join('') : '<div style="padding:12px 10px;color:#64748b">Компоненты не найдены</div>';
+        }
+        search.addEventListener('input', renderOptions);
+        list.addEventListener('change', (event) => { const id = event.target.getAttribute('data-component-id'); if (!id) return; if (event.target.checked) selected.add(id); else selected.delete(id); const scrollTop = list.scrollTop; renderOptions(); list.scrollTop = scrollTop; [...list.querySelectorAll('[data-component-id]')].find((input) => input.getAttribute('data-component-id') === id)?.focus({preventScroll:true}); });
+        panel.querySelector('[data-close]').onclick = panel.querySelector('[data-cancel]').onclick = () => panel.remove();
+        panel.querySelector('[data-save]').onclick = async (event) => {
+          const save = event.currentTarget; save.disabled = true;
+          try {
+            const chosen = allOptions.filter((c) => selected.has(String(c.id || c.name)));
+            const response = await fetch('/rest/api/2/issue/' + encodeURIComponent(key), {method:'PUT',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({fields:{components:chosen.map((c) => c.id ? {id:String(c.id)} : {name:c.name})}})});
+            if (!response.ok) throw new Error('Не удалось сохранить компоненты: ' + response.status);
+            const verify = await fetch('/rest/api/2/issue/' + encodeURIComponent(key) + '?fields=components', {credentials:'same-origin',cache:'no-store'});
+            if (!verify.ok) throw new Error('Не удалось проверить сохранение компонентов');
+            const fresh = await verify.json(); const actual = fresh.fields?.components || [];
+            const actualIds = actual.map((c) => String(c.id || c.name)).sort(); const expectedIds = chosen.map((c) => String(c.id || c.name)).sort();
+            if (JSON.stringify(actualIds) !== JSON.stringify(expectedIds)) throw new Error('Jira не подтвердила выбранные компоненты');
+            const names = actual.map((c) => c.name).filter(Boolean); const component = names.join(', ') || 'Без компонента';
+            umbCatalog = umbCatalog.map((item) => item.key === key ? Object.assign({}, item, {component, components:names}) : item);
+            tasks = tasks.map((task) => { const updated = task.key === key ? Object.assign({}, task, {component,components:names}) : task; return Object.assign({}, updated, {inProjectLinks:(updated.inProjectLinks || []).map((link) => link.key === key ? Object.assign({}, link, {component,components:names}) : link)}); });
+            if (tasks.some((task) => task.key === key)) saveTaskOverride(key, {component,components:names});
+            const strategyIssue = strategicDashboard.getState().issues.find((item) => item.key === key); if (strategyIssue?.fields) { strategyIssue.fields.components = actual; strategicDashboard.invalidateGraph(); }
+            developmentDashboard.getState().groups.forEach((group) => group.issues.forEach((item) => { if (item.key === key) { item.component = component; item.componentNames = names; item.componentId = actual[0]?.id || ''; } if (item.epicKey === key) item.epicComponent = component; (item.links || []).forEach((link) => { if (link.key === key) link.component = component; }); }));
+            panel.remove(); renderStructure(); showSaveToast('Компоненты ' + key + ' сохранены');
+          } catch (error) { panel.querySelector('[data-error]').textContent = error.message || 'Ошибка сохранения'; save.disabled = false; }
+        };
+        renderOptions();
+      } catch (error) { if (panel.isConnected) panel.querySelector('[role="status"]').textContent = error.message || 'Не удалось загрузить компоненты'; }
+    }
+    document.addEventListener('click', (event) => {
+      const target = event.target instanceof Element ? event.target.closest('#ozon-sb-comp-trigger, [data-action="open-table-comp-combo"], [data-action="open-ip-comp-combo"], [data-dev-action="edit-component"], [data-strategy-action="edit-component"]') : null;
+      if (!target || !target.closest('#ozon-structure-root')) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      let key = target.getAttribute('data-key') || '';
+      if (target.id === 'ozon-sb-comp-trigger') key = selectedTaskKey;
+      if (target.getAttribute('data-action') === 'open-ip-comp-combo') { const task = tasks.find((item) => item.key === selectedTaskKey); key = task?.inProjectLinks?.[Number(target.getAttribute('data-link-idx'))]?.key || ''; }
+      openComponentEditor(key);
+    }, true);
+    document.addEventListener('pointerdown', (event) => { if (componentEditor?.isConnected && event.target instanceof Element && !componentEditor.contains(event.target)) { componentEditor.remove(); componentEditor = null; event.stopImmediatePropagation(); } }, true);
+    let planningEditor = null;
+    const planningTriggers = [
+      '#ozon-sb-epic-trigger', '[data-action="open-table-epic-combo"]',
+      '[data-action="toggle-search-select"][data-select-id="sidebar-sprint"]',
+      '[data-action="toggle-search-select"][data-select-id^="table-sprint-"]', '[data-action="open-ip-sprint-combo"]',
+      '[data-strategy-action="edit-sprint"]', '[data-strategy-action="edit-epic"]',
+      '[data-dev-action="edit-sprint"]', '[data-dev-action="edit-epic"]'
+    ].join(',');
+
+    function planningFields() {
+      const strategy = strategicDashboard.planningFields();
+      const development = developmentDashboard.planningFields();
+      return {
+        sprint: discoveredFields.sprint || strategy.sprint || development.sprint || CONFIG.sprintFieldId,
+        epic: discoveredFields.epicLink || strategy.epic || development.epic || CONFIG.epicFieldId,
+        epicName: discoveredFields.epicName || strategy.epicName || development.epicName
+      };
+    }
+
+    function planningSprint(fields, sprintField) {
+      const newestFirst = value => Array.isArray(value) ? [...value].reverse() : [value];
+      const candidates = [fields.sprint,...newestFirst(fields[sprintField]),...newestFirst(fields.closedSprints)].flat().filter(Boolean);
+      const sprints = candidates.map(value => {
+        const name = extractAnyRealSprintName(value) || '';
+        const rawId = typeof value === 'object' ? value.id : /^(\\d+)$|id=(\\d+)/.exec(String(value))?.slice(1).find(Boolean);
+        const id = String(rawId || sprintIdByName[name] || '');
+        const known = developmentDashboard.getState().sprints.find(sprint => String(sprint.id) === id);
+        const rawState = typeof value === 'object' && value.state ? value.state : sprintStateByName[name] || known?.state || '';
+        return {id, name:name || known?.name || '', state:String(rawState).toLowerCase()};
+      }).filter(sprint => sprint.id);
+      return sprints.find(sprint => sprint.state === 'active' || sprint.state === 'future') || sprints[0] || null;
+    }
+
+    function planningEpicKey(fields, epicField) {
+      if (epicField && Object.prototype.hasOwnProperty.call(fields,epicField)) {
+        const value = fields[epicField];
+        return String(typeof value === 'string' ? value : value?.key || value?.value || '');
+      }
+      return String(fields.epic?.key || '');
+    }
+
+    async function readPlanningIssue(key, fields, signal) {
+      const query = [...new Set(fields.filter(Boolean))].join(',');
+      const response = await fetch('/rest/api/2/issue/' + encodeURIComponent(key) + '?fields=' + encodeURIComponent(query), {
+        cache:'no-store', credentials:'same-origin', headers:{Accept:'application/json'}, signal
+      });
+      if (!response.ok) throw new Error('Не удалось загрузить ' + key + ' из Jira (HTTP ' + response.status + ')');
+      return response.json();
+    }
+
+    async function planningSprintOptions(key, issue, current) {
+      const project = getIssueProjectKey(key);
+      let options;
+      if (project === CONFIG.projectKey) {
+        options = await strategicDashboard.loadEditableSprints().catch(error => {
+          const cached = getEditableSprintOptions().filter(name => sprintIdByName[name]);
+          if (!cached.length) throw error;
+          return cached.map(name => ({id:sprintIdByName[name],name,state:getSprintStateCode(name)}));
+        });
+      } else {
+        const development = developmentDashboard.getState();
+        if (development.groups.some(group => group.issues.some(task => task.key === key))) options = development.sprints;
+        else {
+          const names = await loadSprintsForLinkedIssue({key,sprint:current?.name,component:resolveRealLinkedIssueComponent(issue)});
+          options = names.map(name => ({id:sprintIdByName[name],name,state:getSprintStateCode(name)}));
+        }
+      }
+      return [...new Map(options.filter(sprint => sprint.id && /^(active|future)$/i.test(sprint.state)).map(sprint => {
+        const option = {id:String(sprint.id),name:sprint.name,state:String(sprint.state).toLowerCase()};
+        sprintNameById[option.id] = option.name;
+        sprintIdByName[option.name] = option.id;
+        sprintStateByName[option.name] = option.state.toUpperCase();
+        return [option.id,option];
+      })).values()];
+    }
+
+    async function searchPlanningEpics(key, search, epicName, signal) {
+      const query = search.trim().replace(/["\\\\*?~]/g,' ').trim();
+      const exact = /(?:^|\\/browse\\/)((?:FCRM|OBPROJECT)-\\d+)(?:[/?#].*)?$/i.exec(query)?.[1].toUpperCase();
+      let jql = 'project in (FCRM, OBPROJECT) AND issuetype = Epic';
+      if (exact) jql += ' AND key = ' + JSON.stringify(exact);
+      else if (query) {
+        const text = JSON.stringify(query + '*');
+        const conditions = ['summary ~ ' + text];
+        const epicNameId = /^customfield_(\\d+)$/.exec(epicName || '')?.[1];
+        if (epicNameId) conditions.push('cf[' + epicNameId + '] ~ ' + text);
+        if (/^[\\w.-]+$/.test(query)) conditions.push('labels = ' + JSON.stringify(query));
+        jql += ' AND (' + conditions.join(' OR ') + ')';
+      }
+      const params = new URLSearchParams({jql:jql + ' ORDER BY updated DESC',fields:'summary,status,components,issuetype,labels',maxResults:'60'});
+      const response = await fetch('/rest/api/2/search?' + params.toString(), {cache:'no-store',credentials:'same-origin',headers:{Accept:'application/json'},signal});
+      if (!response.ok) throw new Error('Не удалось найти эпики в Jira (HTTP ' + response.status + ')');
+      const data = await response.json();
+      if (!Array.isArray(data.issues)) throw new Error('Jira не вернула список эпиков');
+      return data.issues.filter(issue => issue.key !== key && /^(FCRM|OBPROJECT)-\\d+$/.test(issue.key) && isEpicIssueType(issue.fields?.issuetype?.name))
+        .map(issue => ({id:issue.key,name:issue.fields.summary || issue.key,fields:issue.fields}));
+    }
+
+    async function savePlanningField(key, kind, option, fields) {
+      const isSprint = kind === 'sprint';
+      const url = isSprint
+        ? (option.id ? '/rest/agile/1.0/sprint/' + encodeURIComponent(option.id) + '/issue' : '/rest/agile/1.0/backlog/issue')
+        : '/rest/api/2/issue/' + encodeURIComponent(key);
+      if (!isSprint && !fields.epic) throw new Error('Не найдено поле Epic Link в Jira.');
+      const response = await fetch(url, {
+        method:isSprint ? 'POST' : 'PUT', credentials:'same-origin',
+        headers:{'Content-Type':'application/json',Accept:'application/json'},
+        body:JSON.stringify(isSprint ? {issues:[key]} : {fields:{[fields.epic]:option.id || null}})
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        const errors = [...(Array.isArray(body?.errorMessages) ? body.errorMessages : []),...Object.values(body?.errors || {})];
+        throw new Error(errors.filter(Boolean).join(' · ') || 'Jira не сохранила изменение (HTTP ' + response.status + ')');
+      }
+
+      const fieldList = isSprint ? ['sprint','closedSprints',fields.sprint] : ['epic',fields.epic];
+      let fresh;
+      try {
+        fresh = await readPlanningIssue(key,fieldList);
+        if (!fresh.fields || !fieldList.some(field => field && Object.prototype.hasOwnProperty.call(fresh.fields,field))) throw new Error();
+        if (isSprint) {
+          const verified = planningSprint(fresh.fields,fields.sprint);
+          const scheduled = verified && /^(active|future)$/.test(verified.state);
+          if (option.id ? verified?.id !== option.id : scheduled) throw new Error();
+        } else if (planningEpicKey(fresh.fields,fields.epic) !== option.id) throw new Error();
+      } catch (_) {
+        throw new Error('Jira приняла изменение, но пока не подтвердила новое значение. Обновите задачу перед повторной попыткой.');
+      }
+
+      if (!isSprint && option.id) {
+        try { option.fields = (await readPlanningIssue(option.id,['summary','status','components','issuetype','priority','labels','customfield_20100','customfield_24000'])).fields || option.fields; }
+        catch (_) { /* The Epic Link write was already verified. */ }
+        cacheEpicMetadata([{key:option.id,fields:option.fields || {}}]);
+        strategicDashboard.rememberEpic(option.id,option.fields || {});
+      }
+      const backlog = getIssueProjectKey(key) === CONFIG.projectKey ? 'Бэклог FCRM' : 'Не в спринте';
+      const patch = isSprint ? {sprint:option.id ? option.name : backlog} : {epicKey:option.id,epicName:option.id ? option.fields?.summary || option.name : 'Без эпика'};
+      tasks = tasks.map(task => {
+        let updated = task.key === key ? Object.assign({},task,patch) : task;
+        for (const type of ['inProjectLinks','projectTaskLinks','otherLinks']) {
+          if (task[type]?.some(link => link.key === key)) updated = Object.assign({},updated,{[type]:task[type].map(link => link.key === key ? Object.assign({},link,patch) : link)});
+        }
+        return updated;
+      });
+      if (tasks.some(task => task.key === key)) saveTaskOverride(key,patch);
+      if (!isSprint) fresh.fields.epic = option.id ? {key:option.id,summary:option.fields?.summary || option.name} : null;
+      syncStrategyIssue({key,fields:fresh.fields});
+      const outsideDevelopment = developmentDashboard.applyPlanningField(key,kind,option);
+      if (!isSprint && option.id) void loadTableObprojectMetadata(new Set([option.id])).then(() => renderStructure());
+
+      const outsideProduct = isSprint && activeDashboardView === 'product' && !matchesSprintState(option.id ? option.state.toUpperCase() : 'BACKLOG');
+      const movedOutside = isSprint && (outsideProduct || (activeDashboardView === 'development' && outsideDevelopment));
+      const destination = !isSprint && option.id ? option.id + ' · ' + option.name : option.name;
+      return key + ' → ' + destination + (movedOutside ? '. Теперь задача вне выбранных спринтов.' : '. Сохранено в Jira.');
+    }
+
+    function openPlanningEditor(key, kind, trigger) {
+      if (!key || planningEditor?.dataset.busy === 'true') return;
+      planningEditor?.remove();
+      const panel = document.createElement('aside');
+      planningEditor = panel;
+      const isSprint = kind === 'sprint';
+      const title = isSprint ? 'Спринт задачи' : 'Epic Link';
+      panel.className = 'ozon-component-editor ozon-planning-editor';
+      panel.setAttribute('role','dialog');
+      panel.setAttribute('aria-label',title + ' · ' + key);
+      panel.style.cssText = 'position:fixed;z-index:2147483646;right:0;top:0;bottom:0;width:min(500px,100vw);background:#fff;box-shadow:-8px 0 24px #0f172a22;padding:20px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box';
+      panel.innerHTML = '<div class="component-editor-head"><strong>' + title + ' · ' + escapeHtml(key) + '</strong><button type="button" class="component-editor-close" data-close aria-label="Закрыть">✕</button></div><div data-context class="component-editor-context" hidden></div><div class="ozon-sprint-current"><span>' + (isSprint ? 'Текущий спринт' : 'Текущий Epic Link') + '</span><strong data-current>Загрузка…</strong></div><div class="component-editor-search"><input type="search" data-search placeholder="' + (isSprint ? 'Поиск спринта…' : 'Ключ, название или метка эпика…') + '" aria-label="' + (isSprint ? 'Поиск спринта' : 'Поиск эпика') + '" style="padding-left:10px" disabled></div><div data-message role="status"></div><div data-list class="component-editor-list"></div>';
+      document.body.appendChild(panel);
+      const closeButton = panel.querySelector('[data-close]');
+      const search = panel.querySelector('[data-search]');
+      const list = panel.querySelector('[data-list]');
+      const message = panel.querySelector('[data-message]');
+      const currentCell = panel.querySelector('[data-current]');
+      const fields = planningFields();
+      const empty = {id:'', name:isSprint ? 'Бэклог' : 'Без эпика'};
+      let options = [], displayed = [], current = null, timer, searchController, busy = false;
+      const lifetime = new AbortController();
+      const setMessage = (text,error=false) => { message.setAttribute('role',error ? 'alert' : 'status'); message.textContent = text; };
+      const close = (restoreFocus = true) => {
+        if (busy) return;
+        clearTimeout(timer);
+        searchController?.abort();
+        lifetime.abort();
+        panel.remove();
+        if (planningEditor === panel) planningEditor = null;
+        if (restoreFocus && trigger?.isConnected) trigger.focus({preventScroll:true});
+      };
+      panel.closePlanningEditor = close;
+      closeButton.onclick = () => close();
+      closeButton.focus({preventScroll:true});
+
+      function renderOptions() {
+        const query = search.value.trim().toLowerCase();
+        displayed = isSprint ? options.filter(option => !query || option.name.toLowerCase().includes(query)) : options;
+        list.innerHTML = displayed.length ? displayed.map((option,index) => {
+          const selected = option.id === current?.id;
+          const details = isSprint ? (option.state ? ' ' + getSprintStateBadgeHtml(option.name) : '') : (option.fields?.status?.name ? getStatusBadgeHtml(option.fields.status.name) : '');
+          const keyAndComponent = !isSprint && option.id ? '<small class="ozon-planning-option-key">' + escapeHtml([option.id,...(option.fields?.components || []).map(component => component.name)].filter(Boolean).join(' · ')) + '</small>' : '';
+          return '<button type="button" class="component-editor-option' + (selected ? ' is-selected' : '') + '" aria-pressed="' + selected + '" data-option="' + index + '"' + (busy ? ' disabled' : '') + '><span class="ozon-planning-option-text">' + keyAndComponent + '<span>' + escapeHtml(option.name) + '</span></span>' + details + '</button>';
+        }).join('') : '<p>Ничего не найдено</p>';
+      }
+
+      async function loadEpics() {
+        searchController?.abort();
+        const controller = new AbortController();
+        searchController = controller;
+        list.replaceChildren();
+        setMessage('Ищем эпики…');
+        try {
+          const found = await searchPlanningEpics(key,search.value,fields.epicName,controller.signal);
+          if (controller.signal.aborted || !panel.isConnected) return;
+          options = search.value.trim() ? found : [...(current?.id ? [current] : []),empty,...found.filter(option => option.id !== current?.id)];
+          setMessage('');
+          renderOptions();
+        } catch (error) { if (!controller.signal.aborted && panel.isConnected) setMessage(error.message,true); }
+      }
+
+      search.addEventListener('input', () => {
+        if (isSprint) { renderOptions(); return; }
+        clearTimeout(timer);
+        searchController?.abort();
+        list.replaceChildren();
+        setMessage('Ищем эпики…');
+        timer = setTimeout(loadEpics,220);
+      });
+      search.addEventListener('keydown', event => {
+        if (event.key === 'Enter' && displayed.length === 1 && list.firstElementChild?.matches('button')) {
+          event.preventDefault();
+          list.firstElementChild.click();
+        }
+      });
+      list.addEventListener('click',async event => {
+        const button = event.target.closest('[data-option]');
+        const option = button && displayed[Number(button.dataset.option)];
+        if (!option || busy) return;
+        if (option.id === current?.id) { close(); return; }
+        busy = true;
+        panel.dataset.busy = 'true';
+        search.disabled = closeButton.disabled = true;
+        setMessage('Сохраняем в Jira…');
+        renderOptions();
+        try {
+          const notice = await savePlanningField(key,kind,option,fields);
+          busy = false;
+          close(false);
+          renderStructure();
+          showSaveToast(notice);
+        } catch (error) {
+          busy = false;
+          panel.dataset.busy = 'false';
+          search.disabled = closeButton.disabled = false;
+          setMessage(error.message || 'Не удалось сохранить изменение',true);
+          renderOptions();
+          search.focus({preventScroll:true});
+        }
+      });
+
+      void (async () => {
+        const fieldList = isSprint ? ['summary','issuetype','components','sprint','closedSprints',fields.sprint] : ['summary','epic',fields.epic];
+        try {
+          const issue = await readPlanningIssue(key,fieldList,lifetime.signal);
+          if (!panel.isConnected) return;
+          const context = panel.querySelector('[data-context]');
+          context.textContent = issue.fields?.summary || '';
+          context.hidden = !context.textContent;
+          if (isSprint && isEpicIssueType(issue.fields?.issuetype?.name)) {
+            currentCell.textContent = '—';
+            setMessage('У эпиков нельзя изменить спринт.');
+            return;
+          }
+          if (isSprint) {
+            const sprint = planningSprint(issue.fields || {},fields.sprint);
+            current = sprint && /^(active|future)$/.test(sprint.state) ? sprint : empty;
+            currentCell.textContent = current.name;
+            if (sprint?.state === 'closed' && sprint.name) currentCell.textContent += ' · Последний: ' + sprint.name;
+            setMessage('Загружаем спринты…');
+            const found = await planningSprintOptions(key,issue,sprint);
+            if (!panel.isConnected) return;
+            options = [...(current.id ? [current] : []),empty,...found.filter(option => option.id !== current.id)];
+            setMessage('');
+            renderOptions();
+          } else {
+            const id = planningEpicKey(issue.fields || {},fields.epic);
+            current = id ? {id,name:issue.fields?.epic?.summary || epicNameByKey[id] || id} : empty;
+            currentCell.textContent = current.id && current.name !== current.id ? current.id + ' · ' + current.name : current.name;
+            void loadEpics();
+            if (id && current.name === id) {
+              void readPlanningIssue(id,['summary','status','components'],lifetime.signal).then(epic => {
+                if (!panel.isConnected) return;
+                current.name = epic.fields?.summary || id;
+                current.fields = epic.fields || {};
+                currentCell.textContent = current.name === id ? id : id + ' · ' + current.name;
+                if (options.length && !busy) renderOptions();
+              }).catch(() => {});
+            }
+          }
+          search.disabled = false;
+          if (document.activeElement === closeButton) search.focus({preventScroll:true});
+        } catch (error) { if (panel.isConnected) setMessage(error.message,true); }
+      })();
+    }
+
+    document.addEventListener('click', event => {
+      const element = event.target instanceof Element ? event.target : null;
+      const trigger = element?.closest(planningTriggers);
+      if (!trigger?.closest('#ozon-structure-root') || element.closest('a, .ozon-copy-key-btn, [data-copy-issue-key]')) return;
+      const id = trigger.getAttribute('data-select-id') || '';
+      const action = trigger.getAttribute('data-action') || trigger.getAttribute('data-strategy-action') || trigger.getAttribute('data-dev-action') || '';
+      let key = trigger.getAttribute('data-key') || '';
+      if (trigger.id === 'ozon-sb-epic-trigger' || id === 'sidebar-sprint') key = selectedTaskKey;
+      if (id.startsWith('table-sprint-')) key = id.slice('table-sprint-'.length);
+      if (action === 'open-ip-sprint-combo') key = tasks.find(task => task.key === selectedTaskKey)?.inProjectLinks?.[Number(trigger.getAttribute('data-link-idx'))]?.key || '';
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      openPlanningEditor(key,trigger.id === 'ozon-sb-epic-trigger' || action.includes('epic') ? 'epic' : 'sprint',trigger);
+    },true);
+    document.addEventListener('pointerdown', event => {
+      if (planningEditor?.isConnected && event.target instanceof Element && !planningEditor.contains(event.target)) planningEditor.closePlanningEditor(false);
+    },true);
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && planningEditor?.isConnected) {
+        event.stopImmediatePropagation();
+        planningEditor.closePlanningEditor();
+        return;
+      }
+      const trigger = event.target instanceof Element && event.target.matches(planningTriggers) ? event.target : null;
+      if ((event.key === 'Enter' || event.key === ' ') && trigger?.getAttribute('role') === 'button') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        trigger.click();
+      }
+    },true);
+    const issueTooltipCache = new Map();
+    let issueTooltipTarget = null;
+    let issueTooltip = null;
+    let issueTooltipTitles = [];
+    const renderIssueTooltip = (title, detail) => {
+      if (!issueTooltip) return;
+      const heading = document.createElement('strong');
+      heading.style.cssText = 'display:block;font-size:14px;line-height:1.4;font-weight:700;color:#fff;margin-bottom:8px;';
+      heading.textContent = title;
+      const body = document.createElement('div');
+      body.style.cssText = 'font-size:12px;line-height:1.5;color:#dce6f5;font-weight:400;';
+      body.textContent = detail;
+      issueTooltip.replaceChildren(heading, body);
+    };
+    document.addEventListener('mouseover', (event) => {
+      const target = event.target instanceof Element ? event.target.closest('.ozon-ip-summary, .ozon-other-summary, #ozon-structure-root a[href*="/browse/"], #o3ds-layer a[href*="/browse/"], #ozon-thread-sidebar a[href*="/browse/"]') : null;
+      if (!target || target === issueTooltipTarget) return;
+      const row = target.closest('.ozon-ext-link-compact-row, .ozon-ext-section-card, tr, div');
+      const anchor = target.matches('a[href*="/browse/"]') ? target : row?.querySelector('a[href*="/browse/"]');
+      const match = anchor && /\\/browse\\/([A-Z][A-Z0-9]*-\\d+)/i.exec(anchor.getAttribute('href') || '');
+      if (!match) return;
+      const key = match[1].toUpperCase();
+      const text = target.matches('.ozon-ip-summary, .ozon-other-summary') ? target.textContent.trim() : (anchor.getAttribute('title') || anchor.textContent.trim());
+      issueTooltipTitles = [];
+      for (let node = target; node && node !== document.body; node = node.parentElement) {
+        if (node.hasAttribute('title')) { issueTooltipTitles.push([node,node.getAttribute('title')]); node.removeAttribute('title'); }
+      }
+      issueTooltipTarget = target;
+      if (!issueTooltip) { issueTooltip = document.createElement('div'); issueTooltip.setAttribute('role','tooltip'); issueTooltip.style.cssText = 'position:fixed;z-index:2147483647;max-width:min(420px,90vw);padding:10px 12px;background:#071026;color:white;border-radius:8px;font:12px/1.45 sans-serif;box-shadow:0 4px 16px #07102633;white-space:pre-wrap;overflow-wrap:anywhere;pointer-events:none;'; document.body.appendChild(issueTooltip); }
+      const rect = target.getBoundingClientRect();
+      issueTooltip.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - Math.min(420, window.innerWidth - 16))) + 'px';
+      issueTooltip.style.top = Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - 140)) + 'px';
+      renderIssueTooltip(key + ' · ' + text, 'Загрузка описания…');
+      if (!issueTooltipCache.has(key)) issueTooltipCache.set(key, fetch('/rest/api/2/issue/' + encodeURIComponent(key) + '?fields=summary,description', {credentials:'same-origin',headers:{Accept:'application/json'}}).then(response => { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); }).catch(() => null));
+      issueTooltipCache.get(key).then(issue => {
+        if (issueTooltipTarget !== target || !issueTooltip) return;
+        const description = typeof issue?.fields?.description === 'string' ? issue.fields.description.replace(/\\r/g,'').trim() : '';
+        const excerpt = description.split('\\n').filter(Boolean).slice(0,4).join('\\n').slice(0,400);
+        renderIssueTooltip(key + ' · ' + (issue?.fields?.summary || text), excerpt || 'Описание отсутствует или недоступно');
+      });
+    });
+    document.addEventListener('mouseout', (event) => {
+      if (issueTooltipTarget && !issueTooltipTarget.contains(event.relatedTarget)) { issueTooltipTitles.forEach(([node,title]) => { if (node.isConnected && !node.hasAttribute('title')) node.setAttribute('title',title); }); issueTooltipTitles = []; issueTooltipTarget = null; issueTooltip?.remove(); issueTooltip = null; }
+    });
+    document.addEventListener('pointerdown', (event) => {
+      const target = event.target;
+      if (createInProjectMenuOpen && target instanceof Element && !target.closest('.ozon-ext-create-menu, [data-action="toggle-create-in-project-menu"]')) {
+        createInProjectMenuOpen = false;
+        document.querySelector('.ozon-ext-create-menu')?.remove();
+      }
+      if (otherLinkMenuOpen && target instanceof Element && !target.closest('.ozon-ext-other-link-menu, [data-action="toggle-other-link-menu"]')) { otherLinkMenuOpen = false; document.querySelector('.ozon-ext-other-link-menu')?.remove(); }
+      if (!(target instanceof Element) || target.closest('.ozon-ext-combo-popover, [role="dialog"]:not(#ozon-dev-editor-panel):not(#o3ds-layer), #ozon-ext-sidebar-resizer')) return;
+      const panels = ['#o3ds-layer', '#ozon-thread-sidebar:not([hidden])', '.ozon-dev-settings', '#ozon-dev-editor-panel', '#ozon-ext-sidebar-panel'];
+      const panel = panels.map(selector => document.querySelector(selector)).find(Boolean);
+      if (panel?.id === 'o3ds-layer' && target.closest('#ozon-ext-sidebar-panel, #ozon-ext-sidebar-resizer')) return;
+      if (!panel || panel.contains(target)) return;
+      const selectedKey = selectedTaskKey;
+      setTimeout(() => {
+        if (!panel.isConnected) return;
+        if (panel.id === 'o3ds-layer') { document.dispatchEvent(new CustomEvent('ozon-close-assistant')); return; }
+        if (panel.id === 'ozon-thread-sidebar') { panel.querySelector('[data-thread-close]')?.click(); return; }
+        if (panel.matches('.ozon-dev-settings')) { panel.querySelector('[data-dev-action="settings-cancel"]')?.click(); return; }
+        if (panel.id === 'ozon-dev-editor-panel') { panel.querySelector('[data-dev-action="close-editor"]')?.click(); return; }
+        if (selectedTaskKey === selectedKey) document.getElementById('ozon-ext-sidebar-close')?.click();
+      }, 0);
+    }, true);
+    if (activeDashboardView === 'product') prepareProductFilters();
+    if (activeDashboardView === 'strategy') strategicDashboard.prepareFilters();
+
+    document.addEventListener('ozon-fcrm-issue-applied', (event) => {
+      const issueKey = event && event.detail && event.detail.issueKey;
+      if (issueKey && tasks.some((task) => task.key === issueKey)) {
+        reloadSingleTaskFromJira(issueKey, true);
+      }
+    });
 
     // Закрытие открытых поповеров по клику вне них
     document.addEventListener('click', (e) => {
       if (
         !e.target.closest('.ozon-ext-combo-popover') &&
+        !e.target.closest('.ozon-ext-toolbar-trigger') &&
+        !e.target.closest('.ozon-ext-search-select-trigger') &&
         !e.target.closest('.ozon-ext-cell-combo-trigger') &&
         !e.target.closest('.ozon-ext-status-trigger') &&
         !e.target.closest('.ozon-ext-sb-combo-trigger') &&
-        !e.target.closest('#ozon-ext-toggle-col-order')
+        !e.target.closest('#ozon-ext-toggle-col-order') &&
+        !e.target.closest('.ozon-ext-product-settings')
       ) {
-        if (activeTableCombo || sbEpicComboOpen || sbCompComboOpen || sbIpCompOpenIdx !== null || isColOrderPanelOpen) {
+        if (activeTableCombo || sbEpicComboOpen || sbCompComboOpen || sbIpCompOpenIdx !== null || sbIpSprintOpenIdx !== null || isColOrderPanelOpen || activeToolbarFilter || activeSearchSelectId) {
           activeTableCombo = null;
           tableUserSearchResults = [];
           sbEpicComboOpen = false;
           sbCompComboOpen = false;
           sbIpCompOpenIdx = null;
+          sbIpSprintOpenIdx = null;
           isColOrderPanelOpen = false;
+          activeToolbarFilter = '';
+          toolbarFilterSearch = '';
+          activeSearchSelectId = '';
+          searchSelectQuery = '';
           renderStructure();
         }
       }
     });
 
+    document.addEventListener('keydown',event=>{if(event.key==='Escape')closeSidebarPickers();});
     window.addEventListener('popstate', () => {
       renderStructure();
     });
@@ -7716,7 +10917,7 @@ export function generatePopupHtml(config: ExtensionConfig): string {
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
-  <title>Ozon Bank · FCRM Structure</title>
+  <title>Ozon Bank В· FCRM Structure</title>
   <style>
     body {
       width: 320px;
@@ -7756,22 +10957,29 @@ export function generatePopupHtml(config: ExtensionConfig): string {
     .btn:hover {
       background: #D0E3FF;
     }
+    .btn + .btn {
+      margin-top: 8px;
+    }
   </style>
 </head>
 <body>
-  <div class="title">Ozon Bank · FCRM Structure (#${config.rapidViewId})</div>
+  <div class="title">Ozon Bank В· FCRM Structure (#${config.rapidViewId})</div>
   <div class="desc">
-    Расширение v3.1 активно только на представлении доски <strong>${config.projectKey}</strong> (<code>RapidBoard.jspa?rapidView=${config.rapidViewId}</code>).
+    Реестр активен на доске <strong>${config.projectKey}</strong>. Кнопка «Улучшить» появляется у заголовка задачи на jit.o3.ru и ходит в DeepSeek через service worker.
   </div>
   <a class="btn" href="${config.boardUrl}" target="_blank" rel="noopener noreferrer">
     Открыть доску FCRM на jit.o3.ru
   </a>
+  <button type="button" class="btn" id="o3ds-open-options">Настройки DeepSeek (токен и промпт)</button>
   <script src="popup.js"></script>
 </body>
 </html>`;
 }
 
 export function generatePopupJs(_config: ExtensionConfig): string {
-  return `// Ozon Bank FCRM Structure Popup Controller v3.1`;
+  return `document.getElementById('o3ds-open-options').addEventListener('click', (event) => {
+  event.preventDefault();
+  chrome.runtime.openOptionsPage();
+});
+`;
 }
-

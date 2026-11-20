@@ -11,6 +11,8 @@ export interface LinkedIssueItem {
   component?: string;
   sprint?: string;
   url?: string;
+  linkType?: string;
+  linkDirection?: string;
 }
 
 export interface FcrmTask {
@@ -40,6 +42,7 @@ export interface FcrmTask {
   priority: 'Критический' | 'Высокий' | 'Средний' | 'Низкий';
   projectTaskLinks: LinkedIssueItem[]; // 9. Блок связей "Задача проекта"
   inProjectLinks: LinkedIssueItem[]; // 10. Блок связей "В проекте" (название, статус, спринт, компонент)
+  otherLinks?: LinkedIssueItem[];
 }
 
 export interface ExtensionConfig {
