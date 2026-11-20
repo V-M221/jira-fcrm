@@ -208,3 +208,21 @@
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 91, 255, 0.45);
 }
+.ozon-row-done > td { background-color: #e4e7eb; }
+.ozon-row-done:hover > td { background-color: #dbe0e6; }
+#studio-workspace > #studio-deepseek-panel {
+  position: static;
+  flex: 0 1 min(36vw, 620px);
+  min-width: 0;
+  box-shadow: none;
+  z-index: auto;
+}
+#studio-workspace:has(> #studio-deepseek-panel) > aside { max-width: 36%; }
+#studio-deepseek-panel pre { scrollbar-color: #a8b5c5 transparent; scrollbar-width: thin; }
+
+.studio-answer h3 { margin: 12px 0 4px; font-size:15px; font-weight:700; }
+.studio-answer p { margin-bottom:6px; }
+.studio-answer ul, .studio-answer ol { padding-left:22px; }
+.studio-answer ul { list-style:disc; }
+.studio-answer ol { list-style:decimal; }
+.studio-answer a { color:#005bff; text-decoration:underline; }

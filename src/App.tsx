@@ -39,11 +39,19 @@ import {
 } from './data/fcrmMockData';
 import {
   generateManifestJson,
+  EXTENSION_VERSION,
   generateStylesCss,
   generateContentScriptJs,
   generatePopupHtml,
   generatePopupJs,
 } from './utils/extensionGenerator';
+import {
+  generateBackgroundJs,
+  generateIssueEnhanceJs,
+  generateOptionsHtml,
+  generateOptionsJs,
+} from './services/deepseekExtension';
+import ImproveDescription from './components/ImproveDescription';
 
 const DEFAULT_COMPONENT_OPTIONS = [
   'CRM: Поддержка (Развитие)',
@@ -111,29 +119,16 @@ function parseCreatedAtTimestamp(createdAt?: string): number {
 }
 
 function renderIssueTypeBadge(issueType?: string) {
-  const label = issueType || 'Задача';
+  const label = issueType || "\u0417\u0430\u0434\u0430\u0447\u0430";
   const low = label.toLowerCase();
-  let badgeStyle = 'bg-[#E5F0FF] text-[#005BFF] border-[#BFDBFE]';
-  let symbol = '✓';
-  if (low.includes('эпик') || low.includes('epic')) {
-    badgeStyle = 'bg-[#F3E8FF] text-[#7E22CE] border-[#E9D5FF]';
-    symbol = '⚡';
-  } else if (low.includes('истор') || low.includes('story')) {
-    badgeStyle = 'bg-[#DCFCE7] text-[#15803D] border-[#BBF7D0]';
-    symbol = '⚑';
-  } else if (low.includes('ошиб') || low.includes('баг') || low.includes('bug')) {
-    badgeStyle = 'bg-[#FEE2E2] text-[#DC2626] border-[#FECACA]';
-    symbol = '●';
-  } else if (low.includes('аналит')) {
-    badgeStyle = 'bg-[#FEF3C7] text-[#D97706] border-[#FDE68A]';
-    symbol = '◆';
-  }
+  let accent = "bg-[#2563EB]";
+  if (low.includes("\u044d\u043f\u0438\u043a") || low.includes("epic")) accent = "bg-[#9333EA]";
+  else if (low.includes("\u0438\u0441\u0442\u043e\u0440") || low.includes("story")) accent = "bg-[#16A34A]";
+  else if (low.includes("\u043e\u0448\u0438\u0431") || low.includes("\u0431\u0430\u0433") || low.includes("bug")) accent = "bg-[#DC2626]";
+  else if (low.includes("\u0430\u043d\u0430\u043b\u0438\u0442")) accent = "bg-[#D97706]";
   return (
-    <span
-      title={`Тип задачи: ${label}`}
-      className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[4px] text-[10px] font-bold border shrink-0 leading-tight ${badgeStyle}`}
-    >
-      <span>{symbol}</span>
+    <span title={"\u0422\u0438\u043f \u0437\u0430\u0434\u0430\u0447\u0438: " + label} className="inline-flex h-[18px] items-center gap-1.5 rounded-md border border-[#DCE4F0] bg-white px-1.5 text-[10px] font-semibold leading-none text-[#334155] shrink-0">
+      <span className={"h-1.5 w-1.5 rounded-full " + accent} />
       <span>{label}</span>
     </span>
   );
@@ -499,7 +494,8 @@ export default function App() {
     [sortBy]
   );
 
-  const filteredTasks = useMemo(() => {
+  const [hideDone, setHideDone] = useState(false);
+  const matchingTasks = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return tasks.filter((t) => {
       if (isCanceledStatusValue(t.status)) return false;
@@ -546,6 +542,8 @@ export default function App() {
   ]);
 
   // Group filtered tasks by Sprint -> Component (2-level Jira Structure hierarchy)
+  const doneCount = matchingTasks.filter(task => task.status === 'done').length;
+  const filteredTasks = useMemo(() => hideDone ? matchingTasks.filter(task => task.status !== 'done') : matchingTasks, [hideDone, matchingTasks]);
   const sprintGroups = useMemo(() => {
     const map = new Map<string, FcrmTask[]>();
     filteredTasks.forEach((task) => {
@@ -649,6 +647,10 @@ export default function App() {
       zip.file('styles.css', generateStylesCss(config));
       zip.file('popup.html', generatePopupHtml(config));
       zip.file('popup.js', generatePopupJs(config));
+      zip.file('background.js', generateBackgroundJs());
+      zip.file('issue-enhance.js', generateIssueEnhanceJs());
+      zip.file('options.html', generateOptionsHtml());
+      zip.file('options.js', generateOptionsJs());
 
       const readme = `КАК ЗАПУСТИТЬ РАСШИРЕНИЕ В GOOGLE CHROME:
 
@@ -659,7 +661,9 @@ export default function App() {
 4. В левом верхнем углу нажмите кнопку «Загрузить распакованное расширение» (Load unpacked) и выберите папку, куда вы распаковали файлы.
 5. Откройте вашу доску Jira:
    https://jit.o3.ru/secure/RapidBoard.jspa?rapidView=9349&projectKey=FCRM#
-   Расширение автоматически включит компактный реестр Ozon Bank · FCRM Structure (также в шапке Jira появится кнопка «Ozon Structure FCRM» для переключения между стандартной доской и реестром Structure).`;
+   Расширение автоматически включит компактный реестр Ozon Bank · FCRM Structure (также в шапке Jira появится кнопка «Ozon Structure FCRM» для переключения между стандартной доской и реестром Structure).
+6. Токен DeepSeek: на странице chrome://extensions откройте «Подробнее» → «Параметры расширения» (или кнопку «Токен DeepSeek» во всплывающем окне). Вставьте Bearer-токен. Если поле пустое, service worker попробует взять сессию с https://deepseek.o3t.ru/api/v1/auths/.
+7. Откройте задачу. Рядом с заголовком появится кнопка «Улучшить»: сначала предпросмотр описания, затем «Применить» отправит вторую команду в DeepSeek, чтобы обновить задачу через jit.`;
 
       zip.file('README-ЗАПУСК.txt', readme);
 
@@ -807,6 +811,7 @@ export default function App() {
     setSelectedCustomer('all');
     setSelectedStatusFilter('all');
     setHideEpicTasks(false);
+    setHideDone(false);
     setSortBy('default');
   };
 
@@ -877,6 +882,7 @@ export default function App() {
           className="ozon-focusable rounded text-sm font-bold tracking-tight text-[#071026] whitespace-nowrap shrink-0 font-display"
         >
           Ozon Bank · FCRM Structure
+          <small title="Версия расширения в этом конструкторе" className="ml-1 text-[11px] font-medium text-slate-600">v{EXTENSION_VERSION}</small>
         </a>
 
         {/* Zone 2: "Все спринты" + легенда индикаторов (скрепка и красный человечек) */}
@@ -947,6 +953,10 @@ export default function App() {
           </button>
 
           {/* Compact Search */}
+          <button type="button" aria-pressed={hideDone} onClick={() => setHideDone(!hideDone)}
+            className={`ozon-focusable shrink-0 whitespace-nowrap px-2.5 py-1 rounded-lg text-[11px] font-semibold ${hideDone ? 'ozon-btn-tinted' : 'ozon-btn-surface'}`}>
+            {hideDone ? 'Показать выполненные' : 'Скрыть выполненные'} ({doneCount})
+          </button>
           <div className="relative w-60 sm:w-72">
             <Search className="w-3 h-3 text-[#64748B] absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
@@ -1059,7 +1069,7 @@ export default function App() {
             selectedEpic !== 'all' ||
             selectedCustomer !== 'all' ||
             selectedStatusFilter !== 'all' ||
-            hideEpicTasks ||
+            hideDone || hideEpicTasks ||
             sortBy !== 'default') && (
             <button
               onClick={resetFilters}
@@ -1158,7 +1168,7 @@ export default function App() {
           CENTER: Interactive Drag Resizer Handle
           RIGHT: Resizable Task Details Panel with Editable Fields & Quick Picker
          ===================================================================== */}
-      <div className="flex-1 flex overflow-hidden min-h-0">
+      <div id="studio-workspace" className="flex-1 flex overflow-hidden min-h-0">
         {/* LEFT PANE: JIRA STRUCTURE COMPACT TABLE */}
         <div className="flex-1 overflow-auto bg-white min-h-0">
           <table
@@ -1341,7 +1351,7 @@ export default function App() {
                                         <ChevronDown className="w-3.5 h-3.5 text-[#005BFF] shrink-0" />
                                       )}
                                       <span className="text-[#64748B] font-medium">Компонент:</span>
-                                      <span className="font-bold text-[#071026]">
+                                      <span className="font-sans font-semibold tracking-tight text-[#1E293B]">
                                         {compGroup.componentName}
                                       </span>
                                       <span className="font-mono text-[10.5px] font-semibold text-[#005BFF] bg-[#EBF3FF] px-1.5 py-0.2 rounded tabular-nums">
@@ -1392,7 +1402,7 @@ export default function App() {
                                   }
                                 }}
                                 className={`ozon-row-item ozon-focusable h-7 cursor-pointer ${
-                                  isSelected ? 'ozon-row-selected' : ''
+                                  isSelected ? 'ozon-row-selected' : task.status === 'done' ? 'ozon-row-done' : ''
                                 }`}
                               >
                                 {/* 1. Key + Summary + Structure Tree Expand Chevron + ◨ Детали button (Уровень 3 лесенки: pl-11) */}
@@ -1448,10 +1458,10 @@ export default function App() {
                                         setIsEditingDescription(false);
                                       }}
                                       title="Открыть панель деталей задачи справа"
-                                      className={`ozon-inner-control shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold border transition-colors cursor-pointer ${
+                                      className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold border transition-colors cursor-pointer ${
                                         isSelected
-                                          ? 'bg-[#005BFF] text-white border-[#005BFF]'
-                                          : 'bg-[#F8FAFC] text-[#475569] border-[#CBD5E1] hover:bg-[#EBF3FF] hover:text-[#005BFF] hover:border-[#93C5FD]'
+                                          ? 'bg-[#E5F0FF] text-[#005BFF] border-[#BFDBFE]'
+                                          : 'bg-white text-[#475569] border-[#DCE4F0] hover:bg-[#F4F8FF] hover:text-[#005BFF] hover:border-[#93C5FD]'
                                       }`}
                                     >
                                       ◨ Детали
@@ -2031,17 +2041,28 @@ export default function App() {
                   </div>
 
                   {/* Editable Task Summary */}
-                  <input
-                    type="text"
-                    value={selectedTask.summary}
-                    onChange={(e) =>
-                      handleUpdateTask(selectedTask.key, (t) => ({
-                        ...t,
-                        summary: e.target.value,
-                      }))
-                    }
-                    className="ozon-focusable w-full text-sm font-bold text-[#071026] mt-1 leading-snug font-display bg-transparent border border-transparent hover:border-[#CBD5E1] focus:border-[#005BFF] focus:bg-white rounded-lg px-1.5 py-0.5 -ml-1.5 transition-colors"
-                  />
+                  <div className="mt-1 flex items-start gap-2">
+                    <input
+                      type="text"
+                      value={selectedTask.summary}
+                      onChange={(e) =>
+                        handleUpdateTask(selectedTask.key, (t) => ({
+                          ...t,
+                          summary: e.target.value,
+                        }))
+                      }
+                      className="ozon-focusable min-w-0 flex-1 text-sm font-bold text-[#071026] leading-snug font-display bg-transparent border border-transparent hover:border-[#CBD5E1] focus:border-[#005BFF] focus:bg-white rounded-lg px-1.5 py-0.5 -ml-1.5 transition-colors"
+                    />
+                    <ImproveDescription
+                      issueKey={selectedTask.key}
+                      onApplied={(description) =>
+                        handleUpdateTask(selectedTask.key, (t) => ({
+                          ...t,
+                          description,
+                        }))
+                      }
+                    />
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-1 shrink-0">
@@ -2080,8 +2101,8 @@ export default function App() {
                       <button
                         key={col.id}
                         onClick={() => handleMoveTaskStatus(selectedTask.key, col.id)}
-                        className={`ozon-focusable px-3 py-1 text-[11px] font-semibold cursor-pointer ${
-                          active ? 'ozon-btn-tinted font-bold ring-1 ring-[#005BFF]/30' : 'ozon-btn-surface text-[#475569]'
+                        className={`ozon-focusable rounded-full px-3 py-1 text-[11px] font-semibold cursor-pointer transition-colors ${
+                          active ? 'ozon-btn-tinted font-bold ring-1 ring-[#005BFF]/30' : 'ozon-btn-surface text-[#475569] hover:text-[#005BFF]'
                         }`}
                       >
                         {col.title}
@@ -2104,7 +2125,7 @@ export default function App() {
                     }
                     className="ozon-accordion-header ozon-focusable w-full px-3.5 py-2.5 flex items-center justify-between text-left font-bold text-[#071026] cursor-pointer"
                   >
-                    <span>Атрибуты задачи (Тип задачи, Эпик, Компонент, Исполнитель, Спринт)</span>
+                    <span>{"\u0410\u0442\u0440\u0438\u0431\u0443\u0442\u044b \u0437\u0430\u0434\u0430\u0447\u0438"}</span>
                     {openSidebarSections.attributes ? (
                       <ChevronUp className="ozon-accordion-chevron w-4 h-4 shrink-0" />
                     ) : (
@@ -2510,7 +2531,7 @@ export default function App() {
                             ) : (
                               <ChevronRight className="w-3.5 h-3.5 text-[#005BFF]" />
                             )}
-                            <span>Быстрый выбор из фильтра labels = fcrm_umb_epic</span>
+                            <span>{"\u0411\u044b\u0441\u0442\u0440\u044b\u0439 \u0432\u044b\u0431\u043e\u0440"}</span>
                           </button>
                           <span className="text-[10.5px] font-mono text-[#64748B] tabular-nums">
                             {umbEpicCatalog.length} задач
@@ -2653,130 +2674,19 @@ export default function App() {
                       ) : (
                         <div className="space-y-2">
                           {selectedTask.inProjectLinks.map((link) => (
-                            <div
-                              key={link.id}
-                              tabIndex={0}
-                              className="ozon-row-item ozon-focusable rounded-xl p-2.5 space-y-2 border border-[#E2E8F0]"
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="flex items-center gap-2 min-w-0 flex-1">
-                                  <div className="w-7 h-7 rounded-lg bg-[#E5F0FF] text-[#005BFF] flex items-center justify-center shrink-0">
-                                    <Link2 className="w-3.5 h-3.5" />
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    <div className="text-xs font-semibold text-[#071026] truncate">
-                                      <a
-                                        href={`https://jit.o3.ru/browse/${link.key}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="ozon-inner-control font-mono font-bold text-[#005BFF] hover:underline mr-1.5"
-                                      >
-                                        {link.key}
-                                      </a>
-                                      <span>{link.summary}</span>
-                                    </div>
-                                    <div className="text-[11px] text-[#64748B]">
-                                      {link.component || '—'} · {link.sprint || '—'}
-                                    </div>
-                                  </div>
-                                </div>
-                                <button
-                                  onClick={() =>
-                                    handleRemoveLink(
-                                      selectedTask.key,
-                                      'inProjectLinks',
-                                      link.id
-                                    )
-                                  }
-                                  className="ozon-inner-control ozon-btn-negative ozon-focusable px-2 py-1 text-[10.5px] font-semibold cursor-pointer shrink-0"
-                                  title="Удалить связь"
-                                >
-                                  Убрать
-                                </button>
-                              </div>
-
-                              {/* Статус, Компонент и Спринт задачи «В проекте» */}
-                              <div className="grid grid-cols-12 gap-1.5 items-center pt-1.5 border-t border-[#EEF2F6]">
-                                <div className="col-span-3">
-                                  <label className="block text-[9.5px] text-[#64748B]">
-                                    Статус
-                                  </label>
-                                  <select
-                                    value={link.status}
-                                    onChange={(e) =>
-                                      handleUpdateInProjectLink(
-                                        selectedTask.key,
-                                        link.id,
-                                        {
-                                          status: e.target
-                                            .value as LinkedIssueItem['status'],
-                                        }
-                                      )
-                                    }
-                                    className="ozon-inner-control ozon-focusable w-full px-1 py-0.5 text-[11px] font-medium bg-[#F5F7FA] border border-[#CBD5E1] rounded"
-                                  >
-                                    <option value="Открыто">Открыто</option>
-                                    <option value="В работе">В работе</option>
-                                    <option value="Ревью">Ревью</option>
-                                    <option value="Тестирование">Тестирование</option>
-                                    <option value="Готово">Готово</option>
-                                  </select>
-                                </div>
-
-                                <div className="col-span-4">
-                                  <label className="block text-[9.5px] text-[#64748B]">
-                                    Компонент
-                                  </label>
-                                  <select
-                                    value={link.component || 'Core-Scoring'}
-                                    onChange={(e) =>
-                                      handleUpdateInProjectLink(
-                                        selectedTask.key,
-                                        link.id,
-                                        { component: e.target.value }
-                                      )
-                                    }
-                                    className="ozon-inner-control ozon-focusable w-full px-1 py-0.5 text-[11px] font-semibold text-[#005BFF] bg-[#F5F7FA] border border-[#CBD5E1] rounded"
-                                  >
-                                    {allComponents.map((c) => (
-                                      <option key={c} value={c}>
-                                        {c}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-
-                                <div className="col-span-5">
-                                  <label className="block text-[9.5px] text-[#64748B]">
-                                    Спринт
-                                  </label>
-                                  <select
-                                    value={
-                                      link.sprint ||
-                                      'FCRM Sprint 43 (11.11 – 25.11)'
-                                    }
-                                    onChange={(e) =>
-                                      handleUpdateInProjectLink(
-                                        selectedTask.key,
-                                        link.id,
-                                        { sprint: e.target.value }
-                                      )
-                                    }
-                                    className="ozon-inner-control ozon-focusable w-full px-1 py-0.5 text-[11px] text-[#071026] bg-[#F5F7FA] border border-[#CBD5E1] rounded tabular-nums"
-                                  >
-                                    {link.sprint && !editableSprints.includes(link.sprint) && (
-                                      <option value={link.sprint} disabled hidden>
-                                        {formatSprintWithStatus(link.sprint)}
-                                      </option>
-                                    )}
-                                    {editableSprints.map((sp) => (
-                                      <option key={sp} value={sp}>
-                                        {formatSprintWithStatus(sp)}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                              </div>
+                            <div key={link.id} tabIndex={0} className="ozon-row-item ozon-focusable rounded-lg px-2 py-1.5 flex items-center gap-1.5 border border-[#E2E8F0] min-w-0">
+                              <Link2 className="w-4 h-4 text-[#005BFF] shrink-0" />
+                              <a href={"https://jit.o3.ru/browse/" + link.key} target="_blank" rel="noopener noreferrer" title={link.key} className="ozon-inner-control font-mono text-[10px] font-bold text-[#005BFF] hover:underline shrink-0">{link.key}</a>
+                              <span title={link.summary} className="min-w-0 flex-1 truncate text-[11px] font-medium text-[#071026]">{link.summary}</span>
+                              <select aria-label="Status" value={link.status} onChange={(e) => handleUpdateInProjectLink(selectedTask.key, link.id, { status: e.target.value as LinkedIssueItem['status'] })} className="ozon-inner-control ozon-focusable w-[72px] shrink-0 px-1 py-0.5 text-[10px] bg-[#F5F7FA] border border-[#CBD5E1] rounded-md"><option value={'\u041e\u0442\u043a\u0440\u044b\u0442\u043e'}>{'\u041e\u0442\u043a\u0440\u044b\u0442\u043e'}</option><option value={'\u0412 \u0440\u0430\u0431\u043e\u0442\u0435'}>{'\u0412 \u0440\u0430\u0431\u043e\u0442\u0435'}</option><option value={'\u0420\u0435\u0432\u044c\u044e'}>{'\u0420\u0435\u0432\u044c\u044e'}</option><option value={'\u0422\u0435\u0441\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435'}>{'\u0422\u0435\u0441\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435'}</option><option value={'\u0413\u043e\u0442\u043e\u0432\u043e'}>{'\u0413\u043e\u0442\u043e\u0432\u043e'}</option><option value={'\u041e\u0442\u043c\u0435\u043d\u0435\u043d\u043e'}>{'\u041e\u0442\u043c\u0435\u043d\u0435\u043d\u043e'}</option></select>
+                              <select aria-label="Component" value={link.component || 'Core-Scoring'} onChange={(e) => handleUpdateInProjectLink(selectedTask.key, link.id, { component: e.target.value })} className="ozon-inner-control ozon-focusable w-[90px] shrink-0 px-1 py-0.5 text-[10px] font-medium text-[#005BFF] bg-[#F5F7FA] border border-[#CBD5E1] rounded-md">
+                                {allComponents.map((c) => <option key={c} value={c}>{c}</option>)}
+                              </select>
+                              <select aria-label="Sprint" value={link.sprint || 'FCRM Sprint 43 (11.11 - 25.11)'} onChange={(e) => handleUpdateInProjectLink(selectedTask.key, link.id, { sprint: e.target.value })} className="ozon-inner-control ozon-focusable w-[105px] shrink-0 px-1 py-0.5 text-[10px] text-[#071026] bg-[#F5F7FA] border border-[#CBD5E1] rounded-md tabular-nums">
+                                {link.sprint && !editableSprints.includes(link.sprint) && <option value={link.sprint} disabled hidden>{formatSprintWithStatus(link.sprint)}</option>}
+                                {editableSprints.map((sp) => <option key={sp} value={sp}>{formatSprintWithStatus(sp)}</option>)}
+                              </select>
+                              <button onClick={() => handleRemoveLink(selectedTask.key, 'inProjectLinks', link.id)} className="ozon-inner-control ozon-btn-negative ozon-focusable w-6 h-6 rounded-md text-xs font-semibold cursor-pointer shrink-0" title="Delete link">&times;</button>
                             </div>
                           ))}
                         </div>
