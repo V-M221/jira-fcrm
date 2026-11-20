@@ -153,14 +153,14 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
     const epi=(number:number) => {
       const key='OBPROJECT-' + (base+number);
       const summary=number===7 ? '[Демо] Карточка клиента' : '[Демо] Уведомления и операционный журнал';
-      reportEpics.set(key,{key,fields:{summary,customfield_24000:{value:number===7 ? 'Стрим 1' : 'Стрим 3'}}});
+      reportEpics.set(key,{key,fields:{summary,issuetype:{name:'Эпик'},status:reportStatus.progress,labels:[],components:[],customfield_24000:{value:number===7 ? 'Стрим 1' : 'Стрим 3'}}});
       return key;
     };
     const epics=[epi(7),epi(8)];
     const make = (number:number, summary:string, points:number | null, finalStatus:keyof typeof reportStatus, member:boolean, histories:any[]) => {
       const project=range[number % 2];
       const key = project + '-' + (base+number);
-      const history={key,fields:{summary:'[Демо] ' + summary,created:new Date(Date.parse(selected.startDate)-86400000).toISOString(),issuetype:{name:'Задача',subtask:false},
+      const history=reportHistory.get(key) || {key,fields:{summary:'[Демо] ' + summary,created:new Date(Date.parse(selected.startDate)-86400000).toISOString(),issuetype:{name:'Задача',subtask:false},
         status:reportStatus[finalStatus],project:{key:project},[config.epicFieldId]:number===6 ? null : epics[number % 2],customfield_10002:points,[config.sprintFieldId]:member ? [selected] : [],sprint:member && selected.state === 'active' ? selected : null,
         closedSprints:member && selected.state === 'closed' ? [selected] : []},changelog:{histories,startAt:0,total:histories.length}};
       reportHistory.set(key,history);
@@ -229,9 +229,9 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
         issues.forEach(issue => { if (!Array.isArray(issue.fields?.issuelinks)) return; const before = issue.fields.issuelinks.length; issue.fields.issuelinks = issue.fields.issuelinks.filter((link:any) => String(link.id) !== issueLinkId); removed ||= before !== issue.fields.issuelinks.length; });
         return removed ? new Response(null,{status:204}) : json({errorMessages:['Связь не найдена']},404);
       }
-      if (match && method === 'PUT' && issues.has(match[1])) {
+      const target = match && (issues.get(match[1]) || reportHistory.get(match[1]));
+      if (method === 'PUT' && target) {
         const data = JSON.parse(String(options.body || '{}'));
-        const target = issues.get(match[1]);
         const priorities = ['Критический','Высокий','Средний','Низкий'].map((name,index) => ({id:String(index+1),name}));
         if (data.fields?.priority?.id) data.fields.priority = priorities.find(item => item.id === String(data.fields.priority.id)) || data.fields.priority;
         if (Array.isArray(data.fields?.components)) data.fields.components = data.fields.components.map((component:any) => { const name = component.name || [...componentMap].find(([,id]) => String(id) === String(component.id))?.[0]; return name ? {id:componentId(name),name} : component; });
@@ -239,9 +239,10 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
         if (data.update?.labels) { const labels = [...(target.fields.labels || [])]; data.update.labels.forEach((change:any) => { if (change.add && !labels.includes(change.add)) labels.push(change.add); if (change.remove) { const index=labels.indexOf(change.remove); if (index >= 0) labels.splice(index,1); } }); target.fields.labels=labels; }
         if (data.fields && config.epicFieldId in data.fields) {
           const epicKey = data.fields[config.epicFieldId];
-          issues.get(match[1]).fields.epic = epicKey ? {key:epicKey,summary:issues.get(epicKey)?.fields.summary || epicKey} : null;
+          const epic = issues.get(epicKey) || reportEpics.get(epicKey);
+          target.fields.epic = epicKey ? {key:epicKey,summary:epic?.fields.summary || epicKey} : null;
         }
-        if (data.fields?.customfield_24000?.id) issues.get(match[1]).fields.customfield_24000 = {id:data.fields.customfield_24000.id,value:'Стрим ' + data.fields.customfield_24000.id};
+        if (data.fields?.customfield_24000?.id) target.fields.customfield_24000 = {id:data.fields.customfield_24000.id,value:'Стрим ' + data.fields.customfield_24000.id};
         return new Response(null, { status: 204 });
       }
       const targetSprint = /^\/rest\/agile\/1\.0\/sprint\/(\d+)\/issue$/.exec(path)?.[1];
@@ -357,7 +358,7 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
     if (path === '/rest/api/2/issueLinkType') return json({ issueLinkTypes: [{id:'0',name:'Задача проекта',inward:'Задача проекта',outward:'В проекте'},{id:'1',name:'Связанная задача',inward:'Связанная задача',outward:'Связанная задача'},{id:'2',name:'Дубликат',inward:'Дублировано с',outward:'Дубликат'}] });
     if (match) {
       if (match[2] === 'editmeta') return json({fields:{priority:{allowedValues:['Критический','Высокий','Средний','Низкий'].map((name,index) => ({id:String(index+1),name}))},customfield_24000:{required:false,schema:{type:'option'},allowedValues:[1,2,3,4,5].map(id => ({id:String(id),value:'Стрим ' + id}))}}});
-      const issue = issues.get(match[1]);
+      const issue = issues.get(match[1]) || reportHistory.get(match[1]) || reportEpics.get(match[1]);
       if (!issue) return json({ errorMessages: ['В демонстрационных данных этой задачи нет'] }, 404);
       if (match[2] === 'transitions') return json({ transitions: statuses.map(status => ({ id: status.id, name: status.name, to: status })) });
       if (match[2] === 'remotelink') return json(remoteLinks.get(match[1]) || []);
@@ -382,9 +383,9 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
       }
       const keys = query.match(/[A-Z][A-Z0-9]+-\d+/g);
       let values = [...issues.values()].filter(issue => mainKeys.has(issue.key));
-      if (/key\s*(?:in|=)/i.test(query) && keys) values = [...new Set(keys)].map(key => issues.get(key)).filter(Boolean);
+      if (/key\s*(?:in|=)/i.test(query) && keys) values = [...new Set(keys)].map(key => issues.get(key) || reportEpics.get(key)).filter(Boolean);
       else if (/fcrm_umb_epic/i.test(query)) values = [...issues.values()].filter(issue => issue.fields.labels.includes('fcrm_umb_epic'));
-      else if (/issuetype/i.test(query)) values = [...issues.values()].filter(issue => issue.fields.issuetype.name === 'Эпик');
+      else if (/issuetype/i.test(query)) values = [...issues.values(),...reportEpics.values()].filter(issue => issue.fields.issuetype.name === 'Эпик');
       const requestedSprint = /\bSprint\s*=\s*(\d+)/i.exec(query)?.[1];
       if (requestedSprint) values = values.filter(issue => (issue.fields[config.sprintFieldId] || []).some((item: any) => String(item.id) === requestedSprint));
       if (/Sprint\s+is\s+EMPTY/i.test(query)) values = values.filter(issue => !issue.fields.sprint && !issue.fields.closedSprints.length);

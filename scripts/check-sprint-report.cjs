@@ -42,11 +42,13 @@ const issues = [
   ])
 ];
 issues[0].fields.project = {key:'OB'};
+issues[0].fields.issuetype = {name:'Задача'};
 issues[0].fields.customfield_3 = 'OBPROJECT-1';
 issues[0].fields.customfield_24000 = {value:'Стрим 2'};
 issues[1].fields.project = {key:'OBFRONT'};
 issues[1].fields.customfield_24000 = {value:'Стрим 1'};
 issues[2].fields.project = {key:'OB'};
+issues[2].fields.issuetype = {name:'Эпик'};
 issues[3].fields.project = {key:'OBFRONT'};
 issues[3].fields.epic = {key:'OBPROJECT-2',name:'Имя эпика из задачи'};
 const ref = key => ({key});
@@ -101,6 +103,7 @@ assert.equal(ob.rows[0].stream,'Стрим 3');
 assert.equal(front.rows[0].stream,'Стрим 1');
 assert.equal(front.rows[1].epicTitle,'Имя эпика из задачи');
 assert.equal(ob.rows[1].epicKey,'');
+assert.equal(model.epicKeyFor({customfield_3:null,epic:{key:'OBPROJECT-1'}},'customfield_3'),'');
 
 const missing = model.build({...input,issues:issues.slice(0,3)});
 assert.equal(missing.rows.find(row=>row.key==='TEST-4').completeHistory,false);
@@ -183,7 +186,7 @@ for (const field of ['date','remaining','scope','burned','reopened']) tip.append
 const {createSprintReportDashboard} = load('sprintReportDashboard',{
   document:new ChartElement(),DOMPoint:class { constructor(x,y) { this.x=x; this.y=y; } matrixTransform() { return this; } }
 });
-const dashboard = createSprintReportDashboard(()=>{},model,[{id:'1',name:'Test'}],'','',()=> '');
+const dashboard = createSprintReportDashboard(()=>{},model,[{id:'1',name:'Test'}],'','',()=> '',type=>type==='Эпик');
 Object.assign(dashboard.getState(),{report,project:'OBFRONT'});
 const html = dashboard.html();
 assert.match(html,/class="ozon-report-axis"/);
@@ -231,5 +234,17 @@ assert.doesNotMatch(dashboard.html(),/TEST-6/);
 Object.assign(dashboard.getState(),{report:model.build({...input,pointsField:''}),section:'days',scopeFilter:'all'});
 assert.doesNotMatch(dashboard.html(),/data-report-chart/);
 assert.match(dashboard.html(),/План на старте<\/span><strong>3 задачи/);
+
+Object.assign(dashboard.getState(),{report,section:'start',project:'OB'});
+assert.match(dashboard.html(),/data-report-action="edit-epic" data-key="TEST-1"/);
+assert.doesNotMatch(dashboard.html(),/data-report-action="edit-epic" data-key="TEST-3"/);
+dashboard.applyEpic('TEST-1',{id:'OBPROJECT-3',name:'Эпик назначения',fields:{customfield_24000:{value:'Стрим 5'}}});
+assert.match(dashboard.html(),/Стрим 5/);
+assert.match(dashboard.html(),/Эпик назначения/);
+assert.equal(ob.rows[0].epicKey,'OBPROJECT-3');
+assert.equal(report.metrics.planned,9);
+dashboard.applyEpic('TEST-1',{id:'',name:'Без эпика'});
+assert.equal(ob.rows[0].epicKey,'');
+assert.equal(ob.rows[0].stream,'Стрим 2');
 
 console.log('Sprint report checks passed: scope reconciliation, closing transfer, repeated moves, re-estimates, unestimated work, chart hover and project breakdown.');

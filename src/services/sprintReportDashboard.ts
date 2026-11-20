@@ -1,11 +1,13 @@
 import type { createSprintReportModel } from './sprintReportModel';
 
 // Serialized into content.js. Receives its model and the local board list from the host.
-export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<typeof createSprintReportModel>, boards:{id:string;name:string}[], configuredSprintField:string, configuredEpicField:string, renderBadge:(label:string, state:string)=>string) {
+export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<typeof createSprintReportModel>, boards:{id:string;name:string}[], configuredSprintField:string, configuredEpicField:string, renderBadge:(label:string, state:string)=>string, isEpicIssueType:(type:string)=>boolean) {
   type Report = ReturnType<typeof model.build>;
   const state = {board:boards[0].id,sprint:'',sprints:[] as any[],report:null as Report | null, section:'days',day:'',query:'',limit:60,
-    scopeFilter:'all',project:'',picker:'',chartMode:'total' as 'total'|'projects',chartDay:'',chartProject:'',loading:'',error:'',sprintFailed:false};
+    scopeFilter:'all',project:'',picker:'',chartMode:'total' as 'total'|'projects',chartDay:'',chartProject:'',loading:'',error:'',sprintFailed:false,epicField:configuredEpicField};
   const collapsed = new Set<string>();
+  type EpicUpdate = {id:string;name:string;fields?:{summary?:string;customfield_24000?:unknown}};
+  const epicUpdates = new Map<string,EpicUpdate>();
   try {
     const saved = JSON.parse(localStorage.getItem('ozon-sprint-report-v1') || 'null');
     if (saved && boards.some(board => board.id === saved.board)) {
@@ -63,6 +65,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     controller?.abort();
     controller = null;
     generation++;
+    epicUpdates.clear();
     state.loading = '';
     state.picker = '';
     state.chartDay = '';
@@ -125,6 +128,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
       const scope = model.nativeScope(native);
       const currentField = (Array.isArray(fields) ? fields : []).find(field => String(field.schema?.custom || '').includes('gh-sprint'))?.id || configuredSprintField;
       const epicField = (Array.isArray(fields) ? fields : []).find(field => String(field.schema?.custom || '').endsWith('gh-epic-link') || /^(epic link|ссылка на эпик)$/i.test(String(field.name || '')))?.id || configuredEpicField;
+      state.epicField = epicField;
       const estimate = configuration?.estimation?.field;
       const pointsField = /^customfield_\d+$/.test(estimate?.fieldId || '') ? estimate.fieldId : '';
       const pointsName = estimate?.displayName || (Array.isArray(fields) ? fields : []).find(field => field.id === pointsField)?.name || 'Story Points';
@@ -176,6 +180,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
       }
       if (request !== generation) return;
       state.report = model.build({sprint,scope,issues:[...issues.values()],sprintField:currentField,pointsField,pointsName,doneIds,epicField,epics});
+      epicUpdates.forEach((option,key)=>moveEpicGroup(key,option));
       if (state.project && !state.report.byProject.has(state.project)) state.project = '';
       if (sprint.state !== selected.state) selected.state = sprint.state;
       updatedAt = Date.now();
@@ -183,7 +188,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     } catch (error:any) {
       if (request === generation) state.error = error.message || 'Не удалось подготовить отчёт.';
     } finally {
-      if (request === generation) { state.loading = ''; onRender(); }
+      if (request === generation) { epicUpdates.clear(); state.loading = ''; onRender(); }
     }
   }
 
@@ -429,6 +434,28 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
   }
 
   type TaskGroup = {key:string;project:string;stream:string;epicKey:string;epicTitle:string};
+  function moveEpicGroup(key:string,option:EpicUpdate) {
+    const task=state.report?.rows.find(row=>row.key===key);
+    if (!task) return;
+    // Project rows share the same task objects, so both scopes show the verified Jira update.
+    task.epicKey=option.id;
+    task.epicTitle=option.id ? option.fields?.summary || option.name : '';
+    const value=option.id ? option.fields?.customfield_24000 : null;
+    task.stream=value==null ? task.taskStream : model.streamName(value);
+    const path=[task.project || 'Без проекта',task.stream || 'Без стрима',task.epicKey];
+    path.forEach((_,index)=>collapsed.delete(JSON.stringify(path.slice(0,index+1))));
+  }
+
+  function applyEpic(key:string,option:EpicUpdate) {
+    if (state.loading) epicUpdates.set(key,option);
+    moveEpicGroup(key,option);
+  }
+
+  function taskKeyCell(key:string,issueType?:string) {
+    const editor=issueType && !isEpicIssueType(issueType) ? '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface ozon-report-epic-edit" data-report-action="edit-epic" data-key="' + escape(key) + '" aria-label="Изменить эпик ' + escape(key) + '" title="Изменить Epic Link">Эпик <span aria-hidden="true">▾</span></button>' : '';
+    return '<td><div class="ozon-report-task-key">' + issueLink(key) + editor + '</div></td>';
+  }
+
   function groupedRows<T>(items:T[], taskFor:(item:T)=>TaskGroup, renderRow:(item:T)=>string, columns:number) {
     let visibleCount=0, renderedCount=0;
     const renderLevel = (entries:T[],depth:number,path:string[]):string => {
@@ -494,7 +521,8 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
         change.estimateChanged ? 'Оценка: ' + pointsCell(change.before.points) + ' → ' + pointsCell(change.after.points) : ''
       ].filter(Boolean);
       const result=change.burned > 0 ? 'В «Готово» ' + metric(report,change.burned) : change.burned < 0 ? 'Вернули ' + metric(report,-change.burned) : '—';
-      return '<tr><td>' + timeFormat.format(change.at) + '</td><td>' + issueLink(change.key) + '</td><td>' + escape(tasks.get(change.key)?.summary || '') + '</td><td>' + facts.map(escape).join('<br>') + '</td>' +
+      const task=tasks.get(change.key);
+      return '<tr><td>' + timeFormat.format(change.at) + '</td>' + taskKeyCell(change.key,task?.issueType) + '<td>' + escape(task?.summary || '') + '</td><td>' + facts.map(escape).join('<br>') + '</td>' +
         (report.pointsField ? '<td>' + escape(result) + '</td>' : '') + '</tr>';
     };
     const {completed,reopened} = dayBurn(changes);
@@ -532,7 +560,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
       ].filter(change=>change.visible && (state.scopeFilter==='all' || state.scopeFilter===change.id));
       const status = isScope ? movements.map(change=>scopeLabel(change.label,change.dates)).join(' · ') : isStart ? task.startStatus : task.endStatus;
       const points = isScope ? escape(movements.map(change=>positive(change.points)).join(' / ')) : pointsCell(isStart ? task.startPoints : task.endPoints);
-      return '<tr><td>' + issueLink(task.key) + '</td><td>' + escape(task.summary) + (!task.completeHistory ? ' <small class="ozon-report-history-warning">История неполная</small>' : '') + '</td><td>' + escape(status || '—') + '</td>' +
+      return '<tr>' + taskKeyCell(task.key,task.issueType) + '<td>' + escape(task.summary) + (!task.completeHistory ? ' <small class="ozon-report-history-warning">История неполная</small>' : '') + '</td><td>' + escape(status || '—') + '</td>' +
         (report.pointsField ? '<td>' + points + '</td>' : '') + '</tr>';
     };
     const grouped=groupedRows(filtered,task=>task,row,report.pointsField ? 4 : 3);
@@ -667,5 +695,5 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
       if (next) { next.focus({preventScroll:true}); if (caret!==null) next.setSelectionRange(caret,caret); }
     });
   }
-  return {html,bind,open,cancel,getState:()=>state};
+  return {html,bind,open,cancel,applyEpic,getState:()=>state};
 }
