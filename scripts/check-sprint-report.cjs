@@ -43,7 +43,7 @@ const issues = [
 ];
 issues[0].fields.project = {key:'OB'};
 issues[0].fields.issuetype = {name:'Задача'};
-issues[0].fields.assignee = {name:'old-user',displayName:'Первый исполнитель'};
+issues[0].fields.assignee = {name:'old-user',displayName:'Первый исполнитель',avatarUrls:{'48x48':'data:image/png;base64,AA=='}};
 issues[0].fields.customfield_3 = 'OBPROJECT-1';
 issues[0].fields.customfield_24000 = {value:'Стрим 2'};
 issues[1].fields.project = {key:'OBFRONT'};
@@ -72,6 +72,7 @@ assert.equal(report.metrics.carry,2);
 assert.equal(report.metrics.completed,1);
 assert.equal(report.metrics.completedPoints,5);
 assert.equal(report.metrics.plannedCompleted,1);
+assert.equal(report.metrics.plannedCompletedPoints,5);
 assert.equal(report.rows.find(row=>row.key==='TEST-1').endPoints,5);
 assert.equal(report.rows.find(row=>row.key==='TEST-4').removed,false);
 assert.equal(report.days.find(row=>row.date==='2026-10-20').burned,5);
@@ -86,14 +87,21 @@ const ob = report.byProject.get('OB');
 const front = report.byProject.get('OBFRONT');
 assert.equal(ob.metrics.planned,7);
 assert.equal(ob.metrics.plannedTasks,2);
+assert.equal(ob.metrics.plannedCompletedPoints,5);
 assert.equal(ob.metrics.removedTasks,1);
 assert.equal(ob.metrics.removed,2);
 assert.equal(ob.metrics.burned,5);
 assert.equal(ob.metrics.remaining,0);
+assert.equal(ob.leaders.length,1);
+assert.equal(ob.leaders[0].id,'old-user');
+assert.equal(ob.leaders[0].avatarUrl,'data:image/png;base64,AA==');
+assert.equal(ob.leaders[0].points,5);
+assert.equal(front.leaders.length,0,'Reopened or unfinished issues are not credited');
 assert.equal(front.metrics.planned,2);
 assert.equal(front.metrics.added,3);
 assert.equal(front.metrics.estimateDelta,3);
 assert.equal(front.metrics.completedPoints,0);
+assert.equal(front.metrics.plannedCompletedPoints,0);
 assert.equal(front.metrics.remaining,8);
 assert.equal(front.metrics.remainingTasks,2);
 assert.equal(front.days.find(row=>row.date==='2026-10-21').burned,3);
@@ -117,8 +125,10 @@ assert.equal(model.nativeScope({contents:{completedIssues:[]}}),null);
 
 const rerated = issue('TEST-5',8,true,done,[
   day('2026-10-20T12:00:00+03:00',[status(progress,done)]),
-  day('2026-10-21T12:00:00+03:00',[{fieldId:'customfield_1',from:'5',to:'8'}])
+  day('2026-10-21T12:00:00+03:00',[{fieldId:'customfield_1',from:'5',to:'8'}]),
+  day('2026-10-22T10:00:00+03:00',[{field:'assignee',from:'original-user',fromString:'Исполнитель при завершении',to:'JIRAUSER-22',toString:'Новый исполнитель'}])
 ]);
+rerated.fields.assignee = {name:'new-user',key:'JIRAUSER-22',displayName:'Новый исполнитель'};
 const moved = issue('TEST-6',3,true,progress,[
   day('2026-10-20T13:00:00+03:00',[sprintChange(null,'7')]),
   day('2026-10-21T13:00:00+03:00',[sprintChange('7',null)]),
@@ -132,12 +142,22 @@ assert.equal(edge.metrics.burned,5);
 assert.equal(edge.metrics.completedPoints,8,'Final completed estimates differ from the estimates at transition time');
 assert.equal(edge.metrics.completed,2);
 assert.equal(edge.metrics.plannedCompleted,2);
+assert.equal(edge.metrics.plannedCompletedPoints,5,'Original commitment uses the estimates at sprint launch');
+const [leader] = edge.byProject.get('TEST').leaders;
+assert.equal(leader.id,'original-user','Completion is credited to the assignee at the transition');
+assert.equal(leader.points,8);
+assert.equal(leader.tasks,1);
 assert.equal(edge.metrics.completedUnestimated,1);
 assert.equal(edge.metrics.addedTasks,1);
 assert.equal(edge.metrics.added,6,'Both additions affect the scope, but the task is counted once');
 assert.equal(edge.metrics.removed,3);
 assert.equal(edge.metrics.removedTasks,1);
 assert.equal(edge.days.at(-1).scope,11);
+
+const tied = issue('TEST-70',8,true,done,[day('2026-10-22T14:00:00+03:00',[status(progress,done)])]);
+tied.fields.assignee = {key:'other-user',displayName:'Исполнитель при завершении'};
+const ties = model.build({...input,issues:[rerated,tied],scope:model.nativeScope({contents:{completedIssues:[rerated,tied],puntedIssues:[]}})});
+assert.equal(ties.byProject.get('TEST').leaders.length,2,'Different people with identical names and scores are both shown');
 
 const lateLaunch = {...sprint,startDate:'2026-10-18T22:00:00+03:00',activatedDate:'2026-10-19T13:51:12.006+03:00'};
 const plannedBeforeLaunch = issue('TEST-8',5,true,progress,[
@@ -190,6 +210,9 @@ const {createSprintReportDashboard} = load('sprintReportDashboard',{
 const dashboard = createSprintReportDashboard(()=>{},model,[{id:'1',name:'Test'}],'','',()=> '',type=>type==='Эпик');
 Object.assign(dashboard.getState(),{report,project:'OBFRONT'});
 const html = dashboard.html();
+const streamTable = html => html.match(/<table aria-label="План и факт по стримам">.*?<\/table>/)?.[0];
+assert.match(streamTable(html),/scope="rowgroup">OBFRONT<\/th><td><strong>2 SP<\/strong> <small>22,2\s%/);
+assert.doesNotMatch(streamTable(html),/scope="rowgroup">OB<\/th>/);
 assert.match(html,/class="ozon-report-axis"/);
 assert.match(html,/class="ozon-report-axis-title"[^>]*>Story Points</);
 assert.match(html,/class="ozon-report-axis-title"[^>]*>День спринта · МСК</);
@@ -217,6 +240,10 @@ const split = dashboard.html();
 assert.match(split,/data-report-chart-mode="projects" aria-pressed="true"/);
 assert.match(split,/<h3>OB<\/h3>/);
 assert.match(split,/<h3>OBFRONT<\/h3>/);
+assert.match(split,/<th>Лидер проекта<\/th>/);
+assert.match(split,/data-report-avatar="old-user" src="data:image\/png;base64,AA==".*Первый исполнитель<\/strong><small>5 SP · 1 задача/);
+assert.match(streamTable(split),/scope="row">Стрим 3<\/th><td><strong>5 SP<\/strong> <small>55,6\s%<\/small><\/td><td><strong>5 SP<\/strong> <small>100\s%/);
+assert.match(streamTable(split),/Весь спринт<\/th><td><strong>9 SP<\/strong> <small>100\s%/);
 const axes = [...split.matchAll(/<g class="ozon-report-grid">(.+?)<\/g>/g)].map(match=>match[1]);
 assert.equal(axes.length,2);
 assert.equal(axes[0],axes[1],'Both projects use an identical date and Story Point scale');
@@ -227,6 +254,8 @@ Object.assign(dashboard.getState(),{report:edge,section:'finish',scopeFilter:'do
 const completedHtml = dashboard.html();
 assert.match(completedHtml,/data-report-target-filter="done"><span>Завершили к закрытию<\/span><strong>8 SP<\/strong><small>2 задачи/);
 assert.match(completedHtml,/5 \+ 6 − 3 \+ 3 = 11 SP/);
+assert.match(completedHtml,/Из первоначального плана завершили <strong>2 из 2 задач · 5 из 5 SP/);
+assert.match(completedHtml,/Лидер проекта.*Исполнитель при завершении<\/strong><small>8 SP · 1 задача/);
 assert.match(completedHtml,/TEST-7/);
 assert.doesNotMatch(completedHtml,/TEST-6/);
 Object.assign(dashboard.getState(),{section:'scope',scopeFilter:'estimate'});
@@ -234,13 +263,25 @@ assert.match(dashboard.html(),/Переоценили 21 окт<\/td><td>\+3/);
 assert.doesNotMatch(dashboard.html(),/TEST-6/);
 Object.assign(dashboard.getState(),{report:model.build({...input,pointsField:''}),section:'days',scopeFilter:'all'});
 assert.doesNotMatch(dashboard.html(),/data-report-chart/);
+assert.equal(streamTable(dashboard.html()),undefined);
 assert.match(dashboard.html(),/План на старте<\/span><strong>3 задачи/);
+assert.match(dashboard.html(),/Из первоначального плана завершили <strong>1 из 3 задач<\/strong>/);
 
 Object.assign(dashboard.getState(),{report,section:'start',project:'OB'});
+const group = new ChartElement();
+group.dataset = {reportGroup:'["OB","Стрим 3"]'};
+section.childLists.set('[data-report-group]',[group]);
+dashboard.bind(root);
+group.listeners.get('click')();
+assert.match(dashboard.html(),/class="ozon-report-tree"><colgroup>/);
+assert.match(dashboard.html(),/data-report-group="\[&quot;OB&quot;,&quot;Стрим 3&quot;\]" aria-expanded="false"/);
+assert.doesNotMatch(dashboard.html(),/data-key="TEST-1"/);
+group.listeners.get('click')();
 assert.match(dashboard.html(),/data-report-action="edit-epic" data-key="TEST-1"/);
 assert.doesNotMatch(dashboard.html(),/data-report-action="edit-epic" data-key="TEST-3"/);
 dashboard.updateTask('TEST-1',{epic:{id:'OBPROJECT-3',name:'Эпик назначения',fields:{customfield_24000:{value:'Стрим 5'}}}});
 assert.match(dashboard.html(),/Стрим 5/);
+assert.match(streamTable(dashboard.html()),/scope="row">Стрим 5<\/th><td><strong>5 SP/);
 assert.match(dashboard.html(),/Эпик назначения/);
 assert.equal(ob.rows[0].epicKey,'OBPROJECT-3');
 assert.equal(report.metrics.planned,9);
