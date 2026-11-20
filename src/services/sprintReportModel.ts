@@ -1,7 +1,7 @@
 // Serialized into content.js. Keep the factory independent of module-level values.
 export function createSprintReportModel() {
   type Status = { id:string; name:string; category?:string };
-  type Assignee = {id:string;name:string;avatarUrl:string};
+  type Assignee = {id:string;name:string;login:string;avatarUrl:string};
   type Performer = Assignee & {points:number;tasks:number};
   type Snapshot = { member:boolean; status:Status; points:number | null; assignee:Assignee | null };
   type Change = {key:string; at:number; before:Snapshot; after:Snapshot; added:boolean; removed:boolean; statusChanged:boolean; estimateChanged:boolean; burned:number};
@@ -24,7 +24,7 @@ export function createSprintReportModel() {
   const streamName = (value:any) => String(typeof value === 'string' ? value : value?.value || value?.name || '');
   const epicKeyFor = (fields:any, field?:string) => {
     const custom = field ? fields[field] : null;
-    const key = field && Object.hasOwn(fields,field) ? (typeof custom === 'string' ? custom : custom?.key || custom?.value) : fields.epic?.key;
+    const key = field && Object.hasOwn(fields,field) ? (typeof custom === 'string' ? custom : custom?.key || custom?.value) : fields.epic?.key || fields.parent?.key;
     return validKey(key) ? String(key) : '';
   };
 
@@ -96,7 +96,7 @@ export function createSprintReportModel() {
       const id=String(user?.key || user?.name || '');
       if (!id) continue;
       const known=users.get(nameKey(id));
-      const person=known?.avatarUrl ? known : {id,name:String(user.displayName || user.name || id),avatarUrl:avatarFor(user)};
+      const person=known?.avatarUrl ? known : {id,name:String(user.displayName || user.name || id),login:String(user.name || ''),avatarUrl:avatarFor(user)};
       for (const alias of [id,user.key,user.name]) if (alias) users.set(nameKey(alias),person);
     }
     const keys = new Set<string>([...available.keys(),...scope?.issues.keys() || [],...scope?.added || []]);
@@ -139,7 +139,7 @@ export function createSprintReportModel() {
           if (kind === 'points') next.points = pointValue(item[side] ?? item[side + 'String']);
           if (kind === 'assignee') {
             const id=String(item[side] || '');
-            next.assignee=id ? users.get(nameKey(id)) || {id,name:String(item[side + 'String'] || id),avatarUrl:''} : null;
+            next.assignee=id ? users.get(nameKey(id)) || {id,name:String(item[side + 'String'] || id),login:'',avatarUrl:''} : null;
           }
         });
         return next;
@@ -198,12 +198,12 @@ export function createSprintReportModel() {
       const project = String(fields.project?.key || key.split('-')[0]);
       const epicKey = epicKeyFor(fields,input.epicField);
       const epic = input.epics?.get(epicKey);
-      const taskStream = streamName(fields.customfield_24000);
-      const stream = epic?.customfield_24000 == null ? taskStream : streamName(epic.customfield_24000);
+      const stream = streamName(epic?.customfield_24000);
       const burned = issueEvents.reduce((sum,change) => sum + change.burned,0);
       const unfinished = memberAtEnd && !doneAtEnd;
       const carry = closed(sprint) && unfinished;
-      const row = {key,project,stream,taskStream,issueType:String(fields.issuetype?.name || ''),epicKey,epicTitle:String(epic?.summary || fields.epic?.summary || fields.epic?.name || ''),
+      const row = {key,project,stream,components:asArray(fields.components).map(component=>String(component?.name || '')).filter(Boolean),issueType:String(fields.issuetype?.name || ''),epicKey,epicTitle:String(epic?.summary || fields.epic?.summary || fields.epic?.name || fields.parent?.fields?.summary || ''),
+        assignee:current.assignee,
         assigneeName:Object.hasOwn(fields,'assignee') ? String(fields.assignee?.displayName || fields.assignee?.name || fields.assignee?.key || '') : undefined,
         summary:fields.summary || fallback?.summary || key, started, startPoints:startSnapshot.points, startStatus:startSnapshot.status.name,
         endPoints:snapshot.points, endStatus:snapshot.status.name, memberAtEnd, doneAtEnd, added, removed, addedPoints, removedPoints, estimateDelta, completeHistory,

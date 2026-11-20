@@ -15,8 +15,9 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
   const firstSprint = tasks.find(task => task.sprint && !/бэклог/i.test(task.sprint))?.sprint;
   const firstNumber = Number(/Sprint\s+(\d+)/i.exec(firstSprint || '')?.[1] || 0);
   const user = { name: 'preview-user', displayName: 'Пользователь предпросмотра', active: true };
-  const person = (value: any) => value ? { name: value.login || value.name || 'demo-user', displayName: value.name, active: true } : null;
-  const demoUsers = [...new Map([user,...tasks.map(task=>person(task.assignee)).filter(Boolean)].map(item=>[item.name,item])).values()];
+  const demoPerson = (value: any) => value && value.name !== 'Не назначен' ? { name: value.login || value.name || 'demo-user', displayName: value.name, active: true } : null;
+  const demoPeople = new Map([user,...tasks.flatMap(task=>[demoPerson(task.assignee),demoPerson(task.author)]).filter(Boolean)].map(item=>[item.name,item]));
+  const demoUsers = [...demoPeople.values()];
   const avatarCanvas = document.createElement('canvas');
   avatarCanvas.width = avatarCanvas.height = 48;
   const avatarContext = avatarCanvas.getContext('2d');
@@ -33,6 +34,7 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
       Object.assign(member,{avatarUrls:{'48x48':avatarCanvas.toDataURL('image/png')}});
     });
   }
+  const person = (value:any) => { const item=demoPerson(value); return item ? demoPeople.get(item.name) || item : null; };
   const componentId = (name: string) => {
     if (!componentMap.has(name)) componentMap.set(name, String(100 + componentMap.size));
     return componentMap.get(name)!;
@@ -178,7 +180,7 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
       const project=range[number % 2];
       const key = project + '-' + (base+number);
       const history=reportHistory.get(key) || {key,fields:{summary:'[Демо] ' + summary,created:new Date(Date.parse(selected.startDate)-86400000).toISOString(),issuetype:{name:'Задача',subtask:false},
-        status:reportStatus[finalStatus],assignee:number===4 ? demoUsers[2] || user : number%2 ? demoUsers[1] || user : null,project:{key:project},[config.epicFieldId]:number===6 ? null : epics[number % 2],customfield_10002:points,[config.sprintFieldId]:member ? [selected] : [],sprint:member && selected.state === 'active' ? selected : null,
+        status:reportStatus[finalStatus],assignee:number===4 ? person(tasks[1]?.assignee) || user : number%2 ? person(tasks[0]?.assignee) || user : null,project:{key:project},components:number===1 ? [{name:'API-Gateway'},{name:'CRM-Frontend'}] : [{name:'API-Gateway'}],[config.epicFieldId]:number===6 ? null : epics[number % 2],customfield_10002:points,[config.sprintFieldId]:member ? [selected] : [],sprint:member && selected.state === 'active' ? selected : null,
         closedSprints:member && selected.state === 'closed' ? [selected] : []},changelog:{histories,startAt:0,total:histories.length}};
       reportHistory.set(key,history);
       return {key,summary:history.fields.summary,statusId:history.fields.status.id,statusName:history.fields.status.name};

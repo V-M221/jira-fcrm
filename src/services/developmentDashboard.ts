@@ -1,3 +1,5 @@
+import type {createJiraGroupingUi} from './jiraGroupingUi';
+
 // Serialized into content.js. Keep this factory independent of module-level values.
 export function renderJiraBadge(escapedLabel: string, category: string) {
   const colors: Record<string, string> = { active: 'done', done: 'done', future: 'progress', indeterminate: 'progress', progress: 'progress', review: 'review' };
@@ -5,8 +7,10 @@ export function renderJiraBadge(escapedLabel: string, category: string) {
   return '<span class="ozon-ext-badge ozon-ext-badge-' + color + '" title="' + escapedLabel + '">' + escapedLabel + '</span>';
 }
 
-export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (task:any) => void, onBeforeEditor?:()=>void, renderBadge = renderJiraBadge, inferCategory?: (name: string) => string, widgetVersion = '', priorityService?: any) {
+export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (task:any) => void, onBeforeEditor?:()=>void, renderBadge = renderJiraBadge, inferCategory?: (name: string) => string, widgetVersion = '', priorityService?: any, groupingUi?:ReturnType<typeof createJiraGroupingUi>) {
   const teams = [{ id:'cs', name:'CS', boardId:6197,pointsField:'' },{id:'crm_core',name:'CRM_CORE',boardId:7180,pointsField:''},{id:'crm_bo',name:'CRM_BO',boardId:12696,pointsField:''}];
+  const groupNames: Record<string, string> = { sprint:'Спринт', project:'Проект', epic:'Epic', stream:'Стрим', component:'Компонент' };
+  const groupingStorage = 'ozon-dev-grouping-v1';
   const state = {
     teamId: '', teamIds:[] as string[], sprints: [] as any[], selected: [] as string[], groups: [] as any[],
     loadingSprints: false, loadingTasks: false, closedLoaded: false,
@@ -47,6 +51,11 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
   const defaultColumnOrder = ['key','title','epic','status','sprint','component','points'];
   const layout = { detailsOpen:true, epicDisplay:'full', order:[...defaultColumnOrder], children:[0,1,2,3,4,5], widths:{} as Record<string,number> };
   try {
+    const grouping = JSON.parse(localStorage.getItem(groupingStorage) || 'null');
+    if (Array.isArray(grouping?.order) && grouping.order.every((key:string)=>Object.hasOwn(groupNames,key))) {
+      state.grouping=[...new Set<string>(grouping.order)];
+      if (Number.isInteger(grouping.depth)) state.depth=Math.max(0,Math.min(grouping.depth,state.grouping.length+1));
+    }
     const saved = JSON.parse(localStorage.getItem('ozon-dev-columns') || 'null');
     if (saved) {
       if (typeof saved.detailsOpen === 'boolean') layout.detailsOpen = saved.detailsOpen;
@@ -60,6 +69,7 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
     }
   } catch (_) { /* Storage may be unavailable in a preview or restricted Jira page. */ }
   const saveLayout = () => { try { localStorage.setItem('ozon-dev-columns', JSON.stringify(layout)); } catch (_) { /* Layout still works in memory. */ } };
+  const saveGrouping = () => { try { localStorage.setItem(groupingStorage,JSON.stringify({order:state.grouping,depth:state.depth})); } catch (_) {} };
   function moveColumn(id: string, direction: number, child = false) {
     const order = child ? layout.children.map(String) : [...layout.order];
     const from = order.indexOf(id); const to = from + direction;
@@ -408,7 +418,6 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
     const percentDescription = index < 0 ? 'доля сожжённых SP' : 'доля от всех SP в этой строке';
     return '<span class="ozon-dev-point-pair" aria-label="Всего ' + total + ', сожжено ' + burned + (percentLabel ? ', ' + percentDescription + ' ' + percentLabel : '') + '" title="Всего / Сожжено. Сожжено — SP задач в категории Jira «Готово».' + (percentLabel ? ' ' + percentDescription + ': ' + percentLabel + '.' : '') + '"><span>' + total + '</span><span class="ozon-dev-points-divider"> / </span><span class="ozon-dev-burned">' + burned + '</span>' + (percentLabel ? ' <span class="ozon-dev-point-percent">' + percentLabel + '</span>' : '') + '</span>';
   }
-  const groupNames: Record<string, string> = { sprint:'Спринт', project:'Проект', epic:'Epic', stream:'Стрим', component:'Компонент' };
   function visibleIssues() {
     return state.groups.flatMap(group => group.issues.map((issue: any) => ({ ...issue, sprint:group.sprint }))).filter(issue =>
       (!state.projectFilter || issue.project === state.projectFilter) && (!state.epicFilter || (state.epicFilter === '__none' ? !issue.epicKey : issue.epicKey === state.epicFilter)) &&
@@ -418,11 +427,13 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
     state.grouping = [...new Set(order.filter(value => ['sprint', 'project', 'epic', 'stream', 'component'].includes(value)))];
     state.depth = state.grouping.length;
     state.collapsed.clear(); state.expandedGroups.clear();
+    saveGrouping();
     onRender();
   }
   function setDepth(depth: number) {
-    state.depth = Math.max(0, Math.min(state.grouping.length, depth));
+    state.depth = Math.max(0, Math.min(state.grouping.length+1, depth));
     state.collapsed.clear(); state.expandedGroups.clear(); state.expandedLinks.clear();
+    saveGrouping();
     onRender();
   }
   function statusSummary(items: any[]) {
@@ -464,7 +475,7 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
   }
   function taskRows(items: any[], level: number) {
     return [...items].sort((a,b) => priorityRank(a.priority || '') - priorityRank(b.priority || '') || a.key.localeCompare(b.key,'ru',{numeric:true})).map(issue => {
-      const expanded = state.expandedLinks.has(issue.key);
+      const expanded = state.expandedLinks.has(issue.key) !== (state.depth > state.grouping.length);
       const key = escape(issue.key);
       const values: Record<string,string> = {
         key:'<div class="ozon-dev-task-key" style="padding-left:' + level*18 + 'px;"><button class="ozon-dev-link-toggle" data-dev-action="links" data-key="' + key + '" aria-label="Связи «Задача проекта» для ' + key + '" aria-expanded="' + expanded + '">' + (expanded ? '▾' : '▸') + '</button>' + issueLink(issue.key) + '<span class="ozon-ext-type-pill">' + escape(issue.issueType || 'Задача') + '</span><button type="button" class="ozon-dev-priority-edit" data-dev-action="edit-priority" data-key="' + key + '" aria-label="Изменить приоритет ' + key + '">' + priorityHtml(issue.priority) + '</button></div>',
@@ -530,14 +541,13 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
     const epicOptions = [{value:'',label:'Все'}, {value:'__none',label:'Без эпика'}, ...[...epics.values()].sort((a, b) => a.epicKey.localeCompare(b.epicKey, 'ru', {numeric:true})).map(issue => ({value:issue.epicKey,label:issue.epicKey + ' · ' + issue.epicStatus + ' · ' + issue.epicTitle, status:issue.epicStatus, category:issue.epicCategory, summary:issue.epicTitle, component:issue.epicComponent, searchText:issue.epicSearch}))];
     const streams = [...new Set<string>(all.map(issue => issue.stream).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru', {numeric:true}));
     const streamOptions = [{value:'',label:'Все'}, {value:'__none',label:'Без стрима'}, ...streams.map(stream => ({value:stream,label:stream}))];
-    const order = [...state.grouping, ...['sprint', 'project', 'epic', 'stream', 'component'].filter(item => !state.grouping.includes(item))];
     const projectOptions = [{value:'',label:'Все'}, ...[...new Set<string>(all.map(issue => issue.project).filter(Boolean))].sort().map(project => ({value:project,label:project}))];
     if (part === 'filters') return filterControl('project', 'Проект', projectOptions, state.projectFilter) + filterControl('epic', 'Эпик', epicOptions, state.epicFilter) + filterControl('stream', 'Стрим', streamOptions, state.streamFilter);
-    return '<div class="ozon-ext-toolbar-combo ozon-dev-grouping-control"><button class="ozon-ext-toolbar-trigger" data-dev-action="menu" data-menu="grouping" aria-expanded="' + (state.menu === 'grouping') + '" title="' + escape(state.grouping.map(key => groupNames[key]).concat('Задача').join(' → ')) + '"><span class="ozon-ext-toolbar-label">Группировка</span><span class="ozon-ext-toolbar-chevron"></span></button>' + (state.menu === 'grouping' ? '<div class="ozon-ext-combo-popover ozon-dev-popover"><p class="ozon-dev-menu-hint">Выберите уровни и их порядок. Задача всегда последняя.</p>' + order.map((key, index) => '<div class="ozon-dev-group-option"><label><input type="checkbox" data-dev-group="' + key + '" ' + (state.grouping.includes(key) ? 'checked' : '') + '>' + groupNames[key] + '</label><button class="ozon-ext-btn ozon-ext-btn-surface" data-dev-action="group-up" data-dimension="' + key + '" aria-label="Поднять ' + groupNames[key] + '" ' + (!state.grouping.includes(key) || !index ? 'disabled' : '') + '>↑</button><button class="ozon-ext-btn ozon-ext-btn-surface" data-dev-action="group-down" data-dimension="' + key + '" aria-label="Опустить ' + groupNames[key] + '" ' + (!state.grouping.includes(key) || index >= state.grouping.length - 1 ? 'disabled' : '') + '>↓</button></div>').join('') + '<button class="ozon-ext-btn" data-dev-action="menu" data-menu="grouping">Готово</button></div>' : '') + '</div>' +
+    return '<div class="ozon-ext-toolbar-combo ozon-dev-grouping-control"><button class="ozon-ext-toolbar-trigger" data-dev-action="menu" data-menu="grouping" aria-expanded="' + (state.menu === 'grouping') + '" title="' + escape(state.grouping.map(key => groupNames[key]).concat('Задача').join(' → ')) + '"><span class="ozon-ext-toolbar-label">Группировка</span><span class="ozon-ext-toolbar-chevron"></span></button>' + (state.menu === 'grouping' ? '<div class="ozon-ext-combo-popover ozon-dev-popover">' + (groupingUi?.html('development',state.grouping,groupNames,'data-dev-group') || '') + '<button class="ozon-ext-btn" data-dev-action="menu" data-menu="grouping">Готово</button></div>' : '') + '</div>' +
       (state.epicFilter || state.streamFilter || state.projectFilter ? '<button class="ozon-ext-btn ozon-ext-btn-surface" data-dev-action="clear-filters">Сбросить фильтры</button>' : '');
   }
   function depthControls() {
-    return filterControl('depth', 'Уровень', [...state.grouping.map((key, index) => ({value:String(index),label:groupNames[key]})), {value:String(state.grouping.length),label:'Задачи'}], String(state.depth));
+    return groupingUi?.depthHtml('development',[...state.grouping.map((key,index)=>({value:String(index),label:groupNames[key]})),{value:String(state.grouping.length),label:'Задачи'},{value:String(state.grouping.length+1),label:'Связанные задачи'}],String(state.depth),!state.loadedSelection.length || state.loadingTasks) || '';
   }
   const allIssues = () => state.groups.flatMap(group => group.issues);
   const normalizedIssueFields = () => ['summary','status','issuetype','epic','parent','priority','project','issuelinks','sprint','closedSprints','components','labels',sprintField,epicField,pointsField,'customfield_24000'].filter(Boolean);
@@ -775,8 +785,7 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
   function settingsHtml() {
     const draft = settingsDraft; if (!draft) return '';
     const stable = draft.presented; draft.presented=true;
-    const row = (id:string,index:number,kind:string,title:string) => '<div class="ozon-dev-group-option' + (kind === 'child' ? ' ozon-dev-column-child' : '') + '"><span class="ozon-dev-column-label">' + (kind === 'group' ? '' : escape(title)) + '</span><button class="ozon-ext-btn ozon-ext-btn-surface" data-dev-action="settings-move" data-kind="' + kind + '" data-id="' + id + '" data-direction="-1" aria-label="Поднять ' + escape(title) + '" ' + (!index ? 'disabled' : '') + '>↑</button><button class="ozon-ext-btn ozon-ext-btn-surface" data-dev-action="settings-move" data-kind="' + kind + '" data-id="' + id + '" data-direction="1" aria-label="Опустить ' + escape(title) + '">↓</button></div>';
-    return '<aside class="ozon-dev-settings' + (stable ? ' ozon-dev-settings-stable' : '') + '" role="dialog" aria-label="Настройки таблицы"><header class="ozon-dev-editor-head"><strong>Настройки таблицы</strong><button class="ozon-ext-btn ozon-ext-btn-surface" data-dev-action="settings-cancel" aria-label="Закрыть настройки">✕</button></header><strong>Уровень раскрытия</strong><div class="ozon-ext-toolbar-combo"><button class="ozon-ext-toolbar-trigger" data-dev-action="menu" data-menu="settings-depth"><span class="ozon-ext-toolbar-label">' + escape(groupNames[draft.grouping[draft.depth]] || 'Задачи') + '</span><span class="ozon-ext-toolbar-chevron"></span></button>' + (state.menu === 'settings-depth' ? '<div class="ozon-ext-combo-popover">' + [...draft.grouping,'task'].map((id,index) => '<button class="ozon-ext-combo-item ' + (index === draft.depth ? 'active' : '') + '" data-dev-action="settings-depth" data-depth="' + index + '">' + escape(groupNames[id] || 'Задачи') + '</button>').join('') + '</div>' : '') + '</div><strong>Отображение Epic Link</strong><div class="ozon-ext-toolbar-combo"><button class="ozon-ext-toolbar-trigger" data-dev-action="menu" data-menu="settings-epic" aria-expanded="' + (state.menu === 'settings-epic') + '"><span class="ozon-ext-toolbar-label">' + escape(({key:'Только ключ',status:'Ключ + статус',full:'Ключ + статус + название'} as Record<string,string>)[draft.layout.epicDisplay]) + '</span><span class="ozon-ext-toolbar-chevron"></span></button>' + (state.menu === 'settings-epic' ? '<div class="ozon-ext-combo-popover">' + [['key','Только ключ'],['status','Ключ + статус'],['full','Ключ + статус + название']].map(([value,label]) => '<button class="ozon-ext-combo-item ' + (draft.layout.epicDisplay === value ? 'active' : '') + '" data-dev-action="settings-epic-display" data-value="' + value + '">' + label + '</button>').join('') + '</div>' : '') + '</div><strong>Группировка</strong><div>' + [...draft.grouping,...['sprint','project','epic','stream','component'].filter(id => !draft.grouping.includes(id))].map((id,index) => '<div class="ozon-dev-group-option"><label><input type="checkbox" data-settings-group="' + id + '" ' + (draft.grouping.includes(id) ? 'checked' : '') + '> ' + groupNames[id] + '</label>' + (draft.grouping.includes(id) ? row(id,index,'group',groupNames[id]).replace('<div class="ozon-dev-group-option">','<span style="display:flex;gap:6px;">').replace('</div>','</span>') : '') + '</div>').join('') + '</div><strong>Столбцы</strong><p class="ozon-dev-menu-hint">Ширину можно менять за границу заголовка таблицы.</p><div>' + draft.layout.order.map((id,index) => row(id,index,'column',baseColumns[id][0]) + (id === 'points' ? '<label class="ozon-dev-column-child"><input type="checkbox" data-settings-sp ' + (draft.layout.detailsOpen ? 'checked' : '') + '> Детализация Story Points</label>' + (draft.layout.detailsOpen ? draft.layout.children.map((child,i) => row(String(child),i,'child',columns[child][0])).join('') : '') : '')).join('') + '</div><footer><button class="ozon-ext-btn" data-dev-action="settings-apply">Применить</button><button class="ozon-ext-btn ozon-ext-btn-surface" data-dev-action="settings-cancel">Отмена</button></footer></aside>';
+    return '<aside class="ozon-dev-settings' + (stable ? ' ozon-dev-settings-stable' : '') + '" role="dialog" aria-label="Настройки таблицы"><header class="ozon-dev-editor-head"><strong>Настройки таблицы</strong><button class="ozon-ext-btn ozon-ext-btn-surface" data-dev-action="settings-cancel" aria-label="Закрыть настройки">✕</button></header><strong>Уровень раскрытия</strong><div class="ozon-ext-toolbar-combo"><button class="ozon-ext-toolbar-trigger" data-dev-action="menu" data-menu="settings-depth"><span class="ozon-ext-toolbar-label">' + escape(groupNames[draft.grouping[draft.depth]] || 'Задачи') + '</span><span class="ozon-ext-toolbar-chevron"></span></button>' + (state.menu === 'settings-depth' ? '<div class="ozon-ext-combo-popover">' + [...draft.grouping,'task'].map((id,index) => '<button class="ozon-ext-combo-item ' + (index === draft.depth ? 'active' : '') + '" data-dev-action="settings-depth" data-depth="' + index + '">' + escape(groupNames[id] || 'Задачи') + '</button>').join('') + '</div>' : '') + '</div><strong>Отображение Epic Link</strong><div class="ozon-ext-toolbar-combo"><button class="ozon-ext-toolbar-trigger" data-dev-action="menu" data-menu="settings-epic" aria-expanded="' + (state.menu === 'settings-epic') + '"><span class="ozon-ext-toolbar-label">' + escape(({key:'Только ключ',status:'Ключ + статус',full:'Ключ + статус + название'} as Record<string,string>)[draft.layout.epicDisplay]) + '</span><span class="ozon-ext-toolbar-chevron"></span></button>' + (state.menu === 'settings-epic' ? '<div class="ozon-ext-combo-popover">' + [['key','Только ключ'],['status','Ключ + статус'],['full','Ключ + статус + название']].map(([value,label]) => '<button class="ozon-ext-combo-item ' + (draft.layout.epicDisplay === value ? 'active' : '') + '" data-dev-action="settings-epic-display" data-value="' + value + '">' + label + '</button>').join('') + '</div>' : '') + '</div><strong>Группировка</strong>' + (groupingUi?.html('development-settings',draft.grouping,groupNames,'data-settings-group') || '') + '<strong>Столбцы</strong><p class="ozon-dev-menu-hint">Ширину можно менять за границу заголовка таблицы.</p>' + (groupingUi?.html('development-columns',draft.layout.order,Object.fromEntries(draft.layout.order.map(id=>[id,baseColumns[id][0]]))) || '') + '<label class="ozon-dev-column-child"><input type="checkbox" data-settings-sp ' + (draft.layout.detailsOpen ? 'checked' : '') + '> Детализация Story Points</label>' + (draft.layout.detailsOpen ? groupingUi?.html('development-sp',draft.layout.children.map(String),Object.fromEntries(columns.map(([title],index)=>[String(index),title]))) || '' : '') + '<footer><button class="ozon-ext-btn" data-dev-action="settings-apply">Применить</button><button class="ozon-ext-btn ozon-ext-btn-surface" data-dev-action="settings-cancel">Отмена</button></footer></aside>';
   }
   function html() {
     const busy = state.loadingSprints || state.loadingTasks;
@@ -787,7 +796,7 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
       '<div class="ozon-ext-toolbar-combo"><button type="button" class="ozon-ext-toolbar-trigger" data-dev-action="sprints-menu" aria-expanded="' + state.sprintsOpen + '" ' + (!active || state.loadingSprints ? 'disabled' : '') + ' title="' + escape(state.selected.map(id => state.sprints.find(sprint => String(sprint.id) === id)?.name || '').join('; ')) + '"><span class="ozon-ext-toolbar-label">' + (state.loadingSprints ? 'Загружаем спринты…' : state.selected.length ? 'Спринтов выбрано: ' + state.selected.length : 'Выберите спринты') + '</span><span class="ozon-ext-toolbar-chevron"></span></button>' +
       (state.sprintsOpen ? '<div class="ozon-ext-combo-popover ozon-dev-popover ozon-dev-sprints" role="dialog" aria-label="Выбор спринтов"><div class="ozon-dev-editor-head"><strong>Выбор спринтов</strong><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-dev-action="sprints-menu" aria-label="Закрыть">✕</button></div><input type="search" id="ozon-dev-sprint-search" aria-label="Поиск спринта" placeholder="Поиск спринта…" value="' + escape(state.sprintQuery) + '"><div class="ozon-dev-sprint-list">' + (matches.length ? matches.map(sprint => '<label class="ozon-dev-sprint-option"><input type="checkbox" data-dev-sprint="' + sprint.id + '" ' + (state.selected.includes(String(sprint.id)) ? 'checked' : '') + '><span>' + escape(sprint.name) + '</span>' + badge(stateName(sprint.state), sprint.state) + '</label>').join('') : (!state.loadingSprints ? '<p style="color:#64748B;">Спринты не найдены</p>' : '')) + (state.loadingSprints ? '<div role="status" aria-label="Загрузка прошедших спринтов" style="padding:8px 4px;">' + [85,70,90,75].map(width => '<div class="ozon-ext-skeleton" style="height:22px;margin:8px 0;width:' + width + '%;"></div>').join('') + '</div>' : '') + '</div><div class="ozon-dev-popover-footer">' + (!state.closedLoaded ? '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-dev-action="closed" ' + (busy ? 'disabled' : '') + '>Показать прошедшие</button>' : '') + '<button type="button" class="ozon-ext-btn" data-dev-action="sprints-done" ' + (!state.selected.length || busy ? 'disabled' : '') + '>Готово</button></div></div>' : '') + '</div>' +
       '<button type="button" class="ozon-ext-btn" data-dev-action="load" ' + (!pointsField || !state.selected.length || busy ? 'disabled' : '') + '>' + (state.loadingTasks ? 'Загружаем задачи…' : 'Загрузить задачи') + '</button>' +
-      (active ? '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-dev-action="refresh-sprints" ' + (busy ? 'disabled' : '') + '>Обновить спринты</button>' : '') + viewControls('filters') + '</div>' +
+      (active ? '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-dev-action="refresh-sprints" ' + (busy ? 'disabled' : '') + '>Обновить спринты</button>' : '') + viewControls('filters') + depthControls() + '</div>' +
        (state.error ? '<div class="ozon-dev-error" role="alert">' + escape(state.error) + '</div>' : '') +
       (state.loadingSprints ? '<div style="padding:12px 16px;"><div class="ozon-ext-skeleton" style="height:25px;width:40%;"></div></div>' : '') +
       '<div class="ozon-dev-content">' + tableHtml() + '</div>' + editorHtml() + settingsHtml() + '</section>';
@@ -801,6 +810,15 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
     }
     const settings=root.querySelector<HTMLElement>('.ozon-dev-settings');
     if(settings) { settings.scrollTop=settingsScroll; settings.addEventListener('scroll',()=>{settingsScroll=settings.scrollTop;}); }
+    groupingUi?.bind(root,(order,id)=>{
+      if (id==='development') {setGrouping(order);return;}
+      if (!settingsDraft) return;
+      if (id==='development-settings') settingsDraft.grouping=order;
+      if (id==='development-columns') settingsDraft.layout.order=order;
+      if (id==='development-sp') settingsDraft.layout.children=order.map(Number);
+      onRender();
+    });
+    groupingUi?.bindDepth(root,value=>setDepth(Number(value)));
     root.querySelectorAll<HTMLElement>('.ozon-dev-controls .ozon-dev-popover').forEach(popover => {
       const rect = popover.getBoundingClientRect();
       const overshoot = Math.max(0,rect.right - window.innerWidth + 12);
@@ -834,10 +852,9 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
       const action = button.dataset.devAction;
       if (action === 'settings-open') { settingsScroll=0; settingsDraft = {grouping:[...state.grouping],depth:state.depth,layout:JSON.parse(JSON.stringify(layout))}; state.menu=''; onRender(); return; }
       if (action === 'settings-cancel') { settingsDraft=null; state.menu=''; onRender(); return; }
-      if (action === 'settings-apply' && settingsDraft) { const draft=settingsDraft; settingsDraft=null; Object.assign(layout,draft.layout); saveLayout(); state.grouping=[...draft.grouping]; state.depth=Math.min(draft.depth,state.grouping.length); state.collapsed.clear(); state.expandedGroups.clear(); state.menu=''; onRender(); return; }
+      if (action === 'settings-apply' && settingsDraft) { const draft=settingsDraft; settingsDraft=null; Object.assign(layout,draft.layout); saveLayout(); state.grouping=[...draft.grouping]; state.menu=''; setDepth(draft.depth); return; }
       if (action === 'settings-epic-display' && settingsDraft) { settingsDraft.layout.epicDisplay=button.dataset.value || 'full'; state.menu=''; onRender(); return; }
       if (action === 'settings-depth' && settingsDraft) { settingsDraft.depth=Number(button.dataset.depth); state.menu=''; onRender(); return; }
-      if (action === 'settings-move' && settingsDraft) { const kind=button.dataset.kind; const list=kind==='group'?settingsDraft.grouping:kind==='child'?settingsDraft.layout.children:settingsDraft.layout.order; const from=list.map(String).indexOf(button.dataset.id!); const to=from+Number(button.dataset.direction); if(from>=0&&to>=0&&to<list.length) [list[from],list[to]]=[list[to],list[from]]; onRender(); return; }
 
       if (action?.startsWith('edit-')) { openEditor(action.slice(5),button.dataset.key!); return; }
       if (action === 'close-editor') { if (!state.editor?.busy) { state.editor = null; ++editorRequest; } onRender(); return; }

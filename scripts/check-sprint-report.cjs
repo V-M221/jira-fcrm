@@ -44,6 +44,7 @@ const issues = [
 issues[0].fields.project = {key:'OB'};
 issues[0].fields.issuetype = {name:'Задача'};
 issues[0].fields.assignee = {name:'old-user',displayName:'Первый исполнитель',avatarUrls:{'48x48':'data:image/png;base64,AA=='}};
+issues[0].fields.components = [{name:'Карточки'},{name:'Платформа'}];
 issues[0].fields.customfield_3 = 'OBPROJECT-1';
 issues[0].fields.customfield_24000 = {value:'Стрим 2'};
 issues[1].fields.project = {key:'OBFRONT'};
@@ -109,7 +110,7 @@ assert.equal(ob.days.find(row=>row.date==='2026-10-21').changes.length,0);
 assert.equal(ob.rows[0].epicKey,'OBPROJECT-1');
 assert.equal(ob.rows[0].epicTitle,'Название эпика');
 assert.equal(ob.rows[0].stream,'Стрим 3');
-assert.equal(front.rows[0].stream,'Стрим 1');
+assert.equal(front.rows[0].stream,'','The development view assigns streams through epics');
 assert.equal(front.rows[1].epicTitle,'Имя эпика из задачи');
 assert.equal(ob.rows[1].epicKey,'');
 assert.equal(model.epicKeyFor({customfield_3:null,epic:{key:'OBPROJECT-1'}},'customfield_3'),'');
@@ -187,6 +188,7 @@ class ChartElement {
   querySelector(selector) { return this.children.get(selector); }
   querySelectorAll(selector) { return this.childLists.get(selector) || []; }
   addEventListener(event,listener) { this.listeners.set(event,listener); }
+  getAttribute(name) { return this.attributes.get(name) || null; }
   setAttribute(name,value) { this.attributes.set(name,value); }
   append(selector) { const node = new ChartElement(); this.children.set(selector,node); return node; }
 }
@@ -207,12 +209,15 @@ for (const field of ['date','remaining','scope','burned','reopened']) tip.append
 const {createSprintReportDashboard} = load('sprintReportDashboard',{
   document:new ChartElement(),DOMPoint:class { constructor(x,y) { this.x=x; this.y=y; } matrixTransform() { return this; } }
 });
-const dashboard = createSprintReportDashboard(()=>{},model,[{id:'1',name:'Test'}],'','',()=> '',type=>type==='Эпик');
+const people = load('jiraPeopleUi').createJiraPeopleUi();
+let developmentGroups=['sprint','project','epic'];
+const dashboard = createSprintReportDashboard(()=>{},model,[{id:'1',name:'Test'}],'','',()=> '',type=>type==='Эпик',people,()=>developmentGroups);
 Object.assign(dashboard.getState(),{report,project:'OBFRONT'});
 const html = dashboard.html();
-const streamTable = html => html.match(/<table aria-label="План и факт по стримам">.*?<\/table>/)?.[0];
-assert.match(streamTable(html),/scope="rowgroup">OBFRONT<\/th><td><strong>2 SP<\/strong> <small>22,2\s%/);
-assert.doesNotMatch(streamTable(html),/scope="rowgroup">OB<\/th>/);
+const groupTable = html => html.match(/<table aria-label="План и факт по группам">.*?<\/table>/)?.[0];
+assert.match(groupTable(html),/<th>Проект → Эпик<\/th>/);
+assert.match(groupTable(html),/<strong>OBFRONT<\/strong><\/div><\/th><td><strong>2 SP<\/strong> <small>22,2\s%/);
+assert.doesNotMatch(groupTable(html),/<strong>OB<\/strong>/);
 assert.match(html,/class="ozon-report-axis"/);
 assert.match(html,/class="ozon-report-axis-title"[^>]*>Story Points</);
 assert.match(html,/class="ozon-report-axis-title"[^>]*>День спринта · МСК</);
@@ -242,8 +247,15 @@ assert.match(split,/<h3>OB<\/h3>/);
 assert.match(split,/<h3>OBFRONT<\/h3>/);
 assert.match(split,/<th>Лидер проекта<\/th>/);
 assert.match(split,/data-report-avatar="old-user" src="data:image\/png;base64,AA==".*Первый исполнитель<\/strong><small>5 SP · 1 задача/);
-assert.match(streamTable(split),/scope="row">Стрим 3<\/th><td><strong>5 SP<\/strong> <small>55,6\s%<\/small><\/td><td><strong>5 SP<\/strong> <small>100\s%/);
-assert.match(streamTable(split),/Весь спринт<\/th><td><strong>9 SP<\/strong> <small>100\s%/);
+assert.match(groupTable(split),/ozon-report-stream-chip">Стрим 3<\/span><\/div><\/th><td><strong>5 SP<\/strong> <small>55,6\s%<\/small><\/td><td><strong>5 SP<\/strong> <small>100\s%/);
+assert.match(groupTable(split),/Весь спринт<\/th><td><strong>9 SP<\/strong> <small>100\s%/);
+developmentGroups=['sprint','component','project','epic'];
+const componentGroups=groupTable(dashboard.html());
+assert.match(componentGroups,/<th>Компонент → Проект → Эпик<\/th>/);
+assert.match(componentGroups,/<strong>Карточки<\/strong><\/div><\/th><td><strong>5 SP/);
+assert.match(componentGroups,/<strong>Платформа<\/strong><\/div><\/th><td><strong>5 SP/);
+assert.match(componentGroups,/Весь спринт<\/th><td><strong>9 SP/);
+developmentGroups=['sprint','project','epic'];
 const axes = [...split.matchAll(/<g class="ozon-report-grid">(.+?)<\/g>/g)].map(match=>match[1]);
 assert.equal(axes.length,2);
 assert.equal(axes[0],axes[1],'Both projects use an identical date and Story Point scale');
@@ -263,37 +275,42 @@ assert.match(dashboard.html(),/Переоценили 21 окт<\/td><td>\+3/);
 assert.doesNotMatch(dashboard.html(),/TEST-6/);
 Object.assign(dashboard.getState(),{report:model.build({...input,pointsField:''}),section:'days',scopeFilter:'all'});
 assert.doesNotMatch(dashboard.html(),/data-report-chart/);
-assert.equal(streamTable(dashboard.html()),undefined);
+assert.equal(groupTable(dashboard.html()),undefined);
 assert.match(dashboard.html(),/План на старте<\/span><strong>3 задачи/);
 assert.match(dashboard.html(),/Из первоначального плана завершили <strong>1 из 3 задач<\/strong>/);
 
 Object.assign(dashboard.getState(),{report,section:'start',project:'OB'});
+developmentGroups=['sprint','project','stream','epic'];
 const group = new ChartElement();
-group.dataset = {reportGroup:'["OB","Стрим 3"]'};
+group.dataset = {reportGroup:'["project:OB","stream:Стрим 3"]'};
 section.childLists.set('[data-report-group]',[group]);
 dashboard.bind(root);
+group.setAttribute('aria-expanded','true');
 group.listeners.get('click')();
 assert.match(dashboard.html(),/class="ozon-report-tree"><colgroup>/);
-assert.match(dashboard.html(),/data-report-group="\[&quot;OB&quot;,&quot;Стрим 3&quot;\]" aria-expanded="false"/);
+assert.match(dashboard.html(),/data-report-group="\[&quot;project:OB&quot;,&quot;stream:Стрим 3&quot;\]" aria-expanded="false"/);
 assert.doesNotMatch(dashboard.html(),/data-key="TEST-1"/);
+group.setAttribute('aria-expanded','false');
 group.listeners.get('click')();
 assert.match(dashboard.html(),/data-report-action="edit-epic" data-key="TEST-1"/);
 assert.doesNotMatch(dashboard.html(),/data-report-action="edit-epic" data-key="TEST-3"/);
 dashboard.updateTask('TEST-1',{epic:{id:'OBPROJECT-3',name:'Эпик назначения',fields:{customfield_24000:{value:'Стрим 5'}}}});
 assert.match(dashboard.html(),/Стрим 5/);
-assert.match(streamTable(dashboard.html()),/scope="row">Стрим 5<\/th><td><strong>5 SP/);
+assert.match(groupTable(dashboard.html()),/<strong>Стрим 5<\/strong><\/div><\/th><td><strong>5 SP/);
 assert.match(dashboard.html(),/Эпик назначения/);
 assert.equal(ob.rows[0].epicKey,'OBPROJECT-3');
 assert.equal(report.metrics.planned,9);
 dashboard.updateTask('TEST-1',{epic:{id:'',name:'Без эпика'}});
 assert.equal(ob.rows[0].epicKey,'');
-assert.equal(ob.rows[0].stream,'Стрим 2');
+assert.equal(ob.rows[0].stream,'');
 assert.match(dashboard.html(),/<th>Исполнитель<\/th>/);
-assert.match(dashboard.html(),/title="Первый исполнитель"><span>Первый исполнитель/);
-dashboard.updateTask('TEST-1',{assigneeName:'Новый исполнитель'});
-assert.match(dashboard.html(),/title="Новый исполнитель"><span>Новый исполнитель/);
+assert.match(dashboard.html(),/class="ozon-person-name">Первый исполнитель/);
+assert.match(dashboard.html(),/data-ozon-copy-login="old-user"/);
+dashboard.updateTask('TEST-1',{assigneeName:'Новый исполнитель',assignee:{name:'Новый исполнитель',login:'new-user'}});
+assert.match(dashboard.html(),/class="ozon-person-name">Новый исполнитель/);
+assert.match(dashboard.html(),/data-ozon-copy-login="new-user"/);
 assert.equal(ob.rows[0].epicKey,'');
-dashboard.updateTask('TEST-1',{assigneeName:''});
+dashboard.updateTask('TEST-1',{assigneeName:'',assignee:null});
 assert.match(dashboard.html(),/title="Не назначен"><span>Не назначен/);
 
 console.log('Sprint report checks passed: scope reconciliation, closing transfer, repeated moves, re-estimates, unestimated work, chart hover and project breakdown.');
