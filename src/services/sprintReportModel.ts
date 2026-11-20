@@ -184,6 +184,7 @@ export function createSprintReportModel() {
       const unfinished = memberAtEnd && !doneAtEnd;
       const carry = closed(sprint) && unfinished;
       const row = {key,project,stream,taskStream,issueType:String(fields.issuetype?.name || ''),epicKey,epicTitle:String(epic?.summary || fields.epic?.summary || fields.epic?.name || ''),
+        assigneeName:Object.hasOwn(fields,'assignee') ? String(fields.assignee?.displayName || fields.assignee?.name || fields.assignee?.key || '') : undefined,
         summary:fields.summary || fallback?.summary || key, started, startPoints:startSnapshot.points, startStatus:startSnapshot.status.name,
         endPoints:snapshot.points, endStatus:snapshot.status.name, memberAtEnd, doneAtEnd, added, removed, addedPoints, removedPoints, estimateDelta, completeHistory,
         addedDates:issueEvents.filter(change=>change.added).map(change=>dayOf(change.at)),
