@@ -9,7 +9,7 @@ import { createStrategicDashboard } from '../services/strategicDashboard';
 import { createTaskDetailsSidebar } from '../services/taskDetailsSidebar';
 import { bindJiraLabelSuggestions } from '../services/jiraLabelSuggestions';
 
-export const EXTENSION_VERSION = '3.5.166';
+export const EXTENSION_VERSION = '3.5.167';
 
 export function generateManifestJson(config: ExtensionConfig): string {
   const manifest = {
@@ -590,12 +590,39 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-report-projects {margin-bottom:12px;border:1px solid #dae4f1;border-radius:10px;background:#fff}
 .ozon-report-projects small,.ozon-report-group small {font-size:11px;color:#536682;font-weight:400}
 .ozon-report-projects .ozon-report-project-selected>td,.ozon-report-projects .ozon-report-project-selected>th {background:#eaf3ff}
+.ozon-report-leaders {display:grid;gap:7px}
+.ozon-report-leader {display:flex;align-items:center;gap:7px;min-width:136px;color:#071026}
+.ozon-report-leader>span:last-child {display:grid;gap:2px;min-width:0}
+.ozon-report-leader strong {font-size:11.5px;line-height:1.25}
+.ozon-report-leader small {font-size:11px;color:#536682}
+.ozon-report-leader-avatar {position:relative;display:grid;place-items:center;width:26px;height:26px;flex:0 0 26px;border-radius:50%;overflow:hidden;background:#e7eff9;color:#40536e;font-size:10px;font-weight:650}
+.ozon-report-leader-avatar img {position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#fff}
+.ozon-report-leader-avatar img[hidden] {display:none}
+.ozon-report-single-leader {display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px;color:#40536e;font-size:12px}
+.ozon-report-streams {margin:14px 0;padding:12px 14px;border:1px solid #dae4f1;border-radius:10px;background:#fff}
+.ozon-report-streams h2 {font-size:14px;margin:0 0 4px}
+.ozon-report-streams p {font-size:12px;color:#52647d;margin:0 0 10px}
+.ozon-report-streams table {min-width:360px}
+.ozon-report-streams thead th:first-child {width:54%}
+.ozon-report-streams td {font-variant-numeric:tabular-nums;white-space:nowrap}
+.ozon-report-streams td small {margin-left:8px;color:#52647d;font-size:11px}
+.ozon-report-streams tbody tr:not(.ozon-report-stream-project)>th {padding-left:24px;background:#fff;font-weight:400}
+.ozon-report-stream-project td,.ozon-report-streams tfoot td {background:#f1f5fb}
 .ozon-report-day-breakdown {margin:0 0 12px}.ozon-report-day-breakdown>div {margin-top:6px}
 .ozon-report-table-wrap {overflow:auto}.ozon-report-table-wrap table {width:100%;border-collapse:collapse;text-align:left}.ozon-report-table-wrap th,.ozon-report-table-wrap td {padding:8px;border-bottom:1px solid #e4ecf6;vertical-align:top}.ozon-report-table-wrap th {background:#f1f5fb;color:#334155;font-size:11.5px}.ozon-report-table-wrap td:first-child,.ozon-report-table-wrap td:last-child {white-space:nowrap}.ozon-report-table-wrap td:nth-child(2) {min-width:100px}.ozon-report-table-wrap td:last-child {white-space:normal}.ozon-report-table-wrap tr:hover td {background:#f7faff}
-.ozon-report-group th>div {display:flex;align-items:center;gap:7px;min-width:0}
-.ozon-report-group th>div>span {overflow:hidden;text-overflow:ellipsis}
-.ozon-report-group th button {border:0;background:transparent;color:#005bff;padding:0 3px;cursor:pointer}
-.ozon-report-group-1 th>div {padding-left:16px}.ozon-report-group-2 th>div {padding-left:32px}
+.ozon-report-tree-wrap .ozon-report-tree {table-layout:fixed;min-width:810px}
+.ozon-report-tree .ozon-report-tree-key {width:218px}
+.ozon-report-tree .ozon-report-tree-assignee {width:16%}
+.ozon-report-tree .ozon-report-tree-time {width:58px}
+.ozon-report-tree .ozon-report-tree-status {width:23%}
+.ozon-report-tree .ozon-report-tree-points {width:100px}
+.ozon-report-tree td {overflow-wrap:anywhere}
+.ozon-report-tree-line {display:flex;align-items:center;gap:7px;min-width:0;padding-left:calc(var(--report-depth) * 16px);background:repeating-linear-gradient(to right,#d7e2f0 0 1px,transparent 1px 16px) 8px center/calc(var(--report-depth) * 16px) 100% no-repeat}
+.ozon-report-group th>div>span {overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.ozon-report-group th small {white-space:nowrap}
+.ozon-report-group th button {flex:0 0 16px;border:0;border-radius:4px;background:transparent;color:#005bff;padding:0;cursor:pointer}
+.ozon-report-group th button:not(:disabled):hover {background:#e3eeff}
+.ozon-report-group th button:disabled {cursor:default}
 .ozon-report-group-1 th {background:#f5f8fd}.ozon-report-group-2 th {background:#f8fafd}
 .ozon-report-task-key {display:flex;align-items:center;gap:7px;white-space:nowrap}
 .ozon-report-task-key .ozon-report-epic-edit {font-size:11px;line-height:1.2;padding:3px 6px}
@@ -8077,10 +8104,13 @@ export function generateContentScriptJs(
 
     if (activeDashboardView === 'report') {
       const top = root.querySelector('.ozon-report-scroll')?.scrollTop || 0;
+      const tableLeft = root.querySelector('.ozon-report-tree-wrap')?.scrollLeft || 0;
       root.innerHTML = renderDashboardNavigation() + sprintReport.html();
       bindDashboardNavigation(root);
       sprintReport.bind(root);
       const scroll = root.querySelector('.ozon-report-scroll');
+      const tree = root.querySelector('.ozon-report-tree-wrap');
+      if (tree) tree.scrollLeft = tableLeft;
       if (scroll) scroll.scrollTop = top;
       return;
     }

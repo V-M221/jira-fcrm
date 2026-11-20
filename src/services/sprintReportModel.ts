@@ -1,9 +1,11 @@
 // Serialized into content.js. Keep the factory independent of module-level values.
 export function createSprintReportModel() {
   type Status = { id:string; name:string; category?:string };
-  type Snapshot = { member:boolean; status:Status; points:number | null };
+  type Assignee = {id:string;name:string;avatarUrl:string};
+  type Performer = Assignee & {points:number;tasks:number};
+  type Snapshot = { member:boolean; status:Status; points:number | null; assignee:Assignee | null };
   type Change = {key:string; at:number; before:Snapshot; after:Snapshot; added:boolean; removed:boolean; statusChanged:boolean; estimateChanged:boolean; burned:number};
-  const emptyMetrics = () => ({planned:0,initialRemaining:0,added:0,removed:0,estimateDelta:0,estimatedTasks:0,burned:0,completedPoints:0,remaining:0,unestimated:0,completedUnestimated:0,remainingUnestimated:0,completed:0,plannedCompleted:0,carry:0,plannedTasks:0,addedTasks:0,removedTasks:0,remainingTasks:0});
+  const emptyMetrics = () => ({planned:0,initialRemaining:0,added:0,removed:0,estimateDelta:0,estimatedTasks:0,burned:0,completedPoints:0,remaining:0,unestimated:0,completedUnestimated:0,remainingUnestimated:0,completed:0,plannedCompleted:0,plannedCompletedPoints:0,carry:0,plannedTasks:0,addedTasks:0,removedTasks:0,remainingTasks:0});
   const dateFormat = new Intl.DateTimeFormat('sv-SE', {timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'});
   const dayOf = (timestamp:number) => dateFormat.format(timestamp);
   const asArray = (value:any) => value == null ? [] : Array.isArray(value) ? value : [value];
@@ -18,6 +20,7 @@ export function createSprintReportModel() {
   const time = (value:any) => typeof value === 'number' ? value : Date.parse(value || '');
   const nameKey = (value:any) => String(value || '').trim().toLowerCase();
   const validKey = (value:any) => /^[A-Z][A-Z0-9_]*-\d+$/.test(String(value || ''));
+  const avatarFor = (user:any) => String(user?.avatarUrls?.['48x48'] || user?.avatarUrls?.['32x32'] || user?.avatarUrls?.['24x24'] || '');
   const streamName = (value:any) => String(typeof value === 'string' ? value : value?.value || value?.name || '');
   const epicKeyFor = (fields:any, field?:string) => {
     const custom = field ? fields[field] : null;
@@ -76,6 +79,7 @@ export function createSprintReportModel() {
       const name = nameKey(item.field);
       if ((sprintField && id === sprintField) || /^(sprint|спринт)$/.test(name)) return 'sprint';
       if (id === 'status' || /^(status|статус)$/.test(name)) return 'status';
+      if (id === 'assignee' || /^(assignee|исполнитель)$/.test(name)) return 'assignee';
       if (pointsField && (id === pointsField || name === nameKey(pointsName) || /^(story points|стори поинты|story point estimate)$/.test(name))) return 'points';
       return '';
     };
@@ -83,9 +87,18 @@ export function createSprintReportModel() {
     const events:Change[] = [];
     const rows:any[] = [];
     const metrics = emptyMetrics();
-    const projects = new Map<string,{metrics:ReturnType<typeof emptyMetrics>;rows:any[];events:Change[]}>();
+    const projects = new Map<string,{metrics:ReturnType<typeof emptyMetrics>;rows:any[];events:Change[];performers:Map<string,Performer>}>();
     let incomplete = 0;
     const available = new Map(issues.filter(issue => validKey(issue?.key)).map(issue => [issue.key,issue]));
+    const users = new Map<string,Assignee>();
+    for (const issue of available.values()) {
+      const user=issue.fields?.assignee;
+      const id=String(user?.key || user?.name || '');
+      if (!id) continue;
+      const known=users.get(nameKey(id));
+      const person=known?.avatarUrl ? known : {id,name:String(user.displayName || user.name || id),avatarUrl:avatarFor(user)};
+      for (const alias of [id,user.key,user.name]) if (alias) users.set(nameKey(alias),person);
+    }
     const keys = new Set<string>([...available.keys(),...scope?.issues.keys() || [],...scope?.added || []]);
     for (const key of keys) {
       const raw = available.get(key);
@@ -108,7 +121,8 @@ export function createSprintReportModel() {
       const current:Snapshot = {
         member: knownMembership ? hasSprint([fields[sprintField],fields.sprint,fields.closedSprints].flat().filter(Boolean)) : nativeFinal !== 'removed' && (!!nativeFinal || !!raw),
         status:status(fields.status),
-        points:pointsField && Object.hasOwn(fields,pointsField) ? pointValue(fields[pointsField]) : null
+        points:pointsField && Object.hasOwn(fields,pointsField) ? pointValue(fields[pointsField]) : null,
+        assignee:users.get(nameKey(fields.assignee?.key || fields.assignee?.name)) || null
       };
       if (!current.status.name && fallback?.statusName) current.status = {id:String(fallback.statusId || ''),name:String(fallback.statusName)};
       const currentStatus = current.status;
@@ -123,6 +137,10 @@ export function createSprintReportModel() {
           if (kind === 'sprint') next.member = membersInChange(item[side],item[side + 'String']);
           if (kind === 'status') next.status = stateFrom(item,side);
           if (kind === 'points') next.points = pointValue(item[side] ?? item[side + 'String']);
+          if (kind === 'assignee') {
+            const id=String(item[side] || '');
+            next.assignee=id ? users.get(nameKey(id)) || {id,name:String(item[side + 'String'] || id),avatarUrl:''} : null;
+          }
         });
         return next;
       };
@@ -145,6 +163,7 @@ export function createSprintReportModel() {
 
       const started = startSnapshot.member && !(created > start);
       let snapshot:Snapshot = {...startSnapshot,member:started};
+      let performerAtCompletion:Assignee | null = null;
       const issueEvents:Change[] = [];
       const pushChange = (at:number, after:Snapshot) => {
         const before = snapshot;
@@ -162,6 +181,7 @@ export function createSprintReportModel() {
         if (group.at <= start || group.at > end) continue;
         const after = apply(snapshot,group,'to');
         if (group === transferAtClose) after.member = snapshot.member;
+        if (!isDone(snapshot.status) && isDone(after.status)) performerAtCompletion=snapshot.member && after.member ? after.assignee : null;
         pushChange(group.at,after);
       }
       // Prefer Jira's closing classification if it is available. The issue may already
@@ -191,8 +211,15 @@ export function createSprintReportModel() {
         removedDates:issueEvents.filter(change=>change.removed).map(change=>dayOf(change.at)),
         estimateDates:reestimated.map(change=>dayOf(change.at)),
         carry};
-      if (!projects.has(project)) projects.set(project,{metrics:emptyMetrics(),rows:[],events:[]});
+      if (!projects.has(project)) projects.set(project,{metrics:emptyMetrics(),rows:[],events:[],performers:new Map()});
       const detail = projects.get(project)!;
+      if (doneAtEnd && isDone(snapshot.status) && completeHistory && performerAtCompletion) {
+        const id=nameKey(performerAtCompletion.id);
+        const performer=detail.performers.get(id) || {...performerAtCompletion,points:0,tasks:0};
+        performer.points += score(snapshot.points);
+        performer.tasks++;
+        detail.performers.set(id,performer);
+      }
       for (const total of [metrics,detail.metrics]) {
         if (started) {
           total.plannedTasks++;
@@ -210,7 +237,10 @@ export function createSprintReportModel() {
         if (unfinished) { total.remaining += score(snapshot.points); total.remainingTasks++; total.remainingUnestimated += Number(snapshot.points == null); }
         if (doneAtEnd) { total.completedPoints += score(snapshot.points); total.completedUnestimated += Number(snapshot.points == null); }
         total.completed += Number(doneAtEnd);
-        total.plannedCompleted += Number(started && doneAtEnd);
+        if (started && doneAtEnd) {
+          total.plannedCompleted++;
+          total.plannedCompletedPoints += score(startSnapshot.points);
+        }
         total.carry += Number(carry);
       }
       rows.push(row);
@@ -247,9 +277,12 @@ export function createSprintReportModel() {
     rows.sort((a,b) => a.key.localeCompare(b.key,'en',{numeric:true}));
     const projectOrder = [...projects.keys()].sort((a,b)=>a.localeCompare(b,'en',{numeric:true}));
     const byProject = new Map(projectOrder.map(key => {
-      const detail = projects.get(key)!;
+      const {performers,...detail} = projects.get(key)!;
       detail.rows.sort((a,b) => a.key.localeCompare(b.key,'en',{numeric:true}));
-      return [key,{...detail,days:series(detail.events,detail.metrics)}];
+      const compare=(a:Performer,b:Performer)=>Math.abs(b.points-a.points)>0.000001 ? b.points-a.points : b.tasks-a.tasks;
+      const ranked=[...performers.values()].sort((a,b)=>compare(a,b) || a.name.localeCompare(b.name,'ru'));
+      const leaders=ranked.filter(person=>compare(person,ranked[0])===0);
+      return [key,{...detail,days:series(detail.events,detail.metrics),leaders}];
     }));
     const days=series(events,metrics);
     if (pointsField && [...byProject.values()].some(({metrics:m,days})=>{
@@ -258,5 +291,5 @@ export function createSprintReportModel() {
     })) warnings.add('График истории и итоговый состав Jira расходятся. Сводка «Завершили» и «Не завершили» использует итоговый состав.');
     return {start,end,closed:closed(sprint),rows,events,days,metrics,byProject,pointsField,pointsName, warnings:[...warnings]};
   }
-  return {nativeScope,build,epicKeyFor,streamName};
+  return {nativeScope,build,epicKeyFor,streamName,avatarFor};
 }
