@@ -38,7 +38,7 @@ const issues = [
   // Jira moved the issue during completion. It must be reported as carryover, not as a mid-sprint removal.
   issue('TEST-4',5,false,progress,[
     day('2026-10-20T13:00:00+03:00',[{fieldId:'customfield_1',from:'2',to:'5'}]),
-    day(sprint.completeDate,[sprintChange('7','8')])
+    day('2026-10-23T17:59:52+03:00',[sprintChange('7','8')])
   ])
 ];
 issues[0].fields.project = {key:'OB'};
@@ -61,10 +61,14 @@ assert.equal(report.warnings.length,0);
 assert.equal(report.metrics.planned,9);
 assert.equal(report.metrics.added,3);
 assert.equal(report.metrics.removed,2);
+assert.equal(report.metrics.estimateDelta,3);
+assert.equal(report.metrics.estimatedTasks,1);
 assert.equal(report.metrics.burned,5);
 assert.equal(report.metrics.remaining,8);
 assert.equal(report.metrics.carry,2);
 assert.equal(report.metrics.completed,1);
+assert.equal(report.metrics.completedPoints,5);
+assert.equal(report.metrics.plannedCompleted,1);
 assert.equal(report.rows.find(row=>row.key==='TEST-1').endPoints,5);
 assert.equal(report.rows.find(row=>row.key==='TEST-4').removed,false);
 assert.equal(report.days.find(row=>row.date==='2026-10-20').burned,5);
@@ -72,6 +76,7 @@ assert.equal(report.days.find(row=>row.date==='2026-10-21').burned,3,'After 21:0
 assert.equal(report.days.find(row=>row.date==='2026-10-22').burned,-3);
 assert.equal(report.days.at(-1).remaining,report.metrics.remaining);
 assert.equal(report.days.at(-1).scope,13);
+assert.equal(report.metrics.planned + report.metrics.added - report.metrics.removed + report.metrics.estimateDelta,report.metrics.completedPoints+report.metrics.remaining);
 
 assert.deepEqual([...report.byProject.keys()],['OB','OBFRONT']);
 const ob = report.byProject.get('OB');
@@ -84,6 +89,8 @@ assert.equal(ob.metrics.burned,5);
 assert.equal(ob.metrics.remaining,0);
 assert.equal(front.metrics.planned,2);
 assert.equal(front.metrics.added,3);
+assert.equal(front.metrics.estimateDelta,3);
+assert.equal(front.metrics.completedPoints,0);
 assert.equal(front.metrics.remaining,8);
 assert.equal(front.metrics.remainingTasks,2);
 assert.equal(front.days.find(row=>row.date==='2026-10-21').burned,3);
@@ -103,6 +110,30 @@ assert.ok(model.build({...input,scope:null}).warnings.some(warning=>warning.incl
 assert.equal(model.build({...input,sprint:{...sprint,state:'active'},now:Date.parse('2026-10-21T11:00:00+03:00')}).closed,false);
 assert.equal(model.build({...input,pointsField:''}).pointsField,'');
 assert.equal(model.nativeScope({contents:{completedIssues:[]}}),null);
+
+const rerated = issue('TEST-5',8,true,done,[
+  day('2026-10-20T12:00:00+03:00',[status(progress,done)]),
+  day('2026-10-21T12:00:00+03:00',[{fieldId:'customfield_1',from:'5',to:'8'}])
+]);
+const moved = issue('TEST-6',3,true,progress,[
+  day('2026-10-20T13:00:00+03:00',[sprintChange(null,'7')]),
+  day('2026-10-21T13:00:00+03:00',[sprintChange('7',null)]),
+  day('2026-10-22T13:00:00+03:00',[sprintChange(null,'7')])
+]);
+const noEstimate = issue('TEST-7',null,true,done,[day('2026-10-22T14:00:00+03:00',[status(progress,done)])]);
+const edgeScope = model.nativeScope({contents:{completedIssues:[rerated,noEstimate],issuesNotCompletedInCurrentSprint:[moved],puntedIssues:[],issueKeysAddedDuringSprint:{[moved.key]:true}}});
+const edge = model.build({...input,issues:[rerated,moved,noEstimate],scope:edgeScope});
+assert.equal(edge.warnings.length,0);
+assert.equal(edge.metrics.burned,5);
+assert.equal(edge.metrics.completedPoints,8,'Final completed estimates differ from the estimates at transition time');
+assert.equal(edge.metrics.completed,2);
+assert.equal(edge.metrics.plannedCompleted,2);
+assert.equal(edge.metrics.completedUnestimated,1);
+assert.equal(edge.metrics.addedTasks,1);
+assert.equal(edge.metrics.added,6,'Both additions affect the scope, but the task is counted once');
+assert.equal(edge.metrics.removed,3);
+assert.equal(edge.metrics.removedTasks,1);
+assert.equal(edge.days.at(-1).scope,11);
 
 class ChartElement {
   children = new Map();
@@ -144,16 +175,17 @@ assert.match(html,/class="ozon-report-plot-label remaining"[^>]*>5</);
 assert.match(html,/class="ozon-report-plot-label shared"[^>]*>8</);
 assert.equal([...html.matchAll(/class="ozon-report-grid-day/g)].length,report.days.length+1);
 assert.doesNotMatch(html,/data-report-chart-mode=/);
+assert.match(html,/data-report-section="scope" data-report-target-filter="estimate"[^>]*><span>Переоценка<\/span><strong>\+3 SP</);
 const hitBounds = html.match(/class="ozon-report-graph-hit" x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"/).slice(1).map(Number);
 dashboard.bind(root);
 const move = index => hit.listeners.get('pointermove')({clientX:hitBounds[0] + hitBounds[2] * index / report.days.length,clientY:hitBounds[1] + hitBounds[3]/2});
 move(3);
 assert.equal(tip.hidden,false);
-assert.equal(tip.querySelector('[data-tip-burned]').textContent,'Сожгли за день: 3 SP');
+assert.equal(tip.querySelector('[data-tip-burned]').textContent,'Перешло в «Готово»: 3 SP');
 assert.equal(tip.querySelector('[data-tip-reopened]').textContent,'');
 move(4);
-assert.equal(tip.querySelector('[data-tip-remaining]').textContent,'Осталось: 8 SP');
-assert.equal(tip.querySelector('[data-tip-burned]').textContent,'Сожгли за день: 0 SP');
+assert.equal(tip.querySelector('[data-tip-remaining]').textContent,'Незавершённые задачи: 8 SP');
+assert.equal(tip.querySelector('[data-tip-burned]').textContent,'Перешло в «Готово»: 0 SP');
 assert.equal(tip.querySelector('[data-tip-reopened]').textContent,'Вернули при переоткрытии: 3 SP');
 hit.listeners.get('pointerleave')();
 assert.equal(tip.hidden,true);
@@ -169,4 +201,17 @@ assert.equal(axes[0],axes[1],'Both projects use an identical date and Story Poin
 Object.assign(dashboard.getState(),{chartMode:'total'});
 assert.equal([...dashboard.html().matchAll(/class="ozon-report-graph"/g)].length,1);
 
-console.log('Sprint report checks passed: history, scopes and project metrics, chart axes and value labels, hover and shared project scale.');
+Object.assign(dashboard.getState(),{report:edge,section:'finish',scopeFilter:'done'});
+const completedHtml = dashboard.html();
+assert.match(completedHtml,/data-report-target-filter="done"><span>Завершили к закрытию<\/span><strong>8 SP<\/strong><small>2 задачи/);
+assert.match(completedHtml,/5 \+ 6 − 3 \+ 3 = 11 SP/);
+assert.match(completedHtml,/TEST-7/);
+assert.doesNotMatch(completedHtml,/TEST-6/);
+Object.assign(dashboard.getState(),{section:'scope',scopeFilter:'estimate'});
+assert.match(dashboard.html(),/Переоценили 21 окт<\/td><td>\+3/);
+assert.doesNotMatch(dashboard.html(),/TEST-6/);
+Object.assign(dashboard.getState(),{report:model.build({...input,pointsField:''}),section:'days',scopeFilter:'all'});
+assert.doesNotMatch(dashboard.html(),/data-report-chart/);
+assert.match(dashboard.html(),/План на старте<\/span><strong>3 задачи/);
+
+console.log('Sprint report checks passed: scope reconciliation, closing transfer, repeated moves, re-estimates, unestimated work, chart hover and project breakdown.');

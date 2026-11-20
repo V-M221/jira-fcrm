@@ -1,7 +1,7 @@
 {
   "name": "ozon-bank-fcrm-jira-extension",
   "private": true,
-  "version": "3.5.161",
+  "version": "3.5.162",
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",

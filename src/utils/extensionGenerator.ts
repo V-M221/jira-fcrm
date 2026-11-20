@@ -9,7 +9,7 @@ import { createStrategicDashboard } from '../services/strategicDashboard';
 import { createTaskDetailsSidebar } from '../services/taskDetailsSidebar';
 import { bindJiraLabelSuggestions } from '../services/jiraLabelSuggestions';
 
-export const EXTENSION_VERSION = '3.5.161';
+export const EXTENSION_VERSION = '3.5.162';
 
 export function generateManifestJson(config: ExtensionConfig): string {
   const manifest = {
@@ -555,10 +555,12 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-report-toolbar .ozon-ext-btn {min-height:30px}
 .ozon-report-period {display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;margin-bottom:12px}
 .ozon-report-period strong {font-size:18px}.ozon-report-period span:not(.ozon-ext-badge),.ozon-report-hint,.ozon-report-tools>span,.ozon-report-method {color:#52647d}
-.ozon-report-cards {display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;margin-bottom:16px}
+.ozon-report-cards {display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:10px}
 .ozon-report-card {display:grid;text-align:left;align-content:start;gap:6px;border:1px solid #dae4f1;border-radius:12px;padding:13px;background:#fff;color:#071026;font:inherit;cursor:pointer}
 .ozon-report-card:hover {border-color:#84aefb;background:#f8fbff}.ozon-report-card:focus-visible {outline:2px solid #005bff;outline-offset:2px}
 .ozon-report-card>span {font-size:12px;color:#334155;font-weight:600}.ozon-report-card strong {font-size:22px;line-height:1.2}.ozon-report-card small {color:#52647d;font-size:11.5px}
+.ozon-report-totals {display:flex;flex-wrap:wrap;gap:6px 20px;margin:0 0 12px;color:#40536e;font-size:12px}.ozon-report-totals strong {color:#071026;margin-left:3px}
+.ozon-report-method.ozon-report-definitions {margin:0 0 14px;font-size:12px}.ozon-report-definitions p {max-width:84ch;line-height:1.5}
 .ozon-report-panel {margin-top:12px;background:#fff;border:1px solid #dae4f1;border-radius:12px;padding:16px}
 .ozon-report-panel h2 {font-size:16px;margin:0 0 12px}.ozon-report-panel>p {margin:0 0 10px}
 .ozon-report-chart-toolbar,.ozon-report-chart-modes {display:flex;align-items:center;flex-wrap:wrap;gap:8px}
@@ -593,6 +595,7 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-report-group-1 th>div {padding-left:16px}.ozon-report-group-2 th>div {padding-left:32px}
 .ozon-report-group-1 th {background:#f5f8fd}.ozon-report-group-2 th {background:#f8fafd}
 .ozon-report-empty,.ozon-report-banner,.ozon-report-warning {padding:10px 12px;border-radius:8px;background:#eef4fb;color:#334155}.ozon-report-banner {display:flex;align-items:center;gap:8px;margin:0 0 12px}.ozon-report-warning {background:#fff4dc;color:#774600;margin:8px 0 12px}.ozon-report-warning:is(ul) {padding-left:28px}.ozon-report-history-warning {color:#884c06;display:inline-block}.ozon-report-method {margin-top:12px}.ozon-report-method summary {cursor:pointer}.ozon-report-method p {margin:6px 0 0}.ozon-report-panel [data-report-more] {margin-top:10px}
+@media(max-width:950px){.ozon-report-cards{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:700px){.ozon-report-inner{padding:12px}.ozon-report-panel{padding:10px}.ozon-report-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.ozon-report-legend>small{margin-left:0}}
 .ozon-strategy-table tbody tr.ozon-strategy-exact-match .ozon-strategy-task-cell {box-shadow:inset 3px 0 #005bff,3px 0 6px #0710260d}
 .ozon-planning-editor .ozon-planning-option-text {display:flex;flex-direction:column;gap:3px;overflow-wrap:anywhere}
