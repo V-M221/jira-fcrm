@@ -1,5 +1,7 @@
+import type {createJiraGroupingUi} from './jiraGroupingUi';
+
 // Serialized into the extension. This view owns its data and does not modify the other dashboards.
-export function createStrategicDashboard(onRender: () => void, renderBadge: (label: string, category: string) => string, version: string, priorityService?: any, configuredSprintField?: string, actions?: any) {
+export function createStrategicDashboard(onRender: () => void, renderBadge: (label: string, category: string) => string, version: string, priorityService?: any, configuredSprintField?: string, actions?: any, groupingUi?:ReturnType<typeof createJiraGroupingUi>) {
   const state = { issues: [] as any[], loading: false, loaded: false, error: '', notice:'', progress: '', expanded: new Set<string>(), search:'', component:'', issueType:'', issueTypeOpen:false, sort:'priority', sortOpen:false, hideCanceled:false, hideDone:false, onlyThemes:false, filterCollapsed:new Set<string>(), filterComponents:[] as string[], filtersLoading:false, filtersReady:false, filtersError:'', componentOpen:false, componentQuery:'', labelOpen:false, labelQuery:'', labelFilter:new Set<string>(), settings:false, editor:null as any };
   const escape = (value: any) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   const collator = new Intl.Collator('ru', { numeric:true, sensitivity:'base' });
@@ -11,6 +13,8 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
   const layout = {order:[...defaultOrder],widths:{...defaultWidths},hidden:[...defaultHidden]};
   try { const saved=JSON.parse(localStorage.getItem('ozon-strategy-columns-v1') || 'null'); if (Array.isArray(saved?.order)) { const order=[...new Set<string>(saved.order.filter((id:any) => typeof id === 'string' && id in columnTitles && id !== 'task'))]; layout.order=['task',...order,...defaultOrder.filter(id => id !== 'task' && !order.includes(id))]; } if (Array.isArray(saved?.hidden)) { const hidden=saved.hidden.filter((id:any) => typeof id === 'string' && id in columnTitles && id !== 'task'); layout.hidden=[...new Set<string>(hidden)]; } if (saved?.widths) defaultOrder.forEach(id => { const n=Number(saved.widths[id]); if (Number.isFinite(n) && n>=60 && n<=1000) layout.widths[id]=n; }); } catch (_) { /* Settings remain in memory. */ }
   const saveLayout=() => { try { localStorage.setItem('ozon-strategy-columns-v1',JSON.stringify(layout)); } catch (_) { /* Storage can be unavailable. */ } };
+  let settingsScroll=0;
+  let treeDepth:number | null=null;
   const graphCache = new Map<string,any>();
   const invalidateGraph = () => { graphCache.clear(); };
   let searchTimer:any = null;
@@ -171,7 +175,26 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
     roots.forEach(mark);
     const cycles: string[] = [];
     [...nodes.keys()].filter(key => !visited.has(key)).sort(compare).forEach(key => { if (!visited.has(key)) { cycles.push(key); mark(key); } });
-    const graph={nodes, roots, cycles, compare}; graphCache.set(cacheKey,graph); return graph;
+    const parentsLeft=new Map([...nodes].map(([key,node])=>[key,node.parents.size]));
+    const depths=new Map<string,number>();
+    const pending=[...roots];
+    let maxDepth=0;
+    for (let index=0;index<pending.length;index++) {
+      const key=pending[index], depth=depths.get(key) || 0;
+      maxDepth=Math.max(maxDepth,depth);
+      for (const child of nodes.get(key).children) {
+        depths.set(child,Math.max(depths.get(child) || 0,depth+1));
+        const left=parentsLeft.get(child)!-1;
+        parentsLeft.set(child,left);
+        if (!left) pending.push(child);
+      }
+    }
+    const graph={nodes, roots, cycles, compare, maxDepth}; graphCache.set(cacheKey,graph); return graph;
+  }
+  function depthControl() {
+    const maxDepth=state.loaded ? Math.min(40,buildGraph(state.onlyThemes,true).maxDepth) : 0;
+    const options=[{value:'0',label:'Верхний уровень'},...Array.from({length:Math.max(0,maxDepth-1)},(_,index)=>({value:String(index+1),label:'Уровень ' + (index+2)})),{value:'all',label:'Все уровни'}];
+    return groupingUi?.depthHtml('strategy',options,treeDepth === null ? 'manual' : treeDepth >= maxDepth && treeDepth>0 ? 'all' : String(treeDepth),!state.loaded || state.loading) || '';
   }
   function html() {
     const header = '<header class="ozon-ext-header-bar"><strong>Стратегическое планирование FCRM</strong><div class="ozon-strategy-actions"><span class="ozon-dev-version">v' + escape(version) + '</span></div></header>';
@@ -190,9 +213,9 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
       (state.labelOpen ? '<div class="ozon-ext-combo-popover ozon-ext-toolbar-popover"><input id="ozon-strategy-label-search" type="search" aria-label="Поиск метки" placeholder="Поиск метки…" value="' + escape(state.labelQuery) + '"><div class="ozon-dev-filter-list"><button type="button" class="ozon-ext-combo-item" data-strategy-action="labels-clear" ' + (selectedLabels.length ? '' : 'disabled') + '>Все задачи</button>' +
         (labelMatches.length ? labelMatches.map(option => '<label class="ozon-dev-group-option"><input type="checkbox" data-strategy-label-filter="' + escape(option.value) + '"' + (state.labelFilter.has(option.value) ? ' checked' : '') + '> ' + escape(option.name) + '</label>').join('') : '<p>Метки не найдены</p>') + '</div>' +
         (selectedLabels.length > 1 ? '<p class="ozon-dev-menu-hint">Подходит хотя бы один выбранный вариант</p>' : '') + '</div>' : '') + '</div>';
-    const filters = '<div class="ozon-strategy-filters"><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-strategy-action="settings-open"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg> Настройки</button><button type="button" class="ozon-ext-btn" data-strategy-action="reload" ' + (state.loading ? 'disabled' : '') + '>' + (state.loaded ? 'Обновить задачи' : 'Загрузить задачи') + '</button><input id="ozon-strategy-search" type="search" placeholder="Поиск по ключу или названию" aria-label="Поиск по ключу или названию" value="' + escape(state.search) + '">' + componentCombo + typeCombo + labelCombo + '<div class="ozon-ext-toolbar-combo"><button type="button" class="ozon-ext-toolbar-trigger" data-strategy-action="sort-menu" aria-expanded="' + state.sortOpen + '"><span class="ozon-ext-toolbar-label">Сортировка: ' + (state.sort === 'created' ? 'Сначала новые' : 'Приоритет') + '</span><span class="ozon-ext-toolbar-chevron"></span></button>' + (state.sortOpen ? '<div class="ozon-ext-combo-popover ozon-ext-toolbar-popover"><button class="ozon-ext-combo-item" data-strategy-action="sort-pick" data-value="priority">Приоритет</button><button class="ozon-ext-combo-item" data-strategy-action="sort-pick" data-value="created">Дата: сначала новые</button></div>' : '') + '</div><button type="button" class="ozon-ext-btn ' + (state.hideCanceled ? '' : 'ozon-ext-btn-surface') + '" data-strategy-action="hide-canceled" aria-pressed="' + state.hideCanceled + '">Скрыть отменённые</button><button type="button" class="ozon-ext-btn ' + (state.hideDone ? '' : 'ozon-ext-btn-surface') + '" data-strategy-action="hide-done" aria-pressed="' + state.hideDone + '">Скрыть выполненные</button><button type="button" class="ozon-ext-btn ' + (state.onlyThemes ? '' : 'ozon-ext-btn-surface') + '" data-strategy-action="only-themes" aria-pressed="' + state.onlyThemes + '">Только тематики</button>' + ((state.search || state.component || state.issueType || state.labelFilter.size || state.onlyThemes || state.hideCanceled || state.hideDone) ? '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-strategy-action="reset-filters">Сбросить фильтры</button>' : '') + (state.loaded ? '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-strategy-action="create">+ Создать тематику</button>' : '') + '</div>' + (state.notice && !actions?.notify ? '<div class="ozon-strategy-notice" role="status">' + escape(state.notice) + ' <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-strategy-action="dismiss-notice" aria-label="Закрыть уведомление">✕</button></div>' : '') + (state.filtersError ? '<div class="ozon-strategy-message" role="alert">' + escape(state.filtersError) + ' <button type="button" class="ozon-ext-btn" data-strategy-action="retry-filters">Повторить</button></div>' : '');
+    const filters = '<div class="ozon-strategy-filters"><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-strategy-action="settings-open"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg> Настройки</button><button type="button" class="ozon-ext-btn" data-strategy-action="reload" ' + (state.loading ? 'disabled' : '') + '>' + (state.loaded ? 'Обновить задачи' : 'Загрузить задачи') + '</button><input id="ozon-strategy-search" type="search" placeholder="Поиск по ключу или названию" aria-label="Поиск по ключу или названию" value="' + escape(state.search) + '">' + componentCombo + typeCombo + labelCombo + depthControl() + '<div class="ozon-ext-toolbar-combo"><button type="button" class="ozon-ext-toolbar-trigger" data-strategy-action="sort-menu" aria-expanded="' + state.sortOpen + '"><span class="ozon-ext-toolbar-label">Сортировка: ' + (state.sort === 'created' ? 'Сначала новые' : 'Приоритет') + '</span><span class="ozon-ext-toolbar-chevron"></span></button>' + (state.sortOpen ? '<div class="ozon-ext-combo-popover ozon-ext-toolbar-popover"><button class="ozon-ext-combo-item" data-strategy-action="sort-pick" data-value="priority">Приоритет</button><button class="ozon-ext-combo-item" data-strategy-action="sort-pick" data-value="created">Дата: сначала новые</button></div>' : '') + '</div><button type="button" class="ozon-ext-btn ' + (state.hideCanceled ? '' : 'ozon-ext-btn-surface') + '" data-strategy-action="hide-canceled" aria-pressed="' + state.hideCanceled + '">Скрыть отменённые</button><button type="button" class="ozon-ext-btn ' + (state.hideDone ? '' : 'ozon-ext-btn-surface') + '" data-strategy-action="hide-done" aria-pressed="' + state.hideDone + '">Скрыть выполненные</button><button type="button" class="ozon-ext-btn ' + (state.onlyThemes ? '' : 'ozon-ext-btn-surface') + '" data-strategy-action="only-themes" aria-pressed="' + state.onlyThemes + '">Только тематики</button>' + ((state.search || state.component || state.issueType || state.labelFilter.size || state.onlyThemes || state.hideCanceled || state.hideDone) ? '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-strategy-action="reset-filters">Сбросить фильтры</button>' : '') + (state.loaded ? '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-strategy-action="create">+ Создать тематику</button>' : '') + '</div>' + (state.notice && !actions?.notify ? '<div class="ozon-strategy-notice" role="status">' + escape(state.notice) + ' <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-strategy-action="dismiss-notice" aria-label="Закрыть уведомление">✕</button></div>' : '') + (state.filtersError ? '<div class="ozon-strategy-message" role="alert">' + escape(state.filtersError) + ' <button type="button" class="ozon-ext-btn" data-strategy-action="retry-filters">Повторить</button></div>' : '');
     const visibleColumns = layout.order.filter(id => !layout.hidden.includes(id));
-    const settings = state.settings ? '<aside class="ozon-dev-settings ozon-dev-settings-stable ozon-strategy-settings" role="dialog" aria-label="Настройки таблицы"><header class="ozon-dev-editor-head"><strong>Настройки таблицы</strong><button class="ozon-ext-btn ozon-ext-btn-surface" data-dev-action="settings-cancel" data-strategy-action="settings-close" aria-label="Закрыть">✕</button></header><strong>Порядок столбцов</strong><p class="ozon-dev-menu-hint">Ширину можно менять за границу заголовка таблицы.</p><div>' + layout.order.map((id,index) => '<div class="ozon-dev-group-option"><label class="ozon-dev-column-label"><input type="checkbox" data-strategy-column-visible="' + id + '" ' + (!layout.hidden.includes(id) ? 'checked' : '') + ' ' + (id === 'task' || (!layout.hidden.includes(id) && visibleColumns.length === 1) ? 'disabled' : '') + '> ' + escape(columnTitles[id]) + '</label><button class="ozon-ext-btn ozon-ext-btn-surface" data-strategy-action="column-move" data-column="' + id + '" data-direction="-1" aria-label="Поднять ' + escape(columnTitles[id]) + '" ' + (index <= 1 ? 'disabled' : '') + '>↑</button><button class="ozon-ext-btn ozon-ext-btn-surface" data-strategy-action="column-move" data-column="' + id + '" data-direction="1" aria-label="Опустить ' + escape(columnTitles[id]) + '" ' + (index === 0 || index === layout.order.length-1 ? 'disabled' : '') + '>↓</button></div>').join('') + '</div><footer><button class="ozon-ext-btn ozon-ext-btn-surface" data-strategy-action="columns-reset">По умолчанию</button><button class="ozon-ext-btn" data-strategy-action="settings-close">Готово</button></footer></aside>' : '';
+    const settings = state.settings ? '<aside class="ozon-dev-settings ozon-dev-settings-stable ozon-strategy-settings" role="dialog" aria-label="Настройки таблицы"><header class="ozon-dev-editor-head"><strong>Настройки таблицы</strong><button class="ozon-ext-btn ozon-ext-btn-surface" data-dev-action="settings-cancel" data-strategy-action="settings-close" aria-label="Закрыть">✕</button></header><strong>Порядок столбцов</strong><p class="ozon-dev-menu-hint">Ширину можно менять за границу заголовка таблицы.</p>' + (groupingUi?.html('strategy-columns',layout.order,columnTitles,'data-strategy-column-visible',{hidden:layout.hidden,locked:['task']}) || '') + '<footer><button class="ozon-ext-btn ozon-ext-btn-surface" data-strategy-action="columns-reset">По умолчанию</button><button class="ozon-ext-btn" data-strategy-action="settings-close">Готово</button></footer></aside>' : '';
     if (state.loading) return '<section class="ozon-strategy-dashboard">' + header + filters + '<div class="ozon-strategy-message" role="status">' + escape(state.progress) + Array.from({length:8}, () => '<div class="ozon-ext-skeleton" style="height:25px;margin:10px 0"></div>').join('') + '</div>' + settings + '</section>';
     if (state.error) return '<section class="ozon-strategy-dashboard">' + header + filters + '<div class="ozon-strategy-message" role="alert">Не удалось загрузить все задачи FCRM: ' + escape(state.error) + '. <button type="button" class="ozon-ext-btn" data-strategy-action="reload">Повторить</button></div>' + settings + '</section>';
     if (!state.loaded) return '<section class="ozon-strategy-dashboard">' + header + filters + '<div class="ozon-strategy-message">Выберите фильтры и нажмите «Загрузить задачи». Для сохранения иерархии загружаются все задачи FCRM.</div>' + settings + '</section>';
@@ -233,7 +256,7 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
         const item = pending.pop()!; const node = nodes.get(item.key); const cycle = item.ancestors.has(item.key); const parentKey = item.path.split('|').at(-2) || ''; const epicRelation = Boolean(parentKey && node.epicKey === parentKey); const projectRelation=Boolean(parentKey && node.links.some((link:any) => { const inward=Boolean(link.inwardIssue); const target=inward ? link.inwardIssue : link.outwardIssue; const direction=inward ? link.type?.inward : link.type?.outward; return target?.key === parentKey && /задача проекта|project task/i.test(String(direction || '')); })); const contextOnly=filtering && !matches.has(item.key);
         const children = [...node.children].filter((key:any) => visible(key)).sort(compare);
         const exactMatch = !cycle && node.key === exact && matches.has(node.key);
-        const expanded = !cycle && !state.filterCollapsed.has(item.path) && (state.expanded.has(item.path) || Boolean(exact && contextOnly));
+        const expanded = !cycle && !state.filterCollapsed.has(item.path) && (state.expanded.has(item.path) || (treeDepth===null ? Boolean(exact && contextOnly) : item.depth < treeDepth));
         const toggle = children.length && !cycle ? '<button type="button" class="ozon-strategy-toggle" data-strategy-action="toggle" data-path="' + escape(item.path) + '" aria-expanded="' + expanded + '" aria-label="' + (expanded ? 'Свернуть ' : 'Развернуть ') + escape(node.key) + '">' + (expanded ? '▾' : '▸') + '</button>' : '<span class="ozon-strategy-toggle-spacer"></span>';
         const category = node.category === 'done' ? 'done' : node.category === 'indeterminate' ? 'progress' : 'todo';
         const epic = node.epicKey ? (nodes.get(node.epicKey) || epicMetadata.get(node.epicKey)) : null;
@@ -390,6 +413,13 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
     const issue = state.issues.find(item => item.key === key); if (issue) { issue.fields.labels = labels; invalidateGraph(); }
   }
   function bind(root: HTMLElement) {
+    const settings=root.querySelector<HTMLElement>('.ozon-strategy-settings');
+    if (settings) {settings.scrollTop=settingsScroll;settings.addEventListener('scroll',()=>{settingsScroll=settings.scrollTop;});}
+    groupingUi?.bind(root,order=>{layout.order=['task',...order];saveLayout();onRender();});
+    groupingUi?.bindDepth(root,value=>{
+      treeDepth=value==='manual' ? null : value==='all' ? Infinity : Number(value);
+      state.expanded.clear();state.filterCollapsed.clear();onRender();
+    });
     root.querySelectorAll<HTMLDetailsElement>('.ozon-strategy-copy-menu').forEach(menu => {
       menu.addEventListener('toggle', () => {
         if (!menu.open) return;
@@ -441,8 +471,13 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
       handle.addEventListener('keydown',event=>{if(event.key === 'ArrowLeft' || event.key === 'ArrowRight'){event.preventDefault();apply((handle.parentElement?.getBoundingClientRect().width || layout.widths[id])+(event.key === 'ArrowLeft' ? -10 : 10));saveLayout();}});
     });
     const toggle = (path:string) => {
-      if (exactIssueKey()) {
-        state.filterCollapsed.has(path) ? state.filterCollapsed.delete(path) : state.filterCollapsed.add(path);
+      if (treeDepth!==null || exactIssueKey()) {
+        const level=path.split('|').length-1;
+        if (treeDepth!==null && level>=treeDepth) {
+          state.expanded.has(path) ? state.expanded.delete(path) : state.expanded.add(path);
+        } else {
+          state.filterCollapsed.has(path) ? state.filterCollapsed.delete(path) : state.filterCollapsed.add(path);
+        }
       } else {
         state.expanded.has(path) ? state.expanded.delete(path) : state.expanded.add(path);
       }
@@ -478,8 +513,7 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
       if (button.dataset.strategyAction === 'hide-done') { state.hideDone=!state.hideDone; onRender(); return; }
       if (button.dataset.strategyAction === 'reset-filters') { state.search=''; state.filterCollapsed.clear(); state.component=''; state.issueType=''; state.labelFilter.clear(); state.labelOpen=false; state.labelQuery=''; state.onlyThemes=false; state.hideCanceled=false; state.hideDone=false; state.expanded.clear(); onRender(); return; }
       if (button.dataset.strategyAction === 'only-themes') { state.onlyThemes=!state.onlyThemes; onRender(); return; }
-      if (button.dataset.strategyAction === 'settings-open' || button.dataset.strategyAction === 'settings-close') { state.settings=button.dataset.strategyAction === 'settings-open'; onRender(); return; }
-      if (button.dataset.strategyAction === 'column-move') { const index=layout.order.indexOf(button.dataset.column || ''), next=index+Number(button.dataset.direction); if (index>0 && next>0 && next<layout.order.length) { [layout.order[index],layout.order[next]]=[layout.order[next],layout.order[index]]; saveLayout(); } onRender(); return; }
+      if (button.dataset.strategyAction === 'settings-open' || button.dataset.strategyAction === 'settings-close') { state.settings=button.dataset.strategyAction === 'settings-open'; if (state.settings) settingsScroll=0; onRender(); return; }
       if (button.dataset.strategyAction === 'columns-reset') { layout.order=[...defaultOrder]; layout.widths={...defaultWidths}; layout.hidden=[...defaultHidden]; saveLayout(); onRender(); return; }
       if (button.dataset.strategyAction === 'dismiss-notice') { state.notice=''; onRender(); return; }
       if (button.dataset.strategyAction === 'reload') { await load(); return; }

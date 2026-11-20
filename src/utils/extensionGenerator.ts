@@ -8,8 +8,10 @@ import { createSprintReportDashboard } from '../services/sprintReportDashboard';
 import { createStrategicDashboard } from '../services/strategicDashboard';
 import { createTaskDetailsSidebar } from '../services/taskDetailsSidebar';
 import { bindJiraLabelSuggestions } from '../services/jiraLabelSuggestions';
+import { createJiraGroupingUi } from '../services/jiraGroupingUi';
+import { createJiraPeopleUi } from '../services/jiraPeopleUi';
 
-export const EXTENSION_VERSION = '3.5.167';
+export const EXTENSION_VERSION = '3.5.168';
 
 export function generateManifestJson(config: ExtensionConfig): string {
   const manifest = {
@@ -587,12 +589,14 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-report-legend {color:#40536e;font-size:12px}.ozon-report-legend>span::before {content:'';display:inline-block;width:18px;border-top:2px solid #005bff;vertical-align:middle;margin-right:6px}.ozon-report-legend>span:nth-child(2)::before {border-top:2px dashed #7b5ab8}.ozon-report-legend>small {color:#64748b}
 .ozon-report-daybar,.ozon-report-tools {margin:8px 0 12px}.ozon-report-tools input {width:min(280px,100%)}.ozon-report-filter {display:flex;align-items:center;gap:6px}
 .ozon-report-projectbar {display:flex;align-items:center;gap:8px;margin:0 0 7px;font-size:12px;color:#334155;font-weight:600}
+.ozon-report-view-options {display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:0 0 8px}
+.ozon-report-view-options .ozon-report-projectbar {margin:0}
 .ozon-report-projects {margin-bottom:12px;border:1px solid #dae4f1;border-radius:10px;background:#fff}
 .ozon-report-projects small,.ozon-report-group small {font-size:11px;color:#536682;font-weight:400}
 .ozon-report-projects .ozon-report-project-selected>td,.ozon-report-projects .ozon-report-project-selected>th {background:#eaf3ff}
 .ozon-report-leaders {display:grid;gap:7px}
 .ozon-report-leader {display:flex;align-items:center;gap:7px;min-width:136px;color:#071026}
-.ozon-report-leader>span:last-child {display:grid;gap:2px;min-width:0}
+.ozon-report-leader-name {display:grid;gap:2px;min-width:0}
 .ozon-report-leader strong {font-size:11.5px;line-height:1.25}
 .ozon-report-leader small {font-size:11px;color:#536682}
 .ozon-report-leader-avatar {position:relative;display:grid;place-items:center;width:26px;height:26px;flex:0 0 26px;border-radius:50%;overflow:hidden;background:#e7eff9;color:#40536e;font-size:10px;font-weight:650}
@@ -603,15 +607,19 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-report-streams h2 {font-size:14px;margin:0 0 4px}
 .ozon-report-streams p {font-size:12px;color:#52647d;margin:0 0 10px}
 .ozon-report-streams table {min-width:360px}
+.ozon-report-rollup-wrap {max-height:270px;scrollbar-gutter:stable}
+.ozon-report-rollup-wrap thead th {position:sticky;top:0;z-index:1}
 .ozon-report-streams thead th:first-child {width:54%}
 .ozon-report-streams td {font-variant-numeric:tabular-nums;white-space:nowrap}
 .ozon-report-streams td small {margin-left:8px;color:#52647d;font-size:11px}
 .ozon-report-streams tbody tr:not(.ozon-report-stream-project)>th {padding-left:24px;background:#fff;font-weight:400}
 .ozon-report-stream-project td,.ozon-report-streams tfoot td {background:#f1f5fb}
+.ozon-report-epic-title {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ozon-report-stream-chip {flex:none;padding:2px 6px;border-radius:6px;background:#eaf1fa;color:#435872;font-size:10px;font-weight:500;white-space:nowrap}
 .ozon-report-day-breakdown {margin:0 0 12px}.ozon-report-day-breakdown>div {margin-top:6px}
 .ozon-report-table-wrap {overflow:auto}.ozon-report-table-wrap table {width:100%;border-collapse:collapse;text-align:left}.ozon-report-table-wrap th,.ozon-report-table-wrap td {padding:8px;border-bottom:1px solid #e4ecf6;vertical-align:top}.ozon-report-table-wrap th {background:#f1f5fb;color:#334155;font-size:11.5px}.ozon-report-table-wrap td:first-child,.ozon-report-table-wrap td:last-child {white-space:nowrap}.ozon-report-table-wrap td:nth-child(2) {min-width:100px}.ozon-report-table-wrap td:last-child {white-space:normal}.ozon-report-table-wrap tr:hover td {background:#f7faff}
 .ozon-report-tree-wrap .ozon-report-tree {table-layout:fixed;min-width:810px}
-.ozon-report-tree .ozon-report-tree-key {width:218px}
+.ozon-report-tree .ozon-report-tree-key {width:calc(170px + var(--report-depth) * 16px)}
 .ozon-report-tree .ozon-report-tree-assignee {width:16%}
 .ozon-report-tree .ozon-report-tree-time {width:58px}
 .ozon-report-tree .ozon-report-tree-status {width:23%}
@@ -620,15 +628,56 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-report-tree-line {display:flex;align-items:center;gap:7px;min-width:0;padding-left:calc(var(--report-depth) * 16px);background:repeating-linear-gradient(to right,#d7e2f0 0 1px,transparent 1px 16px) 8px center/calc(var(--report-depth) * 16px) 100% no-repeat}
 .ozon-report-group th>div>span {overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .ozon-report-group th small {white-space:nowrap}
-.ozon-report-group th button {flex:0 0 16px;border:0;border-radius:4px;background:transparent;color:#005bff;padding:0;cursor:pointer}
-.ozon-report-group th button:not(:disabled):hover {background:#e3eeff}
-.ozon-report-group th button:disabled {cursor:default}
+.ozon-report button[data-report-group] {flex:0 0 16px;border:0;border-radius:4px;background:transparent;color:#005bff;padding:0;cursor:pointer}
+.ozon-report button[data-report-group]:not(:disabled):hover {background:#e3eeff}
+.ozon-report button[data-report-group]:disabled {cursor:default}
 .ozon-report-group-1 th {background:#f5f8fd}.ozon-report-group-2 th {background:#f8fafd}
 .ozon-report-task-key {display:flex;align-items:center;gap:7px;white-space:nowrap}
 .ozon-report-task-key .ozon-report-epic-edit {font-size:11px;line-height:1.2;padding:3px 6px}
 .ozon-report-table-wrap .ozon-report-assignee {display:inline-flex;align-items:center;gap:6px;max-width:200px;text-align:left;font-size:11px;line-height:1.2;padding:3px 6px}
 .ozon-report-assignee>span:first-child {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ozon-report-assignee.is-empty {color:#536682}
+#ozon-structure-root .ozon-person-line, .ozon-component-editor .ozon-person-line {display:flex;align-items:center;min-width:0;gap:5px}
+.ozon-person {display:inline-flex;align-items:center;gap:5px;min-width:0;vertical-align:middle;font-size:inherit}
+.ozon-person-name {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.ozon-person-avatar {position:relative;display:inline-grid;place-items:center;flex:0 0 20px;width:20px;height:20px;border-radius:50%;overflow:hidden;background:#e8eef7;color:#405775;font-size:8px;font-weight:700}
+.ozon-person-avatar img {position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#fff}
+.ozon-person-avatar img[hidden] {display:none}
+#ozon-structure-root button.ozon-person-copy,.ozon-component-editor button.ozon-person-copy {display:inline-grid;place-items:center;flex:0 0 21px;width:21px;height:22px;padding:0;border:0;border-radius:5px;background:transparent;color:#526782;cursor:pointer}
+#ozon-structure-root button.ozon-person-copy:hover,.ozon-component-editor button.ozon-person-copy:hover {background:#e5f0ff;color:#005bff}
+.ozon-person-copy:focus-visible,.ozon-grouping-order button:focus-visible {outline:2px solid #005bff;outline-offset:1px}
+.ozon-person-input>input,.ozon-person-line>.ozon-ext-cell-combo-trigger {flex:1;min-width:0}
+.ozon-person-line>.ozon-ext-cell-combo-trigger>.ozon-person {flex:1}
+.ozon-person-line>.ozon-report-assignee,.ozon-person-line>.component-editor-option {flex:1;min-width:0}
+.ozon-sb-author {color:#576a82;font-size:10.5px;max-width:min(275px,100%)}
+.ozon-sb-author>span:first-child {flex:none}
+.ozon-grouping-order {display:grid;gap:4px}
+.ozon-grouping-order p {margin:4px 0 6px;color:#576a82;font-size:11.5px}
+.ozon-grouping-level {position:relative;display:flex;align-items:center;gap:4px;padding:3px 5px;border:1px solid #e7edf5;border-radius:8px;background:#f8fafd;transform:translateY(var(--group-shift,0));min-height:32px}
+.ozon-grouping-level.is-dragging {z-index:2;background:white;border-color:#9dc1ff;box-shadow:0 4px 12px #1d427c32}
+.ozon-grouping-level label,.ozon-grouping-title {display:flex;align-items:center;gap:8px;flex:1;min-width:0}
+.ozon-grouping-level label {cursor:pointer}
+.ozon-depth-control {display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:0 7px;border:1px solid #d2deee;border-radius:9px;background:white;color:#526782;font-size:11px;white-space:nowrap}
+#ozon-structure-root .ozon-depth-control select {min-height:26px;padding:2px 14px 2px 2px;border:0;background:transparent;color:#071026;cursor:pointer;font:inherit;font-weight:600;max-width:170px}
+.ozon-depth-control:focus-within {border-color:#005bff;box-shadow:inset 0 0 0 1px #005bff}
+.ozon-grouping-level:not([data-group-enabled]) {background:#fff;color:#64748b}
+#ozon-structure-root :is(.ozon-grouping-grip,.ozon-grouping-step) {display:inline-grid;place-items:center;flex:0 0 25px;width:25px;height:26px;padding:0;border:0;border-radius:5px;color:#516783;background:transparent}
+#ozon-structure-root button.ozon-grouping-grip {cursor:grab;touch-action:none}
+#ozon-structure-root .is-dragging button.ozon-grouping-grip {cursor:grabbing}
+#ozon-structure-root button.ozon-grouping-step {cursor:pointer}
+#ozon-structure-root :is(.ozon-grouping-step,.ozon-grouping-grip):disabled,.ozon-grouping-level:not([data-group-enabled]) .ozon-grouping-grip {opacity:.35;cursor:default}
+#ozon-structure-root button:is(.ozon-grouping-grip,.ozon-grouping-step):not(:disabled):hover {background:#e5f0ff;color:#005bff}
+@media (prefers-reduced-motion: no-preference) {
+  #ozon-structure-root :is(button,a,input,select,summary,.ozon-depth-control,.ozon-ext-combo-item,.ozon-ext-user-option,.ozon-ext-cell-combo-trigger,.ozon-ext-sb-combo-trigger,.ozon-ext-section-head,.ozon-ext-view-tabs button,.ozon-ext-table tbody tr,.ozon-ext-table tbody td,.ozon-dev-table tbody td,.ozon-strategy-table tbody td,.ozon-report-tree tbody :is(th,td)),
+  .ozon-component-editor :is(button,input,label) {transition:background-color 150ms ease,border-color 150ms ease,color 150ms ease,box-shadow 150ms ease;}
+  #ozon-structure-root :is(.ozon-ext-toolbar-chevron,.ozon-ext-search-select-caret) {transition:transform 150ms ease,opacity 150ms ease;}
+  #ozon-structure-root .ozon-grouping-level:not(.is-dragging) {transition:transform 160ms cubic-bezier(.2,.7,.3,1),background-color 150ms ease,border-color 150ms ease;}
+  body>.ozon-component-editor {animation:ozon-editor-enter 160ms ease-out;}
+  @keyframes ozon-editor-enter {from {opacity:.55;translate:14px 0;} to {opacity:1;translate:0 0;}}
+}
+@media (prefers-reduced-motion: reduce) {
+  #ozon-structure-root *, body>.ozon-component-editor, body>.ozon-component-editor * {transition-duration:0s!important;animation-duration:0s!important;scroll-behavior:auto!important;}
+}
 .ozon-report-empty,.ozon-report-banner,.ozon-report-warning {padding:10px 12px;border-radius:8px;background:#eef4fb;color:#334155}.ozon-report-banner {display:flex;align-items:center;gap:8px;margin:0 0 12px}.ozon-report-warning {background:#fff4dc;color:#774600;margin:8px 0 12px}.ozon-report-warning:is(ul) {padding-left:28px}.ozon-report-history-warning {color:#884c06;display:inline-block}.ozon-report-method {margin-top:12px}.ozon-report-method summary {cursor:pointer}.ozon-report-method p {margin:6px 0 0}.ozon-report-panel [data-report-more] {margin-top:10px}
 @media(max-width:950px){.ozon-report-cards{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:700px){.ozon-report-inner{padding:12px}.ozon-report-panel{padding:10px}.ozon-report-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.ozon-report-sprint-field .ozon-report-options{width:100%}.ozon-report-legend>small{margin-left:0}}
@@ -1895,8 +1944,11 @@ export function generateContentScriptJs(
   let productDashboardLoaded = false;
   const renderBadge = (${renderJiraBadge.toString()});
   const jiraPriorityService = (${createJiraPriorityService.toString()})();
+  const jiraGroupingUi = (${createJiraGroupingUi.toString()})();
+  const jiraPeople = (${createJiraPeopleUi.toString()})();
+  jiraPeople.bind(document,showSaveToast);
   const bindLabelSuggestions = (${bindJiraLabelSuggestions.toString()});
-  const strategicDashboard = (${createStrategicDashboard.toString()})(() => { if (activeDashboardView === 'strategy') renderStructure(); }, renderBadge, ${JSON.stringify(EXTENSION_VERSION)}, jiraPriorityService, CONFIG.sprintFieldId, { boardId:CONFIG.rapidViewId, components:()=>loadIssueCreateComponents(CONFIG.projectKey), create:(summary,componentId)=>createIssueFromSidebar({kind:'epic',projectKey:CONFIG.projectKey,summary,componentId}), link:(source,target)=>createIssueLinkInJira(source,target,'projectTask',true,true), notify:(message)=>{ const update=showLinksSnackbar(message); update(message); }, details:openSharedFcrmDetails, bindLabelSuggestions });
+  const strategicDashboard = (${createStrategicDashboard.toString()})(() => { if (activeDashboardView === 'strategy') renderStructure(); }, renderBadge, ${JSON.stringify(EXTENSION_VERSION)}, jiraPriorityService, CONFIG.sprintFieldId, { boardId:CONFIG.rapidViewId, components:()=>loadIssueCreateComponents(CONFIG.projectKey), create:(summary,componentId)=>createIssueFromSidebar({kind:'epic',projectKey:CONFIG.projectKey,summary,componentId}), link:(source,target)=>createIssueLinkInJira(source,target,'projectTask',true,true), notify:(message)=>{ const update=showLinksSnackbar(message); update(message); }, details:openSharedFcrmDetails, bindLabelSuggestions },jiraGroupingUi);
   async function openSharedFcrmDetails(link) {
     if (!/^FCRM-[0-9]+$/i.test(link.key)) return;
     if (isSidebarOpen && selectedTaskKey !== link.key && !await confirmSidebarExit()) return;
@@ -1909,9 +1961,9 @@ export function generateContentScriptJs(
     selectedTaskKey = link.key; isSidebarOpen = true; isEditingDescription = false; collapsedSidebarSections.pt = true;
     reloadSingleTaskFromJira(link.key,true,true);
   }
-  const developmentDashboard = (${createDevelopmentDashboard.toString()})(() => renderStructure(), openSharedFcrmDetails,()=>{sbEpicComboOpen=false;sbCompComboOpen=false;sbIpCompOpenIdx=null;sbIpSprintOpenIdx=null;activeSearchSelectId='';}, renderBadge, getStatusCategoryClass, ${JSON.stringify(EXTENSION_VERSION)}, jiraPriorityService);
+  const developmentDashboard = (${createDevelopmentDashboard.toString()})(() => renderStructure(), openSharedFcrmDetails,()=>{sbEpicComboOpen=false;sbCompComboOpen=false;sbIpCompOpenIdx=null;sbIpSprintOpenIdx=null;activeSearchSelectId='';}, renderBadge, getStatusCategoryClass, ${JSON.stringify(EXTENSION_VERSION)}, jiraPriorityService,jiraGroupingUi);
   const sprintReport = (${createSprintReportDashboard.toString()})(() => { if (activeDashboardView === 'report') renderStructure(); }, (${createSprintReportModel.toString()})(),
-    [{id:String(CONFIG.rapidViewId),name:'FCRM'}, {id:'6197',name:'CS'}, {id:'7180',name:'CRM_CORE'}, {id:'12696',name:'CRM_BO'}], CONFIG.sprintFieldId, CONFIG.epicFieldId, renderBadge, isEpicIssueType);
+    [{id:String(CONFIG.rapidViewId),name:'FCRM'}, {id:'6197',name:'CS'}, {id:'7180',name:'CRM_CORE'}, {id:'12696',name:'CRM_BO'}], CONFIG.sprintFieldId, CONFIG.epicFieldId, renderBadge, isEpicIssueType,jiraPeople,()=>developmentDashboard.getState().grouping,jiraGroupingUi);
   const generatingLinkKeys = new Set();
   const ticketSearchStates = new Map();
   let draggedThreadChannel = null;
@@ -4510,6 +4562,16 @@ export function generateContentScriptJs(
     return users;
   }
 
+  function assignableUser(user) {
+    const person = jiraPeople.fromJira(user);
+    return {...person,name:user.name || user.key || user.displayName,displayName:person.name,email:user.emailAddress || ''};
+  }
+
+  function pickedAssignee(name, id, candidate) {
+    const match = candidate || assignableUsersList.find(user=>user.name===id);
+    return {name,login:match ? match.login : id || '',avatarUrl:match?.avatarUrl || '',role:'Ozon Банк'};
+  }
+
   // Живой поиск пользователей в Jira по ФИО или логину (отфильтровывая технические аккаунты с $)
   async function searchJiraUsers(query, issueKey) {
     const q = String(query || '').trim();
@@ -4536,7 +4598,7 @@ export function generateContentScriptJs(
         if (!isRealHumanJiraUser(u)) return;
         const login = u.name || u.key || u.displayName;
         if (login && u.displayName) {
-          const item = { name: login, displayName: u.displayName, email: u.emailAddress || '' };
+          const item = assignableUser(u);
           mergedMap.set(login, item);
           if (!assignableUsersList.some((ex) => ex.name === login)) assignableUsersList.push(item);
         }
@@ -4556,7 +4618,7 @@ export function generateContentScriptJs(
               if (!isRealHumanJiraUser(u)) return;
               const login = u.name || u.key || u.displayName;
               if (login && u.displayName) {
-                const item = { name: login, displayName: u.displayName, email: u.emailAddress || '' };
+                const item = assignableUser(u);
                 mergedMap.set(login, item);
                 if (!assignableUsersList.some((ex) => ex.name === login)) {
                   assignableUsersList.push(item);
@@ -5454,13 +5516,13 @@ export function generateContentScriptJs(
       if (f.assignee && (f.assignee.name || f.assignee.key) && f.assignee.displayName && isRealHumanJiraUser(f.assignee)) {
         const uLogin = f.assignee.name || f.assignee.key;
         if (!assignableUsersList.some((u) => u.name === uLogin)) {
-          assignableUsersList.push({ name: uLogin, displayName: f.assignee.displayName, email: f.assignee.emailAddress || '' });
+          assignableUsersList.push(assignableUser(f.assignee));
         }
       }
       if (f.reporter && (f.reporter.name || f.reporter.key) && f.reporter.displayName && isRealHumanJiraUser(f.reporter)) {
         const rLogin = f.reporter.name || f.reporter.key;
         if (!assignableUsersList.some((u) => u.name === rLogin)) {
-          assignableUsersList.push({ name: rLogin, displayName: f.reporter.displayName, email: f.reporter.emailAddress || '' });
+          assignableUsersList.push(assignableUser(f.reporter));
         }
       }
       const parsedOwner = extractCustomerOwnerFromIssueFields(f);
@@ -5558,8 +5620,8 @@ export function generateContentScriptJs(
           sprint: realSprint,
           epicKey: lEpicKey,
           epicName: (lEpicKey && epicNameByKey[lEpicKey]) || '',
-          assigneeName: (lf.assignee && lf.assignee.displayName) || '—',
-          authorName: (lf.reporter && lf.reporter.displayName) || (lf.creator && lf.creator.displayName) || '—',
+          assignee: jiraPeople.fromJira(lf.assignee),
+          author: jiraPeople.fromJira(lf.reporter || lf.creator),
           createdAt: lf.created ? formatDate(lf.created) : '—',
           createdTimestamp: lf.created ? new Date(lf.created).getTime() : 0,
           isUmbEpic: labelsArr.includes('fcrm_umb_epic') || umbKeysSet.has(lIss.key)
@@ -5734,8 +5796,8 @@ export function generateContentScriptJs(
           sprint: realLinkSprint,
           epicKey: lEpKey,
           epicName: lEpName,
-          assigneeName: (enriched && enriched.assigneeName) || '—',
-          authorName: (enriched && enriched.authorName) || '—',
+          assignee: enriched?.assignee || jiraPeople.fromJira(target.fields?.assignee),
+          author: enriched?.author || jiraPeople.fromJira(target.fields?.reporter || target.fields?.creator),
           createdAt: (enriched && enriched.createdAt) || '—',
           linkType: String((lnk.type && lnk.type.name) || ''),
           linkDirection: activeDirDesc
@@ -5768,15 +5830,8 @@ export function generateContentScriptJs(
         epicName: epicName,
         component: compName,
         components: Array.isArray(f.components) ? f.components.map((c) => c && c.name).filter(Boolean) : [],
-        assignee: {
-          name: (f.assignee && f.assignee.displayName) || 'Не назначен',
-          login: (f.assignee && (f.assignee.name || f.assignee.key)) || '',
-          role: (f.assignee && f.assignee.emailAddress) || 'Ozon Банк'
-        },
-        author: {
-          name: (f.reporter && f.reporter.displayName) || (f.creator && f.creator.displayName) || 'Неизвестен',
-          login: (f.reporter && (f.reporter.name || f.reporter.key)) || ''
-        },
+        assignee: {...jiraPeople.fromJira(f.assignee,'Не назначен'),role:f.assignee?.emailAddress || 'Ozon Банк'},
+        author: jiraPeople.fromJira(f.reporter || f.creator,'Неизвестен'),
         customer: {
           name: custName,
           login: parsedOwner.login || '',
@@ -5909,12 +5964,8 @@ export function generateContentScriptJs(
                   component: compName,
                   components: Array.isArray(f.components) ? f.components.map((c) => c && c.name).filter(Boolean) : [],
                   sprint: quickSprint || (forceFromJira ? 'Бэклог FCRM' : t.sprint),
-                  assignee: f.assignee
-                    ? {
-                        name: f.assignee.displayName || f.assignee.name || 'Не назначен',
-                        login: f.assignee.name || f.assignee.key || ''
-                      }
-                    : { name: 'Не назначен', login: '' },
+                  assignee: Object.hasOwn(f,'assignee') ? jiraPeople.fromJira(f.assignee,'Не назначен') : t.assignee,
+                  author: Object.hasOwn(f,'reporter') || Object.hasOwn(f,'creator') ? jiraPeople.fromJira(f.reporter || f.creator,'Неизвестен') : t.author,
                   customer:
                     parsedOwner && parsedOwner.name && parsedOwner.name !== 'Не указан'
                       ? parsedOwner
@@ -6584,8 +6635,9 @@ export function generateContentScriptJs(
                     .map(
                       (u) => \`
                         <div class="ozon-ext-combo-item \${u.displayName === task.assignee.name ? 'active' : ''}" style="\${comboItemStyle}" data-action="pick-table-assignee" data-key="\${escapeHtml(task.key)}" data-user-login="\${escapeHtml(u.name || '')}" data-user-display="\${escapeHtml(u.displayName)}">
-                          <span style="color:#071026;font-weight:600;overflow:hidden;text-overflow:ellipsis;">\${escapeHtml(u.displayName)}</span>
-                          \${u.name ? \`<span style="color:#64748B;font-size:10px;flex-shrink:0;">(\${escapeHtml(u.name)})</span>\` : ''}
+                          \${jiraPeople.badge({...u,name:u.displayName})}
+                          \${u.login ? \`<span style="color:#64748B;font-size:10px;flex-shrink:0;">\${escapeHtml(u.login)}</span>\` : ''}
+                          \${jiraPeople.copyButton(u)}
                         </div>
                       \`
                     )
@@ -6597,11 +6649,13 @@ export function generateContentScriptJs(
       \`;
     }
 
-    const assigneeCellHtml = \`
+    const assigneeCellHtml = \`<div class="ozon-person-line">
       <div class="ozon-ext-inner-ctrl ozon-ext-cell-combo-trigger" data-action="open-table-assignee-combo" data-key="\${escapeHtml(task.key)}" title="Исполнитель: \${escapeHtml(task.assignee.name)} (Нажмите для поиска сотрудника)">
-        <span style="color:\${task.assignee.name === 'Не назначен' ? '#94A3B8' : '#071026'};font-weight:500;font-size:11px;overflow:hidden;text-overflow:ellipsis;flex:1;">\${escapeHtml(task.assignee.name || 'Не назначен')}</span>
+        \${jiraPeople.badge(task.assignee,'Не назначен')}
         <span style="color:#94A3B8;font-size:9px;flex-shrink:0;">▾</span>
         \${assigneePopoverHtml}
+      </div>
+      \${jiraPeople.copyButton(task.assignee)}
       </div>
     \`;
 
@@ -6731,8 +6785,8 @@ export function generateContentScriptJs(
       component: \`<td style="overflow:visible;">\${compCellHtml}</td>\`,
       assignee: \`<td style="overflow:visible;">\${assigneeCellHtml}</td>\`,
       author: \`
-        <td title="\${escapeHtml(task.author.name)}" style="color:#475569;font-size:11px;">
-          <div class="ozon-ext-cell-singleline">\${escapeHtml(task.author.name)}</div>
+        <td style="color:#475569;font-size:11px;">
+          <div class="ozon-person-line">\${jiraPeople.badge(task.author)}\${jiraPeople.copyButton(task.author)}</div>
         </td>
       \`,
       customer: \`<td style="overflow:visible;">\${customerCellHtml}</td>\`,
@@ -6791,8 +6845,8 @@ export function generateContentScriptJs(
           status: \`<td><div class="ozon-ext-cell-singleline">\${getStatusBadgeHtml(l.status)}</div></td>\`,
           epic: \`<td>\${lEpicHtml}</td>\`,
           component: \`<td style="color:#071026;font-weight:600;"><div class="ozon-ext-cell-singleline" title="\${escapeHtml(l.component || 'Без компонента')}">\${escapeHtml(l.component || 'Без компонента')}</div></td>\`,
-          assignee: \`<td style="color:#475569;font-size:11px;"><div class="ozon-ext-cell-singleline" title="\${escapeHtml(l.assigneeName || '—')}">\${escapeHtml(l.assigneeName || '—')}</div></td>\`,
-          author: \`<td style="color:#64748B;font-size:11px;"><div class="ozon-ext-cell-singleline" title="\${escapeHtml(l.authorName || '—')}">\${escapeHtml(l.authorName || '—')}</div></td>\`,
+          assignee: \`<td><div class="ozon-person-line">\${jiraPeople.badge(l.assignee,l.assigneeName)}\${jiraPeople.copyButton(l.assignee)}</div></td>\`,
+          author: \`<td><div class="ozon-person-line">\${jiraPeople.badge(l.author,l.authorName)}\${jiraPeople.copyButton(l.author)}</div></td>\`,
           customer: \`<td style="color:#94A3B8;">—</td>\`,
           created: \`<td class="ozon-mono" style="color:#64748B;font-size:10.5px;"><div class="ozon-ext-cell-singleline">\${escapeHtml(l.createdAt || '—')}</div></td>\`,
           createdAt: \`<td class="ozon-mono" style="color:#64748B;font-size:10.5px;"><div class="ozon-ext-cell-singleline">\${escapeHtml(l.createdAt || '—')}</div></td>\`,
@@ -6993,10 +7047,9 @@ export function generateContentScriptJs(
         .map(
           (u) => \`
             <div class="ozon-ext-user-option" data-action="pick-jira-user" data-user-login="\${escapeHtml(u.name)}" data-user-display="\${escapeHtml(u.displayName)}">
-              <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                <strong style="color:#071026;">\${escapeHtml(u.displayName)}</strong>
-                <span style="color:#64748B;font-size:10.5px;margin-left:5px;">(\${escapeHtml(u.name)})</span>
-              </div>
+              \${jiraPeople.badge({...u,name:u.displayName})}
+              \${u.login ? '<small>' + escapeHtml(u.login) + '</small>' : ''}
+              \${jiraPeople.copyButton(u)}
               <span style="color:#005BFF;font-weight:700;font-size:10.5px;flex-shrink:0;">Выбрать</span>
             </div>
           \`
@@ -7281,7 +7334,7 @@ export function generateContentScriptJs(
             </a>
             <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-copy-task-link" title="Копировать ссылку и название" aria-label="Копировать ссылку и название" style="width:26px;height:26px;padding:4px;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></svg></button>
             <span style="color:#64748B;font-size:10px;white-space:nowrap;" title="Создана: \${escapeHtml(task.createdAt || '—')}">Создана: \${escapeHtml(task.createdAt || '—')}</span>
-            <span style="color:#64748B;font-size:10px;white-space:nowrap;" title="Автор: \${escapeHtml(task.author && task.author.name || '—')}">Автор: \${escapeHtml(task.author && task.author.name || '—')}</span>
+            <span class="ozon-person-line ozon-sb-author"><span>Автор</span>\${jiraPeople.badge(task.author)}\${jiraPeople.copyButton(task.author)}</span>
             \${getIssueTypeBadgeHtml(currentIssueType, true)}
           </div>
           <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
@@ -7417,8 +7470,10 @@ export function generateContentScriptJs(
                     <!-- Исполнитель с живым поиском по пользователям Jira (оформлено аналогично Заказчик/Owner) -->
                     <div class="ozon-ext-field-label">Исполнитель</div>
                     <div style="display:flex;flex-direction:column;gap:4px;">
-                      <div style="display:flex;gap:5px;">
+                      <div class="ozon-person-line ozon-person-input">
+                        \${jiraPeople.avatar(task.assignee)}
                         <input type="search" id="ozon-sb-user-search" value="\${escapeHtml(task.assignee.name)}" placeholder="🔍 Поиск Исполнителя по ФИО или логину..." style="flex:1;" />
+                        \${jiraPeople.copyButton(task.assignee)}
                       </div>
                       <div id="ozon-sb-user-results">
                         \${renderUserSearchResultsHtml(searchedUsersResults)}
@@ -8089,6 +8144,22 @@ export function generateContentScriptJs(
     }));
   }
 
+  let visibleMotionSurfaces = new Set();
+  function animateDashboardSurfaces(root) {
+    const next = new Set();
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    root.querySelectorAll('#ozon-ext-sidebar-panel,.ozon-ext-product-settings,#ozon-dev-editor-panel,.ozon-ext-toolbar-popover,.ozon-report-options,.ozon-ext-user-dropdown').forEach(panel=>{
+      const popover = panel.matches('.ozon-ext-toolbar-popover,.ozon-report-options,.ozon-ext-user-dropdown');
+      const control = panel.previousElementSibling;
+      const key = activeDashboardView + ':' + (panel.id || panel.className) + ':' + (control?.dataset.filter || control?.dataset.reportPicker || control?.getAttribute('aria-label') || control?.id || '');
+      next.add(key);
+      if (!reduceMotion && !visibleMotionSurfaces.has(key)) {
+        panel.animate([{opacity:.55,translate:popover ? '0 4px' : '12px 0'},{opacity:1,translate:'0 0'}],{duration:150,easing:'ease-out'});
+      }
+    });
+    visibleMotionSurfaces = next;
+  }
+
   function renderStructure() {
     let root = document.getElementById('ozon-structure-root');
     if (!isTargetBoardPage() || !isStructureVisible) {
@@ -8105,13 +8176,17 @@ export function generateContentScriptJs(
     if (activeDashboardView === 'report') {
       const top = root.querySelector('.ozon-report-scroll')?.scrollTop || 0;
       const tableLeft = root.querySelector('.ozon-report-tree-wrap')?.scrollLeft || 0;
+      const rollupTop = root.querySelector('.ozon-report-rollup-wrap')?.scrollTop || 0;
       root.innerHTML = renderDashboardNavigation() + sprintReport.html();
       bindDashboardNavigation(root);
       sprintReport.bind(root);
       const scroll = root.querySelector('.ozon-report-scroll');
       const tree = root.querySelector('.ozon-report-tree-wrap');
+      const rollup = root.querySelector('.ozon-report-rollup-wrap');
       if (tree) tree.scrollLeft = tableLeft;
+      if (rollup) rollup.scrollTop = rollupTop;
       if (scroll) scroll.scrollTop = top;
+      animateDashboardSurfaces(root);
       return;
     }
 
@@ -8130,6 +8205,7 @@ export function generateContentScriptJs(
       positionSidebarPickers(root);
       const nextScroll = root.querySelector('.ozon-strategy-scroll');
       if (nextScroll) { nextScroll.scrollTop = scrollTop; nextScroll.scrollLeft = scrollLeft; }
+      animateDashboardSurfaces(root);
       return;
     }
 
@@ -8148,11 +8224,13 @@ export function generateContentScriptJs(
       if (updatedScroll) { updatedScroll.scrollTop = scrollTop; updatedScroll.scrollLeft = scrollLeft; }
       restoreAllScrollPositions(sidebarScroll);
       positionSidebarPickers(root);
+      animateDashboardSurfaces(root);
       return;
     }
 
     // Сохраняем позицию скролла ВСЕХ контейнеров до любых изменений DOM
     const savedScroll = captureAllScrollPositions();
+    const settingsScroll = root.querySelector('.ozon-ext-product-settings')?.scrollTop || 0;
 
     const { filtered, doneCount } = getFilteredTasks();
     const rowsHtml = buildTableRowsHtml(filtered);
@@ -8168,10 +8246,10 @@ export function generateContentScriptJs(
     const statusFilterOptions = [{ value: 'all', label: 'Статус: Все' }, ...allStatuses.map(status => ({ value: status, label: status }))];
     const issueTypeFilterOptions = [{ value: 'all', label: 'Тип запроса: Все' }, ...Array.from(new Set([...projectIssueTypesList.map(type => type.name), ...(productDashboardLoaded ? tasks.map(task => task.issueTypeName || 'Задача') : [])])).sort((a,b) => a.localeCompare(b, 'ru')).map(name => ({ value: name, label: name }))];
     const treeLevelOptions = [
-      ...(productGroupingOrder.length ? [{ value: 'sprints', label: 'Уровень: ' + (productGroupingOrder[0] === 'sprint' ? 'Спринты' : 'Компоненты') }] : []),
-      ...(productGroupingOrder.length > 1 ? [{ value: 'components', label: 'Уровень: ' + (productGroupingOrder[1] === 'sprint' ? 'Спринты' : 'Компоненты') }] : []),
-      { value: 'tasks', label: 'Уровень: Задачи' },
-      { value: 'links', label: 'Уровень: Все связи' }
+      ...(productGroupingOrder.length ? [{ value: 'sprints', label: (productGroupingOrder[0] === 'sprint' ? 'Спринты' : 'Компоненты') }] : []),
+      ...(productGroupingOrder.length > 1 ? [{ value: 'components', label: (productGroupingOrder[1] === 'sprint' ? 'Спринты' : 'Компоненты') }] : []),
+      { value: 'tasks', label: 'Задачи' },
+      { value: 'links', label: 'Связанные задачи' }
     ];
     const sprintFilterOptions = [
       { value: 'open_future_backlog', label: 'Спринты: Активные, будущие и бэклог' },
@@ -8200,22 +8278,7 @@ export function generateContentScriptJs(
              <strong style="font-size:11px;color:#071026;">Настройка порядка столбцов</strong>
              <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-ext-reset-col-order" style="height:20px;padding:1px 6px;font-size:10px;">По умолчанию</button>
            </div>
-           <div style="display:flex;flex-direction:column;gap:3px;max-height:280px;overflow-y:auto;">
-             \${columnOrder
-               .map((colId, idx) => {
-                 const meta = colId === 'task' ? {label: 'Задача (' + [...productGroupingOrder.map((field) => field === 'sprint' ? 'Спринт' : 'Компонент'), 'Задача'].join(' → ') + ')'} : (COLUMN_META[colId] || { label: colId });
-                 return \`
-                   <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:3px 6px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:6px;font-size:11px;">
-                     <span style="color:#071026;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">\${idx + 1}. \${escapeHtml(meta.label)}</span>
-                     <div style="display:flex;gap:3px;flex-shrink:0;">
-                       <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-action="move-col-left" data-col-idx="\${idx}" \${idx === 0 ? 'disabled style="opacity:0.35;padding:1px 6px;height:20px;"' : 'style="padding:1px 6px;height:20px;"'} title="Сдвинуть левее">◀</button>
-                       <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-action="move-col-right" data-col-idx="\${idx}" \${idx === columnOrder.length - 1 ? 'disabled style="opacity:0.35;padding:1px 6px;height:20px;"' : 'style="padding:1px 6px;height:20px;"'} title="Сдвинуть правее">▶</button>
-                     </div>
-                   </div>
-                 \`;
-               })
-               .join('')}
-           </div>
+           \${jiraGroupingUi.html('product-columns',columnOrder,Object.fromEntries(columnOrder.map(id=>[id,(COLUMN_META[id]?.label || id).replace(/ ▾$/,'')])))}
          </div>\`
       : '';
 
@@ -8262,6 +8325,7 @@ export function generateContentScriptJs(
 
           <button type="button" \${!productDashboardLoaded || isInitialBoardLoading ? 'disabled' : ''} id="ozon-ext-toggle-done" aria-pressed="\${hideDone}" class="ozon-ext-btn \${hideDone ? '' : 'ozon-ext-btn-surface'}">\${doneToggleLabel(doneCount)}</button>
           \${renderToolbarFilter('issue-type', 'Тип запроса: Все', filterIssueType, issueTypeFilterOptions, 'Поиск типа запроса...')}
+          \${jiraGroupingUi.depthHtml('product',treeLevelOptions,tableTreeLevel === 'sprints' && !productGroupingOrder.length ? 'tasks' : tableTreeLevel,!productDashboardLoaded || isInitialBoardLoading)}
 
 
 
@@ -8275,9 +8339,8 @@ export function generateContentScriptJs(
 
         \${isColOrderPanelOpen ? \`<aside class="ozon-ext-product-settings" role="dialog" aria-label="Настройки таблицы" style="position:fixed;inset:0 0 0 auto;width:390px;max-width:100vw;z-index:2147483645;display:flex;flex-direction:column;gap:16px;padding:20px;background:#fff;box-shadow:-8px 0 32px #07102620;overflow:auto;">
           <div style="display:flex;align-items:center;justify-content:space-between;"><strong>Настройки таблицы</strong><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-ext-close-settings" aria-label="Закрыть">✕</button></div>
-          <div><strong>Уровень раскрытия</strong><div style="margin-top:8px;">\${renderToolbarFilter('tree', 'Уровень раскрытия', tableTreeLevel, treeLevelOptions, 'Поиск уровня...')}</div></div>
           <div><strong>Сортировка</strong><div style="margin-top:8px;">\${renderToolbarFilter("sort", "Сортировка", sortByField, sortFilterOptions, "Поиск варианта сортировки...")}</div></div>
-          <div><strong>Группировка</strong><p style="font-size:11px;color:#64748B;margin:7px 0;">Выберите поля и их порядок.</p>\${[...productGroupingOrder, ...['sprint','component'].filter((field) => !productGroupingOrder.includes(field))].map((field) => { const i = productGroupingOrder.indexOf(field); const label = field === 'sprint' ? 'Спринт' : 'Компонент'; return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0"><label style="display:flex;align-items:center;gap:8px;flex:1;cursor:pointer"><input type="checkbox" data-product-group="' + field + '" ' + (i >= 0 ? 'checked' : '') + '><span>' + label + '</span></label><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-product-move="' + field + '" data-direction="-1" aria-label="Переместить ' + label + ' выше" ' + (i <= 0 ? 'disabled' : '') + '>↑</button><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-product-move="' + field + '" data-direction="1" aria-label="Переместить ' + label + ' ниже" ' + (i < 0 || i === productGroupingOrder.length - 1 ? 'disabled' : '') + '>↓</button></div>'; }).join('')}</div>
+          <div><strong>Группировка</strong>\${jiraGroupingUi.html('product',productGroupingOrder,{sprint:'Спринт',component:'Компонент'},'data-product-group')}</div>
           <div><strong>Столбцы</strong><p style="font-size:11px;color:#64748B;">Ширину можно менять за границу заголовка таблицы.</p>\${colOrderPanelHtml}</div>
           <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-ext-reset-cols">Сбросить ширину</button>
           <button type="button" class="ozon-ext-btn" id="ozon-ext-done-settings">Готово</button>
@@ -8379,8 +8442,11 @@ export function generateContentScriptJs(
 
     // Восстанавливаем позицию прокрутки левой панели задач и правого сайдбара
     restoreAllScrollPositions(savedScroll);
+    const settings = root.querySelector('.ozon-ext-product-settings');
+    if (settings) settings.scrollTop = settingsScroll;
 
     decorateIssueCopyButtons(root);
+    animateDashboardSurfaces(root);
     bindStructureEvents(root);
     bindDashboardNavigation(root);
 
@@ -8758,7 +8824,6 @@ export function generateContentScriptJs(
         if (filter === 'sprint') filterSprintState = value;
         if (filter === 'sort') sortByField = value;
         if (filter === 'issue-type') filterIssueType = value;
-        if (filter === 'tree') applyTableTreeLevel(value);
         activeToolbarFilter = '';
         toolbarFilterSearch = '';
         if (filter === 'sprint' && productDashboardLoaded) { const covered = {all:['all','CLOSED','ACTIVE','FUTURE','BACKLOG','open_future','open_future_backlog'],open_future_backlog:['open_future_backlog','open_future','ACTIVE','FUTURE','BACKLOG'],open_future:['open_future','ACTIVE','FUTURE'],ACTIVE:['ACTIVE'],FUTURE:['FUTURE'],BACKLOG:['BACKLOG'],CLOSED:['CLOSED']}; statusMessage = (covered[loadedSprintMode] || []).includes(value) ? '' : 'Для выбранных спринтов нажмите «Обновить задачи»'; }
@@ -8871,7 +8936,18 @@ export function generateContentScriptJs(
 
     const saveProductGrouping = () => { localStorage.setItem(productGroupingStorage, JSON.stringify(productGroupingOrder)); groupByComponentInsideSprint = productGroupingOrder.length > 1; productExpandedGroups = {}; expandedSprints = {}; expandedComponents = {}; tableTreeLevel = 'sprints'; treeLevelApplied = false; renderStructure(); };
     root.querySelectorAll('[data-product-group]').forEach((input) => input.addEventListener('change', () => { const field = input.getAttribute('data-product-group'); productGroupingOrder = input.checked ? [...productGroupingOrder, field] : productGroupingOrder.filter((value) => value !== field); saveProductGrouping(); }));
-    root.querySelectorAll('[data-product-move]').forEach((button) => button.addEventListener('click', () => { const index = productGroupingOrder.indexOf(button.getAttribute('data-product-move')); const next = index + Number(button.getAttribute('data-direction')); if (index < 0 || next < 0 || next >= productGroupingOrder.length) return; [productGroupingOrder[index], productGroupingOrder[next]] = [productGroupingOrder[next], productGroupingOrder[index]]; saveProductGrouping(); }));
+    jiraGroupingUi.bind(root,(order,id)=>{
+      if (id === 'product') {productGroupingOrder=order;saveProductGrouping();return;}
+      if (id !== 'product-columns') return;
+      columnOrder=order;
+      try {localStorage.setItem(STORAGE_KEY_COL_ORDER,JSON.stringify(columnOrder));} catch (_) {}
+      renderStructure();
+    });
+    jiraGroupingUi.bindDepth(root,level=>{
+      if (level==='manual') return;
+      applyTableTreeLevel(level);
+      renderStructure();
+    });
 
     const toggleColOrderBtn = document.getElementById('ozon-ext-toggle-col-order');
     if (toggleColOrderBtn) {
@@ -8891,42 +8967,6 @@ export function generateContentScriptJs(
         renderStructure();
       });
     }
-
-    root.querySelectorAll('button[data-action="move-col-left"]').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const idx = Number(btn.getAttribute('data-col-idx'));
-        if (idx > 0) {
-          const next = [...columnOrder];
-          const tmp = next[idx - 1];
-          next[idx - 1] = next[idx];
-          next[idx] = tmp;
-          columnOrder = next;
-          try {
-            localStorage.setItem(STORAGE_KEY_COL_ORDER, JSON.stringify(columnOrder));
-          } catch (err) {}
-          renderStructure();
-        }
-      });
-    });
-
-    root.querySelectorAll('button[data-action="move-col-right"]').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const idx = Number(btn.getAttribute('data-col-idx'));
-        if (idx < columnOrder.length - 1) {
-          const next = [...columnOrder];
-          const tmp = next[idx + 1];
-          next[idx + 1] = next[idx];
-          next[idx] = tmp;
-          columnOrder = next;
-          try {
-            localStorage.setItem(STORAGE_KEY_COL_ORDER, JSON.stringify(columnOrder));
-          } catch (err) {}
-          renderStructure();
-        }
-      });
-    });
 
     // Drag & Drop заголовков столбцов <th>
     let draggedColId = null;
@@ -9275,12 +9315,13 @@ export function generateContentScriptJs(
             const firstMatch = tableUserSearchResults[0];
             const chosenDisplay = firstMatch ? firstMatch.displayName : val;
             const chosenLogin = firstMatch ? firstMatch.name : null;
+            const assignee = pickedAssignee(chosenDisplay,chosenLogin,firstMatch);
             activeTableCombo = null;
             tableUserSearchResults = [];
             tasks = tasks.map((t) =>
-              t.key === key ? Object.assign({}, t, { assignee: Object.assign({}, t.assignee, { name: chosenDisplay }) }) : t
+              t.key === key ? Object.assign({}, t, {assignee}) : t
             );
-            saveTaskOverride(key, { assignee: { name: chosenDisplay, login: chosenLogin || '', role: 'Ozon Банк' } });
+            saveTaskOverride(key, {assignee});
             updateIssueAssigneeInJira(key, chosenDisplay, chosenLogin);
             renderStructure();
           }
@@ -9330,12 +9371,13 @@ export function generateContentScriptJs(
         const key = item.getAttribute('data-key');
         const uLogin = item.getAttribute('data-user-login') || '';
         const uDisplay = item.getAttribute('data-user-display') || 'Не назначен';
+        const assignee = pickedAssignee(uDisplay,uLogin,tableUserSearchResults.find(user=>user.name===uLogin));
         activeTableCombo = null;
         tableUserSearchResults = [];
         tasks = tasks.map((t) =>
-          t.key === key ? Object.assign({}, t, { assignee: { name: uDisplay, login: uLogin, role: 'Ozon Банк' } }) : t
+          t.key === key ? Object.assign({}, t, {assignee}) : t
         );
-        saveTaskOverride(key, { assignee: { name: uDisplay, login: uLogin, role: 'Ozon Банк' } });
+        saveTaskOverride(key, {assignee});
         updateIssueAssigneeInJira(key, uDisplay, uLogin || null);
         renderStructure();
       });
@@ -9377,11 +9419,10 @@ export function generateContentScriptJs(
       opt.addEventListener('click', () => {
         const uLogin = opt.getAttribute('data-user-login');
         const uDisplay = opt.getAttribute('data-user-display');
+        const assignee = pickedAssignee(uDisplay,uLogin,searchedUsersResults.find(user=>user.name===uLogin));
         assigneeSearchQuery = '';
         searchedUsersResults = [];
-        updateCurrentTask({
-          assignee: { name: uDisplay, login: uLogin || '', role: 'Ozon Банк' }
-        });
+        updateCurrentTask({assignee});
         updateIssueAssigneeInJira(selectedTaskKey, uDisplay, uLogin);
         renderStructure();
       });
@@ -9939,7 +9980,7 @@ export function generateContentScriptJs(
       const chosenLogin = val === 'Не назначен' ? null : firstMatch ? firstMatch.name : null;
       assigneeSearchQuery = '';
       searchedUsersResults = [];
-      updateCurrentTask({ assignee: { name: chosenDisplay, login: chosenLogin || '', role: 'Ozon Банк' } });
+      updateCurrentTask({assignee:pickedAssignee(chosenDisplay,chosenLogin,chosenLogin ? firstMatch : null)});
       updateIssueAssigneeInJira(selectedTaskKey, chosenDisplay, chosenLogin);
       renderStructure();
     }
@@ -10701,17 +10742,17 @@ export function generateContentScriptJs(
       }
       const actual = fresh.fields.assignee;
       const name = actual?.displayName || actual?.name || actual?.key || '';
-      const assignee = {name:name || 'Не назначен',login:actual?.name || actual?.key || '',role:actual?.emailAddress || 'Ozon Банк'};
+      const assignee = {...jiraPeople.fromJira(actual,'Не назначен'),role:actual?.emailAddress || 'Ozon Банк'};
       tasks = tasks.map(task => {
         let updated = task.key === key ? Object.assign({},task,{assignee}) : task;
         for (const type of ['inProjectLinks','projectTaskLinks','otherLinks']) {
-          if (task[type]?.some(link => link.key === key)) updated = Object.assign({},updated,{[type]:task[type].map(link => link.key === key ? Object.assign({},link,{assigneeName:assignee.name}) : link)});
+          if (task[type]?.some(link => link.key === key)) updated = Object.assign({},updated,{[type]:task[type].map(link => link.key === key ? Object.assign({},link,{assignee}) : link)});
         }
         return updated;
       });
       if (tasks.some(task => task.key === key)) saveTaskOverride(key,{assignee});
       syncStrategyIssue({key,fields:fresh.fields});
-      sprintReport.updateTask(key,{assigneeName:name});
+      sprintReport.updateTask(key,{assigneeName:name,assignee:actual ? assignee : null});
       return key + ' → ' + assignee.name + '. Сохранено в Jira.';
     }
 
@@ -10823,7 +10864,8 @@ export function generateContentScriptJs(
           const selected = option.id === current?.id;
           const details = isSprint ? (option.state ? ' ' + getSprintStateBadgeHtml(option.name) : '') : (option.fields?.status?.name ? getStatusBadgeHtml(option.fields.status.name) : '');
           const secondaryText = !isSprint && option.id && (!isAssignee || option.id !== option.name) ? '<small class="ozon-planning-option-key">' + escapeHtml([option.id,...(option.fields?.components || []).map(component => component.name)].filter(Boolean).join(' · ')) + '</small>' : '';
-          return '<button type="button" class="component-editor-option' + (selected ? ' is-selected' : '') + '" aria-pressed="' + selected + '" data-option="' + index + '"' + (busy ? ' disabled' : '') + '><span class="ozon-planning-option-text">' + secondaryText + '<span>' + escapeHtml(option.name) + '</span></span>' + details + '</button>';
+          const row = '<button type="button" class="component-editor-option' + (selected ? ' is-selected' : '') + '" aria-pressed="' + selected + '" data-option="' + index + '"' + (busy ? ' disabled' : '') + '>' + (isAssignee ? jiraPeople.avatar(option.person) : '') + '<span class="ozon-planning-option-text">' + secondaryText + '<span>' + escapeHtml(option.name) + '</span></span>' + details + '</button>';
+          return isAssignee && option.person?.login ? '<div class="ozon-person-line">' + row + jiraPeople.copyButton(option.person) + '</div>' : row;
         }).join('') : '<p>Ничего не найдено</p>';
       }
 
@@ -10839,7 +10881,7 @@ export function generateContentScriptJs(
           const query = search.value.trim();
           const found = isAssignee
             ? (await requestAssignableJiraUsers(query,key,controller.signal)).filter(user=>user.active!==false && (user.name || user.key) && isRealHumanJiraUser(user))
-              .map(user=>({id:user.name || user.key,name:user.displayName || user.name || user.key}))
+              .map(user=>{const person=jiraPeople.fromJira(user);return {id:user.name || user.key,name:person.name,person};})
             : await searchPlanningEpics(key,query,fields.epicName,controller.signal,Boolean(reportAction));
           if (controller.signal.aborted || !panel.isConnected) return;
           options = query ? found : [...baseOptions(),...found.filter(option => option.id !== current?.id)];
@@ -10861,9 +10903,9 @@ export function generateContentScriptJs(
         timer = setTimeout(loadSearchOptions,220);
       });
       search.addEventListener('keydown', event => {
-        if (event.key === 'Enter' && displayed.length === 1 && list.firstElementChild?.matches('button')) {
+        if (event.key === 'Enter' && displayed.length === 1) {
           event.preventDefault();
-          list.firstElementChild.click();
+          list.querySelector('[data-option]')?.click();
         }
       });
       list.addEventListener('click',async event => {
@@ -10920,8 +10962,9 @@ export function generateContentScriptJs(
           } else if (isAssignee) {
             if (!Object.hasOwn(issue.fields || {},'assignee')) throw new Error('Не удалось прочитать исполнителя из Jira.');
             const user = issue.fields.assignee;
-            current = user ? {id:user.name || user.key,name:user.displayName || user.name || user.key} : empty;
-            currentCell.textContent = current.name;
+            const person = user ? jiraPeople.fromJira(user) : null;
+            current = person ? {id:user.name || user.key,name:person.name,person} : empty;
+            currentCell.innerHTML = '<span class="ozon-person-line">' + jiraPeople.badge(person,current.name) + jiraPeople.copyButton(person) + '</span>';
             void loadSearchOptions();
           } else {
             const id = planningEpicKey(issue.fields || {},fields.epic);
