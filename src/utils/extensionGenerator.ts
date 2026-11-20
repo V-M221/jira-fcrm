@@ -9,7 +9,7 @@ import { createStrategicDashboard } from '../services/strategicDashboard';
 import { createTaskDetailsSidebar } from '../services/taskDetailsSidebar';
 import { bindJiraLabelSuggestions } from '../services/jiraLabelSuggestions';
 
-export const EXTENSION_VERSION = '3.5.159';
+export const EXTENSION_VERSION = '3.5.160';
 
 export function generateManifestJson(config: ExtensionConfig): string {
   const manifest = {
@@ -544,25 +544,44 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-report-inner {max-width:1320px;padding:20px 24px 32px;margin:0 auto}
 .ozon-report-toolbar,.ozon-report-tools,.ozon-report-daybar,.ozon-report-sections,.ozon-report-legend {display:flex;align-items:center;flex-wrap:wrap;gap:10px}
 .ozon-report-toolbar {align-items:end;margin-bottom:18px}
-.ozon-report-toolbar label {display:grid;gap:5px;font-weight:600;color:#334155;font-size:12px}
-.ozon-report select,.ozon-report input {max-width:100%;border:1px solid #ccd8e7;border-radius:8px;padding:7px 10px;min-height:34px;background:#fff;color:#071026;font:inherit}
-.ozon-report-toolbar label:nth-child(2) {flex:1;min-width:min(240px,100%);max-width:410px}
-.ozon-report-toolbar .ozon-ext-btn {min-height:34px}
+.ozon-report-field {display:grid;gap:5px;font-weight:600;color:#334155;font-size:12px}
+.ozon-report input {max-width:100%;border:1px solid #ccd8e7;border-radius:8px;padding:7px 10px;min-height:30px;background:#fff;color:#071026;font:inherit}
+.ozon-report-toolbar .ozon-report-field:nth-child(2) {flex:1;min-width:min(250px,100%);max-width:420px}
+.ozon-report-toolbar .ozon-report-field:nth-child(2)>.ozon-ext-toolbar-combo {max-width:100%}
+.ozon-report-options {max-height:min(280px,50vh);overflow:auto;overscroll-behavior:contain}
+#ozon-structure-root .ozon-report-options .ozon-ext-combo-item {display:flex!important;align-items:center;gap:10px;justify-content:space-between}
+.ozon-report-options .ozon-ext-combo-item>span:first-child {flex:1;min-width:0;white-space:normal;overflow-wrap:anywhere}
+.ozon-report-field .ozon-ext-badge,.ozon-report-options .ozon-ext-badge {flex:none}
+.ozon-report-toolbar .ozon-ext-btn {min-height:30px}
 .ozon-report-period {display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;margin-bottom:12px}
-.ozon-report-period strong {font-size:18px}.ozon-report-period span,.ozon-report-hint,.ozon-report-tools>span,.ozon-report-method {color:#52647d}
+.ozon-report-period strong {font-size:18px}.ozon-report-period span:not(.ozon-ext-badge),.ozon-report-hint,.ozon-report-tools>span,.ozon-report-method {color:#52647d}
 .ozon-report-cards {display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;margin-bottom:16px}
 .ozon-report-card {display:grid;text-align:left;align-content:start;gap:6px;border:1px solid #dae4f1;border-radius:12px;padding:13px;background:#fff;color:#071026;font:inherit;cursor:pointer}
 .ozon-report-card:hover {border-color:#84aefb;background:#f8fbff}.ozon-report-card:focus-visible {outline:2px solid #005bff;outline-offset:2px}
 .ozon-report-card>span {font-size:12px;color:#334155;font-weight:600}.ozon-report-card strong {font-size:22px;line-height:1.2}.ozon-report-card small {color:#52647d;font-size:11.5px}
 .ozon-report-panel {margin-top:12px;background:#fff;border:1px solid #dae4f1;border-radius:12px;padding:16px}
 .ozon-report-panel h2 {font-size:16px;margin:0 0 12px}.ozon-report-panel>p {margin:0 0 10px}
-.ozon-report-graph {overflow-x:auto}.ozon-report-graph svg {display:block;width:100%;min-width:350px;max-height:210px}
+.ozon-report-graph {overflow-x:auto;position:relative;min-height:116px}.ozon-report-graph svg {display:block;width:100%;min-width:350px;max-height:210px}
+.ozon-report-graph-hit {cursor:crosshair}
+.ozon-report-tooltip {position:absolute;z-index:2;top:6px;min-width:145px;padding:8px 10px;border-radius:8px;background:#14223b;color:#fff;box-shadow:0 3px 12px #0f172a30;pointer-events:none;font-size:11.5px;line-height:1.45}
+.ozon-report-tooltip:not([hidden]) {display:grid;gap:2px}
+.ozon-report-tooltip>span:empty {display:none}
 .ozon-report-grid line {stroke:#dbe4f0;stroke-width:1}.ozon-report-grid text {fill:#52647d;font-size:12px}
 .ozon-report-line-scope,.ozon-report-line-remaining,.ozon-report-line-selected {fill:none;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}
 .ozon-report-line-scope {stroke:#7b5ab8;stroke-width:2;stroke-dasharray:6 4}.ozon-report-line-remaining {stroke:#005bff;stroke-width:2.5}.ozon-report-line-selected {stroke:#a9c3e9;stroke-width:1}
 .ozon-report-legend {margin:2px 0 12px;color:#40536e;font-size:12px}.ozon-report-legend>span::before {content:'';display:inline-block;width:18px;border-top:2px solid #005bff;vertical-align:middle;margin-right:6px}.ozon-report-legend>span:nth-child(2)::before {border-top:2px dashed #7b5ab8}.ozon-report-legend>small {margin-left:auto;color:#64748b}
 .ozon-report-daybar,.ozon-report-tools {margin:8px 0 12px}.ozon-report-tools input {width:min(280px,100%)}.ozon-report-filter {display:flex;align-items:center;gap:6px}
+.ozon-report-projectbar {display:flex;align-items:center;gap:8px;margin:0 0 7px;font-size:12px;color:#334155;font-weight:600}
+.ozon-report-projects {margin-bottom:12px;border:1px solid #dae4f1;border-radius:10px;background:#fff}
+.ozon-report-projects small,.ozon-report-group small {font-size:11px;color:#536682;font-weight:400}
+.ozon-report-projects .ozon-report-project-selected>td,.ozon-report-projects .ozon-report-project-selected>th {background:#eaf3ff}
+.ozon-report-day-breakdown {margin:0 0 12px}.ozon-report-day-breakdown>div {margin-top:6px}
 .ozon-report-table-wrap {overflow:auto}.ozon-report-table-wrap table {width:100%;border-collapse:collapse;text-align:left}.ozon-report-table-wrap th,.ozon-report-table-wrap td {padding:8px;border-bottom:1px solid #e4ecf6;vertical-align:top}.ozon-report-table-wrap th {background:#f1f5fb;color:#334155;font-size:11.5px}.ozon-report-table-wrap td:first-child,.ozon-report-table-wrap td:last-child {white-space:nowrap}.ozon-report-table-wrap td:nth-child(2) {min-width:100px}.ozon-report-table-wrap td:last-child {white-space:normal}.ozon-report-table-wrap tr:hover td {background:#f7faff}
+.ozon-report-group th>div {display:flex;align-items:center;gap:7px;min-width:0}
+.ozon-report-group th>div>span {overflow:hidden;text-overflow:ellipsis}
+.ozon-report-group th button {border:0;background:transparent;color:#005bff;padding:0 3px;cursor:pointer}
+.ozon-report-group-1 th>div {padding-left:16px}.ozon-report-group-2 th>div {padding-left:32px}
+.ozon-report-group-1 th {background:#f5f8fd}.ozon-report-group-2 th {background:#f8fafd}
 .ozon-report-empty,.ozon-report-banner,.ozon-report-warning {padding:10px 12px;border-radius:8px;background:#eef4fb;color:#334155}.ozon-report-banner {display:flex;align-items:center;gap:8px;margin:0 0 12px}.ozon-report-warning {background:#fff4dc;color:#774600;margin:8px 0 12px}.ozon-report-warning:is(ul) {padding-left:28px}.ozon-report-history-warning {color:#884c06;display:inline-block}.ozon-report-method {margin-top:12px}.ozon-report-method summary {cursor:pointer}.ozon-report-method p {margin:6px 0 0}.ozon-report-panel [data-report-more] {margin-top:10px}
 @media(max-width:700px){.ozon-report-inner{padding:12px}.ozon-report-panel{padding:10px}.ozon-report-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.ozon-report-legend>small{margin-left:0}}
 .ozon-strategy-table tbody tr.ozon-strategy-exact-match .ozon-strategy-task-cell {box-shadow:inset 3px 0 #005bff,3px 0 6px #0710260d}
@@ -1844,7 +1863,7 @@ export function generateContentScriptJs(
   }
   const developmentDashboard = (${createDevelopmentDashboard.toString()})(() => renderStructure(), openSharedFcrmDetails,()=>{sbEpicComboOpen=false;sbCompComboOpen=false;sbIpCompOpenIdx=null;sbIpSprintOpenIdx=null;activeSearchSelectId='';}, renderBadge, getStatusCategoryClass, ${JSON.stringify(EXTENSION_VERSION)}, jiraPriorityService);
   const sprintReport = (${createSprintReportDashboard.toString()})(() => { if (activeDashboardView === 'report') renderStructure(); }, (${createSprintReportModel.toString()})(),
-    [{id:String(CONFIG.rapidViewId),name:'FCRM'}, {id:'6197',name:'CS'}, {id:'7180',name:'CRM_CORE'}, {id:'12696',name:'CRM_BO'}], CONFIG.sprintFieldId);
+    [{id:String(CONFIG.rapidViewId),name:'FCRM'}, {id:'6197',name:'CS'}, {id:'7180',name:'CRM_CORE'}, {id:'12696',name:'CRM_BO'}], CONFIG.sprintFieldId, CONFIG.epicFieldId, renderBadge);
   const generatingLinkKeys = new Set();
   const ticketSearchStates = new Map();
   let draggedThreadChannel = null;
