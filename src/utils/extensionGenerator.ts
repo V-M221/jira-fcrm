@@ -9,7 +9,7 @@ import { createStrategicDashboard } from '../services/strategicDashboard';
 import { createTaskDetailsSidebar } from '../services/taskDetailsSidebar';
 import { bindJiraLabelSuggestions } from '../services/jiraLabelSuggestions';
 
-export const EXTENSION_VERSION = '3.5.164';
+export const EXTENSION_VERSION = '3.5.165';
 
 export function generateManifestJson(config: ExtensionConfig): string {
   const manifest = {
@@ -597,6 +597,8 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-report-group th button {border:0;background:transparent;color:#005bff;padding:0 3px;cursor:pointer}
 .ozon-report-group-1 th>div {padding-left:16px}.ozon-report-group-2 th>div {padding-left:32px}
 .ozon-report-group-1 th {background:#f5f8fd}.ozon-report-group-2 th {background:#f8fafd}
+.ozon-report-task-key {display:flex;align-items:center;gap:7px;white-space:nowrap}
+.ozon-report-task-key .ozon-report-epic-edit {font-size:11px;line-height:1.2;padding:3px 6px}
 .ozon-report-empty,.ozon-report-banner,.ozon-report-warning {padding:10px 12px;border-radius:8px;background:#eef4fb;color:#334155}.ozon-report-banner {display:flex;align-items:center;gap:8px;margin:0 0 12px}.ozon-report-warning {background:#fff4dc;color:#774600;margin:8px 0 12px}.ozon-report-warning:is(ul) {padding-left:28px}.ozon-report-history-warning {color:#884c06;display:inline-block}.ozon-report-method {margin-top:12px}.ozon-report-method summary {cursor:pointer}.ozon-report-method p {margin:6px 0 0}.ozon-report-panel [data-report-more] {margin-top:10px}
 @media(max-width:950px){.ozon-report-cards{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:700px){.ozon-report-inner{padding:12px}.ozon-report-panel{padding:10px}.ozon-report-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.ozon-report-sprint-field .ozon-report-options{width:100%}.ozon-report-legend>small{margin-left:0}}
@@ -1879,7 +1881,7 @@ export function generateContentScriptJs(
   }
   const developmentDashboard = (${createDevelopmentDashboard.toString()})(() => renderStructure(), openSharedFcrmDetails,()=>{sbEpicComboOpen=false;sbCompComboOpen=false;sbIpCompOpenIdx=null;sbIpSprintOpenIdx=null;activeSearchSelectId='';}, renderBadge, getStatusCategoryClass, ${JSON.stringify(EXTENSION_VERSION)}, jiraPriorityService);
   const sprintReport = (${createSprintReportDashboard.toString()})(() => { if (activeDashboardView === 'report') renderStructure(); }, (${createSprintReportModel.toString()})(),
-    [{id:String(CONFIG.rapidViewId),name:'FCRM'}, {id:'6197',name:'CS'}, {id:'7180',name:'CRM_CORE'}, {id:'12696',name:'CRM_BO'}], CONFIG.sprintFieldId, CONFIG.epicFieldId, renderBadge);
+    [{id:String(CONFIG.rapidViewId),name:'FCRM'}, {id:'6197',name:'CS'}, {id:'7180',name:'CRM_CORE'}, {id:'12696',name:'CRM_BO'}], CONFIG.sprintFieldId, CONFIG.epicFieldId, renderBadge, isEpicIssueType);
   const generatingLinkKeys = new Set();
   const ticketSearchStates = new Map();
   let draggedThreadChannel = null;
@@ -10546,7 +10548,7 @@ export function generateContentScriptJs(
       '[data-action="toggle-search-select"][data-select-id="sidebar-sprint"]',
       '[data-action="toggle-search-select"][data-select-id^="table-sprint-"]', '[data-action="open-ip-sprint-combo"]',
       '[data-strategy-action="edit-sprint"]', '[data-strategy-action="edit-epic"]',
-      '[data-dev-action="edit-sprint"]', '[data-dev-action="edit-epic"]'
+      '[data-dev-action="edit-sprint"]', '[data-dev-action="edit-epic"]', '[data-report-action="edit-epic"]'
     ].join(',');
 
     function planningFields() {
@@ -10554,7 +10556,7 @@ export function generateContentScriptJs(
       const development = developmentDashboard.planningFields();
       return {
         sprint: discoveredFields.sprint || strategy.sprint || development.sprint || CONFIG.sprintFieldId,
-        epic: discoveredFields.epicLink || strategy.epic || development.epic || CONFIG.epicFieldId,
+        epic: discoveredFields.epicLink || (activeDashboardView === 'report' && sprintReport.getState().epicField) || strategy.epic || development.epic || CONFIG.epicFieldId,
         epicName: discoveredFields.epicName || strategy.epicName || development.epicName
       };
     }
@@ -10616,10 +10618,14 @@ export function generateContentScriptJs(
       })).values()];
     }
 
-    async function searchPlanningEpics(key, search, epicName, signal) {
+    async function searchPlanningEpics(key, search, epicName, signal, fromReport) {
       const query = search.trim().replace(/["\\\\*?~]/g,' ').trim();
-      const exact = /(?:^|\\/browse\\/)((?:FCRM|OBPROJECT)-\\d+)(?:[/?#].*)?$/i.exec(query)?.[1].toUpperCase();
-      let jql = 'project in (FCRM, OBPROJECT) AND issuetype = Epic';
+      const projects = new Set(['FCRM','OBPROJECT']);
+      const ownProject = getIssueProjectKey(key);
+      if (fromReport && /^[A-Z][A-Z0-9_]*$/.test(ownProject)) projects.add(ownProject);
+      const requested = /(?:^|\\/browse\\/)([A-Z][A-Z0-9_]*-\\d+)(?:[/?#].*)?$/i.exec(query)?.[1].toUpperCase();
+      const exact = requested && (fromReport || projects.has(getIssueProjectKey(requested))) ? requested : '';
+      let jql = exact && fromReport ? 'issuetype = Epic' : 'project in (' + [...projects].join(', ') + ') AND issuetype = Epic';
       if (exact) jql += ' AND key = ' + JSON.stringify(exact);
       else if (query) {
         const text = JSON.stringify(query + '*');
@@ -10634,7 +10640,7 @@ export function generateContentScriptJs(
       if (!response.ok) throw new Error('Не удалось найти эпики в Jira (HTTP ' + response.status + ')');
       const data = await response.json();
       if (!Array.isArray(data.issues)) throw new Error('Jira не вернула список эпиков');
-      return data.issues.filter(issue => issue.key !== key && /^(FCRM|OBPROJECT)-\\d+$/.test(issue.key) && isEpicIssueType(issue.fields?.issuetype?.name))
+      return data.issues.filter(issue => issue.key !== key && /^[A-Z][A-Z0-9_]*-\\d+$/.test(issue.key) && (fromReport && exact ? issue.key === exact : projects.has(getIssueProjectKey(issue.key))) && isEpicIssueType(issue.fields?.issuetype?.name))
         .map(issue => ({id:issue.key,name:issue.fields.summary || issue.key,fields:issue.fields}));
     }
 
@@ -10688,6 +10694,7 @@ export function generateContentScriptJs(
       if (!isSprint) fresh.fields.epic = option.id ? {key:option.id,summary:option.fields?.summary || option.name} : null;
       syncStrategyIssue({key,fields:fresh.fields});
       const outsideDevelopment = developmentDashboard.applyPlanningField(key,kind,option);
+      if (!isSprint) sprintReport.applyEpic(key,option);
       if (!isSprint && option.id) void loadTableObprojectMetadata(new Set([option.id])).then(() => renderStructure());
 
       const outsideProduct = isSprint && activeDashboardView === 'product' && !matchesSprintState(option.id ? option.state.toUpperCase() : 'BACKLOG');
@@ -10702,6 +10709,7 @@ export function generateContentScriptJs(
       const panel = document.createElement('aside');
       planningEditor = panel;
       const isSprint = kind === 'sprint';
+      const fromReport = trigger?.matches('[data-report-action="edit-epic"]');
       const title = isSprint ? 'Спринт задачи' : 'Epic Link';
       panel.className = 'ozon-component-editor ozon-planning-editor';
       panel.setAttribute('role','dialog');
@@ -10750,7 +10758,7 @@ export function generateContentScriptJs(
         list.replaceChildren();
         setMessage('Ищем эпики…');
         try {
-          const found = await searchPlanningEpics(key,search.value,fields.epicName,controller.signal);
+          const found = await searchPlanningEpics(key,search.value,fields.epicName,controller.signal,fromReport);
           if (controller.signal.aborted || !panel.isConnected) return;
           options = search.value.trim() ? found : [...(current?.id ? [current] : []),empty,...found.filter(option => option.id !== current?.id)];
           setMessage('');
@@ -10788,6 +10796,7 @@ export function generateContentScriptJs(
           close(false);
           renderStructure();
           showSaveToast(notice);
+          if (fromReport && activeDashboardView === 'report') document.querySelector('[data-report-action="edit-epic"][data-key="' + CSS.escape(key) + '"]')?.focus({preventScroll:true});
         } catch (error) {
           busy = false;
           panel.dataset.busy = 'false';
@@ -10848,7 +10857,7 @@ export function generateContentScriptJs(
       const trigger = element?.closest(planningTriggers);
       if (!trigger?.closest('#ozon-structure-root') || element.closest('a, .ozon-copy-key-btn, [data-copy-issue-key]')) return;
       const id = trigger.getAttribute('data-select-id') || '';
-      const action = trigger.getAttribute('data-action') || trigger.getAttribute('data-strategy-action') || trigger.getAttribute('data-dev-action') || '';
+      const action = trigger.getAttribute('data-action') || trigger.getAttribute('data-strategy-action') || trigger.getAttribute('data-dev-action') || trigger.getAttribute('data-report-action') || '';
       let key = trigger.getAttribute('data-key') || '';
       if (trigger.id === 'ozon-sb-epic-trigger' || id === 'sidebar-sprint') key = selectedTaskKey;
       if (id.startsWith('table-sprint-')) key = id.slice('table-sprint-'.length);

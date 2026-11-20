@@ -18,9 +18,10 @@ export function createSprintReportModel() {
   const time = (value:any) => typeof value === 'number' ? value : Date.parse(value || '');
   const nameKey = (value:any) => String(value || '').trim().toLowerCase();
   const validKey = (value:any) => /^[A-Z][A-Z0-9_]*-\d+$/.test(String(value || ''));
+  const streamName = (value:any) => String(typeof value === 'string' ? value : value?.value || value?.name || '');
   const epicKeyFor = (fields:any, field?:string) => {
     const custom = field ? fields[field] : null;
-    const key = fields.epic?.key || (typeof custom === 'string' ? custom : custom?.key || custom?.value);
+    const key = field && Object.hasOwn(fields,field) ? (typeof custom === 'string' ? custom : custom?.key || custom?.value) : fields.epic?.key;
     return validKey(key) ? String(key) : '';
   };
 
@@ -177,12 +178,12 @@ export function createSprintReportModel() {
       const project = String(fields.project?.key || key.split('-')[0]);
       const epicKey = epicKeyFor(fields,input.epicField);
       const epic = input.epics?.get(epicKey);
-      const streamValue = epic?.customfield_24000 ?? fields.customfield_24000;
-      const stream = String(typeof streamValue === 'string' ? streamValue : streamValue?.value || streamValue?.name || '');
+      const taskStream = streamName(fields.customfield_24000);
+      const stream = epic?.customfield_24000 == null ? taskStream : streamName(epic.customfield_24000);
       const burned = issueEvents.reduce((sum,change) => sum + change.burned,0);
       const unfinished = memberAtEnd && !doneAtEnd;
       const carry = closed(sprint) && unfinished;
-      const row = {key,project,stream,epicKey,epicTitle:String(epic?.summary || fields.epic?.summary || fields.epic?.name || ''),
+      const row = {key,project,stream,taskStream,issueType:String(fields.issuetype?.name || ''),epicKey,epicTitle:String(epic?.summary || fields.epic?.summary || fields.epic?.name || ''),
         summary:fields.summary || fallback?.summary || key, started, startPoints:startSnapshot.points, startStatus:startSnapshot.status.name,
         endPoints:snapshot.points, endStatus:snapshot.status.name, memberAtEnd, doneAtEnd, added, removed, addedPoints, removedPoints, estimateDelta, completeHistory,
         addedDates:issueEvents.filter(change=>change.added).map(change=>dayOf(change.at)),
@@ -256,5 +257,5 @@ export function createSprintReportModel() {
     })) warnings.add('График истории и итоговый состав Jira расходятся. Сводка «Завершили» и «Не завершили» использует итоговый состав.');
     return {start,end,closed:closed(sprint),rows,events,days,metrics,byProject,pointsField,pointsName, warnings:[...warnings]};
   }
-  return {nativeScope,build,epicKeyFor};
+  return {nativeScope,build,epicKeyFor,streamName};
 }
