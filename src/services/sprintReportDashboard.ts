@@ -218,7 +218,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     const current=options.find(option=>option.id===selected);
     const open=state.picker===id;
     return '<div class="ozon-ext-toolbar-combo" data-report-picker-widget="' + id + '">' +
-      '<button type="button" class="ozon-ext-toolbar-trigger" data-report-picker="' + id + '" aria-label="' + escape(label) + '" aria-expanded="' + open + '" aria-haspopup="listbox"' + (!options.length ? ' disabled' : '') + '><span class="ozon-ext-toolbar-label">' + escape(current?.name || empty) + '</span>' + (current?.badge || '') + '<span class="ozon-ext-toolbar-chevron" aria-hidden="true"></span></button>' +
+      '<button type="button" class="ozon-ext-toolbar-trigger" data-report-picker="' + id + '" aria-label="' + escape(label) + '" aria-expanded="' + open + '" aria-haspopup="listbox"' + (!options.length ? ' disabled' : '') + '><span class="ozon-ext-toolbar-label"' + (id==='sprint' && current ? ' title="' + escape(current.name) + '"' : '') + '>' + escape(current?.name || empty) + '</span>' + (current?.badge || '') + '<span class="ozon-ext-toolbar-chevron" aria-hidden="true"></span></button>' +
       (open ? '<div class="ozon-ext-combo-popover ozon-ext-toolbar-popover ozon-report-options" role="listbox" aria-label="' + escape(label) + '">' +
         options.map(option=>'<button type="button" role="option" class="ozon-ext-combo-item ' + (option.id === selected ? 'active' : '') + '" data-report-choice="' + escape(option.id) + '" aria-selected="' + (option.id === selected) + '"><span>' + escape(option.name) + '</span>' + (option.badge || '') + '</button>').join('') + '</div>' : '') + '</div>';
   }
@@ -549,7 +549,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     const sprintOptions=state.sprints.map(sprint=>({id:String(sprint.id),name:sprint.name,badge:sprintBadge(sprint.state)}));
     return '<section class="ozon-report" aria-label="Отчёт по спринту"><header class="ozon-ext-header-bar"><strong>Отчёт по спринту</strong></header><div class="ozon-report-scroll"><div class="ozon-report-inner">' +
       '<div class="ozon-report-toolbar"><div class="ozon-report-field"><span>Доска</span>' + picker('board','Доска',state.board,boards) + '</div>' +
-      '<div class="ozon-report-field"><span>Спринт</span>' + picker('sprint','Спринт',state.sprint,sprintOptions,'Нет спринтов') + '</div>' +
+      '<div class="ozon-report-field ozon-report-sprint-field"><span>Спринт</span>' + picker('sprint','Спринт',state.sprint,sprintOptions,'Нет спринтов') + '</div>' +
       '<button type="button" class="ozon-ext-btn" data-report-refresh' + (state.loading ? ' disabled' : '') + '>' + (state.error ? 'Повторить' : 'Обновить отчёт') + '</button>' +
       (selected ? '<a class="ozon-ext-btn ozon-ext-btn-surface" href="' + escape(linkToJira()) + '" target="_blank" rel="noopener noreferrer">Отчёт в Jira ↗</a>' : '') + '</div>' +
       (state.loading ? '<div class="ozon-report-banner" role="status">' + spinner() + escape(state.loading) + '</div>' : '') +
