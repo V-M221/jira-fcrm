@@ -9,7 +9,7 @@ import { createStrategicDashboard } from '../services/strategicDashboard';
 import { createTaskDetailsSidebar } from '../services/taskDetailsSidebar';
 import { bindJiraLabelSuggestions } from '../services/jiraLabelSuggestions';
 
-export const EXTENSION_VERSION = '3.5.160';
+export const EXTENSION_VERSION = '3.5.161';
 
 export function generateManifestJson(config: ExtensionConfig): string {
   const manifest = {
@@ -561,15 +561,25 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-report-card>span {font-size:12px;color:#334155;font-weight:600}.ozon-report-card strong {font-size:22px;line-height:1.2}.ozon-report-card small {color:#52647d;font-size:11.5px}
 .ozon-report-panel {margin-top:12px;background:#fff;border:1px solid #dae4f1;border-radius:12px;padding:16px}
 .ozon-report-panel h2 {font-size:16px;margin:0 0 12px}.ozon-report-panel>p {margin:0 0 10px}
-.ozon-report-graph {overflow-x:auto;position:relative;min-height:116px}.ozon-report-graph svg {display:block;width:100%;min-width:350px;max-height:210px}
+.ozon-report-chart-toolbar,.ozon-report-chart-modes {display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.ozon-report-chart-toolbar {justify-content:space-between;margin:4px 0 10px}
+.ozon-report-chart {margin-bottom:12px}.ozon-report-chart + .ozon-report-chart {border-top:1px solid #e4ecf6;padding-top:12px}
+.ozon-report-chart h3 {margin:0 0 6px;font-size:13px;color:#071026}
+.ozon-report-graph {overflow-x:auto;position:relative;min-height:116px}.ozon-report-graph svg {display:block;width:100%;min-width:640px}
 .ozon-report-graph-hit {cursor:crosshair}
 .ozon-report-tooltip {position:absolute;z-index:2;top:6px;min-width:145px;padding:8px 10px;border-radius:8px;background:#14223b;color:#fff;box-shadow:0 3px 12px #0f172a30;pointer-events:none;font-size:11.5px;line-height:1.45}
 .ozon-report-tooltip:not([hidden]) {display:grid;gap:2px}
 .ozon-report-tooltip>span:empty {display:none}
-.ozon-report-grid line {stroke:#dbe4f0;stroke-width:1}.ozon-report-grid text {fill:#52647d;font-size:12px}
+.ozon-report-grid line {stroke:#dbe4f0;stroke-width:1;vector-effect:non-scaling-stroke}
+.ozon-report-grid .ozon-report-grid-day {stroke:#edf2f8}.ozon-report-grid .ozon-report-grid-day.is-major {stroke:#dbe4f0}
+.ozon-report-grid text,.ozon-report-axis-title {fill:#52647d;font-size:14px}
+.ozon-report-axis {fill:none;stroke:#97a9bf;stroke-width:1;vector-effect:non-scaling-stroke}.ozon-report-axis-title {font-weight:600;font-size:13px}
+.ozon-report-scope-dot {fill:#7b5ab8}.ozon-report-remaining-dot {fill:#005bff}
+.ozon-report-plot-label {font-size:14px;font-weight:650;stroke:#fff;stroke-width:3px;stroke-linejoin:round;paint-order:stroke}
+.ozon-report-plot-label.scope {fill:#614396}.ozon-report-plot-label.remaining {fill:#0048cb}.ozon-report-plot-label.shared {fill:#334155}
 .ozon-report-line-scope,.ozon-report-line-remaining,.ozon-report-line-selected {fill:none;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}
 .ozon-report-line-scope {stroke:#7b5ab8;stroke-width:2;stroke-dasharray:6 4}.ozon-report-line-remaining {stroke:#005bff;stroke-width:2.5}.ozon-report-line-selected {stroke:#a9c3e9;stroke-width:1}
-.ozon-report-legend {margin:2px 0 12px;color:#40536e;font-size:12px}.ozon-report-legend>span::before {content:'';display:inline-block;width:18px;border-top:2px solid #005bff;vertical-align:middle;margin-right:6px}.ozon-report-legend>span:nth-child(2)::before {border-top:2px dashed #7b5ab8}.ozon-report-legend>small {margin-left:auto;color:#64748b}
+.ozon-report-legend {color:#40536e;font-size:12px}.ozon-report-legend>span::before {content:'';display:inline-block;width:18px;border-top:2px solid #005bff;vertical-align:middle;margin-right:6px}.ozon-report-legend>span:nth-child(2)::before {border-top:2px dashed #7b5ab8}.ozon-report-legend>small {color:#64748b}
 .ozon-report-daybar,.ozon-report-tools {margin:8px 0 12px}.ozon-report-tools input {width:min(280px,100%)}.ozon-report-filter {display:flex;align-items:center;gap:6px}
 .ozon-report-projectbar {display:flex;align-items:center;gap:8px;margin:0 0 7px;font-size:12px;color:#334155;font-weight:600}
 .ozon-report-projects {margin-bottom:12px;border:1px solid #dae4f1;border-radius:10px;background:#fff}

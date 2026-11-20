@@ -106,18 +106,21 @@ assert.equal(model.nativeScope({contents:{completedIssues:[]}}),null);
 
 class ChartElement {
   children = new Map();
+  childLists = new Map();
   listeners = new Map();
   attributes = new Map();
   style = {};
   hidden = true;
   querySelector(selector) { return this.children.get(selector); }
-  querySelectorAll() { return []; }
+  querySelectorAll(selector) { return this.childLists.get(selector) || []; }
   addEventListener(event,listener) { this.listeners.set(event,listener); }
   setAttribute(name,value) { this.attributes.set(name,value); }
   append(selector) { const node = new ChartElement(); this.children.set(selector,node); return node; }
 }
 const root = new ChartElement();
-const chart = root.append('.ozon-report').append('.ozon-report-graph');
+const section = root.append('.ozon-report');
+const chart = new ChartElement();
+section.childLists.set('[data-report-chart]',[chart]);
 chart.getBoundingClientRect = () => ({left:0,width:960});
 chart.scrollLeft = 0;
 const graphSvg = chart.append('svg');
@@ -133,8 +136,17 @@ const {createSprintReportDashboard} = load('sprintReportDashboard',{
 });
 const dashboard = createSprintReportDashboard(()=>{},model,[{id:'1',name:'Test'}],'','',()=> '');
 Object.assign(dashboard.getState(),{report,project:'OBFRONT'});
+const html = dashboard.html();
+assert.match(html,/class="ozon-report-axis"/);
+assert.match(html,/class="ozon-report-axis-title"[^>]*>Story Points</);
+assert.match(html,/class="ozon-report-axis-title"[^>]*>День спринта · МСК</);
+assert.match(html,/class="ozon-report-plot-label remaining"[^>]*>5</);
+assert.match(html,/class="ozon-report-plot-label shared"[^>]*>8</);
+assert.equal([...html.matchAll(/class="ozon-report-grid-day/g)].length,report.days.length+1);
+assert.doesNotMatch(html,/data-report-chart-mode=/);
+const hitBounds = html.match(/class="ozon-report-graph-hit" x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"/).slice(1).map(Number);
 dashboard.bind(root);
-const move = index => hit.listeners.get('pointermove')({clientX:48 + 894 * index / report.days.length,clientY:80});
+const move = index => hit.listeners.get('pointermove')({clientX:hitBounds[0] + hitBounds[2] * index / report.days.length,clientY:hitBounds[1] + hitBounds[3]/2});
 move(3);
 assert.equal(tip.hidden,false);
 assert.equal(tip.querySelector('[data-tip-burned]').textContent,'Сожгли за день: 3 SP');
@@ -146,4 +158,15 @@ assert.equal(tip.querySelector('[data-tip-reopened]').textContent,'Вернул�
 hit.listeners.get('pointerleave')();
 assert.equal(tip.hidden,true);
 
-console.log('Sprint report checks passed: historical estimates, scope changes, reopening, Moscow day, closing cutoff, partial history, project/stream/epic breakdown and chart hover.');
+Object.assign(dashboard.getState(),{chartMode:'projects',project:''});
+const split = dashboard.html();
+assert.match(split,/data-report-chart-mode="projects" aria-pressed="true"/);
+assert.match(split,/<h3>OB<\/h3>/);
+assert.match(split,/<h3>OBFRONT<\/h3>/);
+const axes = [...split.matchAll(/<g class="ozon-report-grid">(.+?)<\/g>/g)].map(match=>match[1]);
+assert.equal(axes.length,2);
+assert.equal(axes[0],axes[1],'Both projects use an identical date and Story Point scale');
+Object.assign(dashboard.getState(),{chartMode:'total'});
+assert.equal([...dashboard.html().matchAll(/class="ozon-report-graph"/g)].length,1);
+
+console.log('Sprint report checks passed: history, scopes and project metrics, chart axes and value labels, hover and shared project scale.');
