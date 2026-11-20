@@ -61,6 +61,8 @@ const developmentDashboard = loadTranspiledModule(await readFile('src/services/d
 const jiraPriority = loadTranspiledModule(await readFile('src/services/jiraPriority.ts', 'utf8'));
 const strategicDashboard = loadTranspiledModule(await readFile('src/services/strategicDashboard.ts', 'utf8'));
 const jiraLabelSuggestions = loadTranspiledModule(await readFile('src/services/jiraLabelSuggestions.ts', 'utf8'));
+const sprintReportModel = loadTranspiledModule(await readFile('src/services/sprintReportModel.ts', 'utf8'));
+const sprintReportDashboard = loadTranspiledModule(await readFile('src/services/sprintReportDashboard.ts', 'utf8'));
 new Function('exports', 'require', 'module', compiled)(module.exports, (specifier) => {
   if (specifier === './structuredAnswer') return structuredAnswer;
   if (specifier === './answerMarkup') return answerMarkup;
@@ -69,6 +71,8 @@ new Function('exports', 'require', 'module', compiled)(module.exports, (specifie
   if (specifier === '../services/jiraPriority') return jiraPriority;
   if (specifier === '../services/strategicDashboard') return strategicDashboard;
   if (specifier === '../services/jiraLabelSuggestions') return jiraLabelSuggestions;
+  if (specifier === '../services/sprintReportModel') return sprintReportModel;
+  if (specifier === '../services/sprintReportDashboard') return sprintReportDashboard;
   return createRequire(import.meta.url)(specifier);
 }, module);
 const generator = module.exports;

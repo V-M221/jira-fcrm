@@ -112,6 +112,59 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
     const maxResults = Number(url.searchParams.get('maxResults') || 100);
     return json({ [property]: values.slice(startAt, startAt + maxResults), total: values.length, startAt, maxResults, isLast: startAt + maxResults >= values.length });
   };
+  const reportHistory = new Map<string,any>();
+  const reportSprints = new Map<string,any>();
+  const reportClock = Date.now();
+  const reportStatus = {
+    todo:{id:'1001',name:'К выполнению',statusCategory:{key:'new'}},
+    progress:{id:'1002',name:'В работе',statusCategory:{key:'indeterminate'}},
+    review:{id:'1003',name:'Ревью',statusCategory:{key:'indeterminate'}},
+    done:{id:'1004',name:'Готово',statusCategory:{key:'done'}}
+  };
+  const reportConfiguration = {
+    estimation:{type:'field',field:{fieldId:'customfield_10002',displayName:'Story Points'}},
+    columnConfig:{columns:[{statuses:[{id:'1001'}]},{statuses:[{id:'1002'},{id:'1003'}]},{statuses:[{id:'1004'}]}]}
+  };
+  const reportSprint = (id:number, board:number, name:string, state:string) => {
+    const closed=state==='closed', day=86400000;
+    const start=new Date(reportClock-(closed?22:8)*day).toISOString();
+    const end=new Date(reportClock+(closed?-9:6)*day).toISOString();
+    const data={id,originBoardId:board,name,state,startDate:start,endDate:end,...(closed ? {completeDate:end} : {})};
+    reportSprints.set(String(id),data);
+    return data;
+  };
+  const fcrmActive = sprint(firstSprint);
+  if (fcrmActive) Object.assign(fcrmActive,reportSprint(fcrmActive.id,Number(config.rapidViewId),fcrmActive.name,'active'));
+  const fcrmClosed = reportSprint(99100,Number(config.rapidViewId),'FCRM · предыдущий спринт','closed');
+  const csActive = reportSprint(86053,6197,'CS #74 (03.11 – 16.11)','active');
+  const csClosed = reportSprint(85000,6197,'CS #73 (20.10 – 02.11)','closed');
+  reportSprint(99011,7180,'CRM_CORE #12 (03.11 – 16.11)','active');
+  reportSprint(99021,12696,'CRM_BO #12 (03.11 – 16.11)','active');
+
+  function previewSprintReport(selected:any) {
+    const status = (from:keyof typeof reportStatus,to:keyof typeof reportStatus) => ({
+      field:'status',from:reportStatus[from].id,fromString:reportStatus[from].name,to:reportStatus[to].id,toString:reportStatus[to].name
+    });
+    const membership = (adding:boolean) => ({field:'Sprint',from:adding ? null : String(selected.id),to:adding ? String(selected.id) : null,fromString:adding ? '' : selected.name,toString:adding ? selected.name : ''});
+    const change = (day:number,...items:any[]) => ({created:new Date(Date.parse(selected.startDate)+day*86400000+7200000).toISOString(),items});
+    const base = 200000 + Number(selected.id)*10;
+    const project = selected.originBoardId === Number(config.rapidViewId) ? 'FCRM' : 'OB';
+    const make = (number:number, summary:string, points:number | null, finalStatus:keyof typeof reportStatus, member:boolean, histories:any[]) => {
+      const key = project + '-' + (base+number);
+      const history={key,fields:{summary:'[Демо] ' + summary,created:new Date(Date.parse(selected.startDate)-86400000).toISOString(),issuetype:{name:'Задача',subtask:false},
+        status:reportStatus[finalStatus],customfield_10002:points,[config.sprintFieldId]:member ? [selected] : [],sprint:member && selected.state === 'active' ? selected : null,
+        closedSprints:member && selected.state === 'closed' ? [selected] : []},changelog:{histories,startAt:0,total:histories.length}};
+      reportHistory.set(key,history);
+      return {key,summary:history.fields.summary,statusId:history.fields.status.id,statusName:history.fields.status.name};
+    };
+    const a=make(1,'Автозаполнение реквизитов клиента',5,'done',true,[change(0,status('todo','progress')),change(2,status('progress','review')),change(3,status('review','done'))]);
+    const b=make(2,'Уведомление об истечении срока договора',13,'progress',true,[change(0,status('todo','progress')),change(2,{field:'Story Points',fieldId:'customfield_10002',from:'8',to:'13'}),change(4,status('progress','done')),change(5,status('done','progress'))]);
+    const c=make(3,'Фильтр по сегменту в карточке клиента',3,'progress',false,[change(1,status('todo','progress')),change(3,membership(false))]);
+    const d=make(4,'Проверка лимита при оформлении заявки',2,'done',true,[change(1,membership(true)),change(2,status('todo','progress')),change(5,status('progress','done'))]);
+    const e=make(5,'Уточнение требований к журналу операций',null,'todo',true,[]);
+    const f=make(6,'Текст ошибки для недоступного сервиса',1,'todo',false,[change(1,membership(true)),change(4,membership(false))]);
+    return {contents:{completedIssues:[a,d],issuesNotCompletedInCurrentSprint:[b,e],issuesCompletedInAnotherSprint:[],puntedIssues:[c,f],issueKeysAddedDuringSprint:{[d.key]:true,[f.key]:true}}};
+  }
   window.fetch = async (input: RequestInfo | URL, options: RequestInit = {}) => {
     const url = new URL(input instanceof Request ? input.url : String(input), 'https://jit.o3.ru');
     const path = url.pathname;
@@ -195,6 +248,17 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
       return json({ errorMessages: ['Предпросмотр работает на демонстрационных данных. Создание и связи доступны в расширении Jira.'] }, 501);
     }
     if (path.endsWith('/myself')) return json(user);
+    if (path === '/rest/greenhopper/1.0/rapid/charts/sprintreport') {
+      const selected=reportSprints.get(url.searchParams.get('sprintId') || '');
+      return selected ? json(previewSprintReport(selected)) : json({},404);
+    }
+    const reportId=/^\/rest\/agile\/1\.0\/sprint\/(\d+)$/.exec(path)?.[1];
+    if (reportId && reportSprints.has(reportId)) return json(reportSprints.get(reportId));
+    if (path === '/rest/api/2/search' && url.searchParams.get('expand') === 'changelog') {
+      const keys = url.searchParams.get('jql')?.match(/[A-Z][A-Z0-9_]*-\d+/g) || [];
+      return page(keys.map(key=>reportHistory.get(key) || issues.get(key)).filter(Boolean),url);
+    }
+    if (match && url.searchParams.get('expand') === 'changelog' && reportHistory.has(match[1])) return json(reportHistory.get(match[1]));
     if (path === '/rest/api/2/search' && url.searchParams.get('fields')?.includes('customfield_24000')) {
       const jql = url.searchParams.get('jql') || '';
       if (/project\s*=\s*FCRM/i.test(jql)) {
@@ -220,19 +284,20 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
     if(path==='/rest/agile/1.0/board') return page(extraTeams.filter(item=>!url.searchParams.get('name') || item.name===url.searchParams.get('name')),url,'values');
     const extra=extraTeams.find(item=>path.startsWith('/rest/agile/1.0/board/'+item.id+'/'));
     if(extra) {
-      if(path.endsWith('/configuration')) return json({id:extra.id,name:extra.name,estimation:{type:'field',field:{fieldId:'customfield_10002'}}});
+      if(path.endsWith('/configuration')) return json({id:extra.id,name:extra.name,...reportConfiguration});
       if(path.endsWith('/sprint')) { const requested=(url.searchParams.get('state') || '').split(','); return page([{id:extra.sprintId,originBoardId:extra.id,name:extra.name+' #12 (03.11 – 16.11)',state:'active',startDate:'2026-11-03T09:00:00+03:00'},{id:extra.sprintId+1,originBoardId:extra.id,name:extra.name+' #13 (17.11 – 30.11)',state:'future',startDate:'2026-11-17T09:00:00+03:00'}].filter(item=>requested.includes(item.state)),url,'values'); }
       if(path.endsWith('/issue')) { const id=Number(path.split('/').at(-2)); const rawSprint={id,originBoardId:extra.id,name:extra.name+' #12 (03.11 – 16.11)',state:'active',startDate:'2026-11-03T09:00:00+03:00'}; const issue=toIssue({key:'OB-'+(extra.id+100000),summary:'[Демо] Задача команды '+extra.name,component:extra.name,status:'in_progress',epicKey:'OBPROJECT-5143'}); Object.assign(issue.fields,{customfield_10002:3,sprint:rawSprint,[config.sprintFieldId]:[rawSprint]}); return page([issue],url); }
     }
     // CS is a separate demo dataset: no FCRM issue is used as a development issue.
-    if (path === '/rest/agile/1.0/board/6197/configuration') return json({ id:6197, name:'CS', estimation:{ type:'field', field:{ fieldId:'customfield_10002', displayName:'Story Points' } } });
+    if (path === '/rest/agile/1.0/board/6197/configuration') return json({ id:6197, name:'CS', ...reportConfiguration });
+    if (path === '/rest/agile/1.0/board/' + config.rapidViewId + '/configuration') return json({ id:config.rapidViewId, name:'FCRM', ...reportConfiguration });
     if (path === '/rest/agile/1.0/board/6197/sprint') {
       const allowed = String(url.searchParams.get('state') || 'active,future').split(',');
       return page([
-        { id:86053, originBoardId:6197, name:'CS #74 (03.11 – 16.11)', state:'active', startDate:'2026-11-03T09:03:00+03:00' },
+        csActive,
         { id:86170, originBoardId:6197, name:'CS #75 (17.11 – 30.11)', state:'future', startDate:'2026-11-17T09:00:00+03:00' },
         { id:88763, originBoardId:6197, name:'CS #76 (01.12 – 14.12)', state:'future', startDate:'2026-12-01T09:00:00+03:00' },
-        { id:85000, originBoardId:6197, name:'CS #73 (20.10 – 02.11)', state:'closed', startDate:'2026-10-20T09:00:00+03:00' },
+        csClosed,
         { id:87313, originBoardId:12696, name:'CRM_BO #16 (03.11 – 17.11)', state:'active' },
       ].filter(sprint => allowed.includes(sprint.state)), url, 'values');
     }
@@ -287,7 +352,7 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
     }
     if (/\/board\/\d+\/sprint$/.test(path)) {
       const allowed = String(url.searchParams.get('state') || 'active,future,closed').split(',');
-      return page([...sprintMap.values()].filter(item => allowed.includes(item.state)), url, 'values');
+      return page([...sprintMap.values(),fcrmClosed].filter(item => allowed.includes(item.state)), url, 'values');
     }
     if (path === '/rest/api/2/search') {
       const query = url.searchParams.get('jql') || '';
