@@ -253,7 +253,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
 
   function definitions(report:Report) {
     const cutoff=report.closed ? 'при закрытии спринта' : 'на момент обновления';
-    const plan=report.pointsField ? '<p>План использует оценки на старте. Добавления и исключения используют оценки на момент изменения. Переоценка показывает разницу оценок, пока задача была в спринте. Задачи без оценки учитываются в количестве.</p>' : '';
+    const plan=report.pointsField ? '<p>План использует оценки на момент запуска спринта. Добавления и исключения используют оценки на момент изменения. Переоценка показывает разницу оценок, пока задача была в спринте. Задачи без оценки учитываются в количестве.</p>' : '';
     const m=report.metrics;
     const scope=report.pointsField && Math.abs(m.planned+m.added-m.removed+m.estimateDelta-m.completedPoints-m.remaining)<0.001
       ? '<p>Итоговый объём: план + добавили − исключили ± переоценка. Для этого отчёта <strong>' + escape([amount(m.planned),' + ',amount(m.added),' − ',amount(m.removed),m.estimateDelta<0 ? ' − ' : ' + ',amount(Math.abs(m.estimateDelta)),' = ',metric(report,m.completedPoints+m.remaining)].join('')) + '</strong>.</p>' : '';
@@ -398,7 +398,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
         const rest=day?.remaining ?? m.initialRemaining, volume=day?.scope ?? m.planned;
         line.setAttribute('x1',leftText); line.setAttribute('x2',leftText);
         [remaining,scope].forEach((dot,at)=>{dot.setAttribute('cx',leftText); dot.setAttribute('cy',String(y(at ? volume : rest)));});
-        values[0].textContent=day ? dayLabel(day.date) + ' · ' + dayCutoff(report,day.date) : 'Старт · ' + shortDate(report.start);
+        values[0].textContent=day ? dayLabel(day.date) + ' · ' + dayCutoff(report,day.date) : 'Старт · ' + shortDate(report.start) + ' ' + timeFormat.format(report.start) + ' МСК';
         values[1].textContent='Незавершённые задачи: ' + metric(report,rest);
         values[2].textContent='Все задачи в спринте: ' + metric(report,volume);
         values[3].textContent=day ? 'Перешло в «Готово»: ' + metric(report,burn.completed) : '';

@@ -43,7 +43,9 @@ export function createSprintReportModel() {
   function build(input:{sprint:any;scope:ReturnType<typeof nativeScope>;issues:any[];sprintField:string;pointsField:string;pointsName:string;doneIds:string[];now?:number;epicField?:string;epics?:Map<string,any>}) {
     const {sprint,scope,issues,sprintField,pointsField,pointsName,doneIds} = input;
     const warnings = new Set<string>();
-    const start = time(sprint.startDate);
+    // Jira Burndown starts at sprint activation. The scheduled date can be earlier.
+    const activation = time(sprint.activatedDate);
+    const start = Number.isFinite(activation) ? activation : time(sprint.startDate);
     const completed = time(sprint.completeDate);
     const now = input.now ?? Date.now();
     const end = closed(sprint) ? (Number.isFinite(completed) ? completed : time(sprint.endDate)) : now;
