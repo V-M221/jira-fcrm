@@ -3,6 +3,7 @@ export function createSprintReportModel() {
   type Status = { id:string; name:string; category?:string };
   type Snapshot = { member:boolean; status:Status; points:number | null };
   type Change = {key:string; at:number; before:Snapshot; after:Snapshot; added:boolean; removed:boolean; statusChanged:boolean; estimateChanged:boolean; burned:number};
+  const emptyMetrics = () => ({planned:0,initialRemaining:0,added:0,removed:0,burned:0,remaining:0,unestimated:0,completed:0,carry:0,plannedTasks:0,addedTasks:0,removedTasks:0,remainingTasks:0});
   const dateFormat = new Intl.DateTimeFormat('sv-SE', {timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'});
   const dayOf = (timestamp:number) => dateFormat.format(timestamp);
   const asArray = (value:any) => value == null ? [] : Array.isArray(value) ? value : [value];
@@ -17,6 +18,11 @@ export function createSprintReportModel() {
   const time = (value:any) => typeof value === 'number' ? value : Date.parse(value || '');
   const nameKey = (value:any) => String(value || '').trim().toLowerCase();
   const validKey = (value:any) => /^[A-Z][A-Z0-9_]*-\d+$/.test(String(value || ''));
+  const epicKeyFor = (fields:any, field?:string) => {
+    const custom = field ? fields[field] : null;
+    const key = fields.epic?.key || (typeof custom === 'string' ? custom : custom?.key || custom?.value);
+    return validKey(key) ? String(key) : '';
+  };
 
   function nativeScope(report:any) {
     const contents = report?.contents;
@@ -34,7 +40,7 @@ export function createSprintReportModel() {
     return {issues,final,added};
   }
 
-  function build(input:{sprint:any;scope:ReturnType<typeof nativeScope>;issues:any[];sprintField:string;pointsField:string;pointsName:string;doneIds:string[];now?:number}) {
+  function build(input:{sprint:any;scope:ReturnType<typeof nativeScope>;issues:any[];sprintField:string;pointsField:string;pointsName:string;doneIds:string[];now?:number;epicField?:string;epics?:Map<string,any>}) {
     const {sprint,scope,issues,sprintField,pointsField,pointsName,doneIds} = input;
     const warnings = new Set<string>();
     const start = time(sprint.startDate);
@@ -73,7 +79,8 @@ export function createSprintReportModel() {
 
     const events:Change[] = [];
     const rows:any[] = [];
-    const metrics = {planned:0,initialRemaining:0,added:0,removed:0,burned:0,remaining:0,unestimated:0,completed:0,carry:0};
+    const metrics = emptyMetrics();
+    const projects = new Map<string,{metrics:ReturnType<typeof emptyMetrics>;rows:any[];events:Change[]}>();
     let incomplete = 0;
     const available = new Map(issues.filter(issue => validKey(issue?.key)).map(issue => [issue.key,issue]));
     const keys = new Set<string>([...available.keys(),...scope?.issues.keys() || [],...scope?.added || []]);
@@ -159,50 +166,79 @@ export function createSprintReportModel() {
       const added = issueEvents.some(change => change.added) || Boolean(scope?.added.has(key));
       const removed = issueEvents.some(change => change.removed) || nativeFinal === 'removed';
       if (!memberAtEnd && !started && !added && !removed) continue;
-      if (started) {
-        metrics.planned += score(startSnapshot.points);
-        if (!isDone(startSnapshot.status)) metrics.initialRemaining += score(startSnapshot.points);
-        if (startSnapshot.points == null) metrics.unestimated++;
-      }
       const addedPoints = issueEvents.filter(change => change.added).reduce((sum,change) => sum + score(change.after.points),0);
       const removedPoints = issueEvents.filter(change => change.removed).reduce((sum,change) => sum + score(change.before.points),0);
-      metrics.added += addedPoints;
-      metrics.removed += removedPoints;
-      metrics.burned += issueEvents.reduce((sum,change) => sum + change.burned,0);
-      if (memberAtEnd && !doneAtEnd) metrics.remaining += score(snapshot.points);
-      if (doneAtEnd) metrics.completed++;
-      if (closed(sprint) && memberAtEnd && !doneAtEnd) metrics.carry++;
-      rows.push({key,summary:fields.summary || fallback?.summary || key, started, startPoints:startSnapshot.points, startStatus:startSnapshot.status.name,
+      const project = String(fields.project?.key || key.split('-')[0]);
+      const epicKey = epicKeyFor(fields,input.epicField);
+      const epic = input.epics?.get(epicKey);
+      const streamValue = epic?.customfield_24000 ?? fields.customfield_24000;
+      const stream = String(typeof streamValue === 'string' ? streamValue : streamValue?.value || streamValue?.name || '');
+      const burned = issueEvents.reduce((sum,change) => sum + change.burned,0);
+      const unfinished = memberAtEnd && !doneAtEnd;
+      const carry = closed(sprint) && unfinished;
+      const row = {key,project,stream,epicKey,epicTitle:String(epic?.summary || fields.epic?.summary || fields.epic?.name || ''),
+        summary:fields.summary || fallback?.summary || key, started, startPoints:startSnapshot.points, startStatus:startSnapshot.status.name,
         endPoints:snapshot.points, endStatus:snapshot.status.name, memberAtEnd, doneAtEnd, added, removed, addedPoints, removedPoints, completeHistory,
         addedDates:issueEvents.filter(change=>change.added).map(change=>dayOf(change.at)),
         removedDates:issueEvents.filter(change=>change.removed).map(change=>dayOf(change.at)),
-        carry:closed(sprint) && memberAtEnd && !doneAtEnd});
+        carry};
+      if (!projects.has(project)) projects.set(project,{metrics:emptyMetrics(),rows:[],events:[]});
+      const detail = projects.get(project)!;
+      for (const total of [metrics,detail.metrics]) {
+        if (started) {
+          total.plannedTasks++;
+          total.planned += score(startSnapshot.points);
+          if (!isDone(startSnapshot.status)) total.initialRemaining += score(startSnapshot.points);
+          if (startSnapshot.points == null) total.unestimated++;
+        }
+        total.added += addedPoints;
+        total.addedTasks += Number(added);
+        total.removed += removedPoints;
+        total.removedTasks += Number(removed);
+        total.burned += burned;
+        if (unfinished) { total.remaining += score(snapshot.points); total.remainingTasks++; }
+        total.completed += Number(doneAtEnd);
+        total.carry += Number(carry);
+      }
+      rows.push(row);
       events.push(...issueEvents);
+      detail.rows.push(row);
+      detail.events.push(...issueEvents);
     }
     if (incomplete) warnings.add('Для ' + incomplete + ' задач история доступна частично. Значения по дням и изменения SP могут отличаться от итогов Jira.');
-    events.sort((a,b) => a.at - b.at || a.key.localeCompare(b.key));
-    const byDay = new Map<string,Change[]>();
-    for (const event of events) {
-      const date = dayOf(event.at);
-      if (!byDay.has(date)) byDay.set(date,[]);
-      byDay.get(date)!.push(event);
-    }
-    const days = [];
-    let scopePoints = metrics.planned, remaining = metrics.initialRemaining;
+    const dates = [];
     for (let tick = Date.parse(dayOf(start) + 'T00:00:00Z'), last = Date.parse(dayOf(end) + 'T00:00:00Z'); tick <= last; tick += 86400000) {
-      const date = new Date(tick).toISOString().slice(0,10);
-      const changes = byDay.get(date) || [];
-      let burned = 0;
-      changes.forEach(change => {
-        const {before,after} = change;
-        scopePoints += (after.member ? score(after.points) : 0) - (before.member ? score(before.points) : 0);
-        remaining += (after.member && !isDone(after.status) ? score(after.points) : 0) - (before.member && !isDone(before.status) ? score(before.points) : 0);
-        burned += change.burned;
-      });
-      days.push({date,changes,remaining:Math.max(0,remaining),scope:Math.max(0,scopePoints),burned});
+      dates.push(new Date(tick).toISOString().slice(0,10));
     }
+    const series = (items:Change[], totals:ReturnType<typeof emptyMetrics>) => {
+      items.sort((a,b) => a.at - b.at || a.key.localeCompare(b.key));
+      const byDay = new Map<string,Change[]>();
+      for (const event of items) {
+        const date = dayOf(event.at);
+        if (!byDay.has(date)) byDay.set(date,[]);
+        byDay.get(date)!.push(event);
+      }
+      let scopePoints = totals.planned, remaining = totals.initialRemaining;
+      return dates.map(date => {
+        const changes = byDay.get(date) || [];
+        let burned = 0;
+        changes.forEach(change => {
+          const {before,after} = change;
+          scopePoints += (after.member ? score(after.points) : 0) - (before.member ? score(before.points) : 0);
+          remaining += (after.member && !isDone(after.status) ? score(after.points) : 0) - (before.member && !isDone(before.status) ? score(before.points) : 0);
+          burned += change.burned;
+        });
+        return {date,changes,remaining:Math.max(0,remaining),scope:Math.max(0,scopePoints),burned};
+      });
+    };
     rows.sort((a,b) => a.key.localeCompare(b.key,'en',{numeric:true}));
-    return {start,end,closed:closed(sprint),rows,events,days,metrics,pointsField,pointsName, warnings:[...warnings]};
+    const projectOrder = [...projects.keys()].sort((a,b)=>a.localeCompare(b,'en',{numeric:true}));
+    const byProject = new Map(projectOrder.map(key => {
+      const detail = projects.get(key)!;
+      detail.rows.sort((a,b) => a.key.localeCompare(b.key,'en',{numeric:true}));
+      return [key,{...detail,days:series(detail.events,detail.metrics)}];
+    }));
+    return {start,end,closed:closed(sprint),rows,events,days:series(events,metrics),metrics,byProject,pointsField,pointsName, warnings:[...warnings]};
   }
-  return {nativeScope,build};
+  return {nativeScope,build,epicKeyFor};
 }

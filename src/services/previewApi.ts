@@ -113,6 +113,7 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
     return json({ [property]: values.slice(startAt, startAt + maxResults), total: values.length, startAt, maxResults, isLast: startAt + maxResults >= values.length });
   };
   const reportHistory = new Map<string,any>();
+  const reportEpics = new Map<string,any>();
   const reportSprints = new Map<string,any>();
   const reportClock = Date.now();
   const reportStatus = {
@@ -148,11 +149,19 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
     const membership = (adding:boolean) => ({field:'Sprint',from:adding ? null : String(selected.id),to:adding ? String(selected.id) : null,fromString:adding ? '' : selected.name,toString:adding ? selected.name : ''});
     const change = (day:number,...items:any[]) => ({created:new Date(Date.parse(selected.startDate)+day*86400000+7200000).toISOString(),items});
     const base = 200000 + Number(selected.id)*10;
-    const project = selected.originBoardId === Number(config.rapidViewId) ? 'FCRM' : 'OB';
+    const range = selected.originBoardId === Number(config.rapidViewId) ? ['FCRM','FCRM'] : ['OB','OBFRONT'];
+    const epi=(number:number) => {
+      const key='OBPROJECT-' + (base+number);
+      const summary=number===7 ? '[Демо] Карточка клиента' : '[Демо] Уведомления и операционный журнал';
+      reportEpics.set(key,{key,fields:{summary,customfield_24000:{value:number===7 ? 'Стрим 1' : 'Стрим 3'}}});
+      return key;
+    };
+    const epics=[epi(7),epi(8)];
     const make = (number:number, summary:string, points:number | null, finalStatus:keyof typeof reportStatus, member:boolean, histories:any[]) => {
+      const project=range[number % 2];
       const key = project + '-' + (base+number);
       const history={key,fields:{summary:'[Демо] ' + summary,created:new Date(Date.parse(selected.startDate)-86400000).toISOString(),issuetype:{name:'Задача',subtask:false},
-        status:reportStatus[finalStatus],customfield_10002:points,[config.sprintFieldId]:member ? [selected] : [],sprint:member && selected.state === 'active' ? selected : null,
+        status:reportStatus[finalStatus],project:{key:project},[config.epicFieldId]:number===6 ? null : epics[number % 2],customfield_10002:points,[config.sprintFieldId]:member ? [selected] : [],sprint:member && selected.state === 'active' ? selected : null,
         closedSprints:member && selected.state === 'closed' ? [selected] : []},changelog:{histories,startAt:0,total:histories.length}};
       reportHistory.set(key,history);
       return {key,summary:history.fields.summary,statusId:history.fields.status.id,statusName:history.fields.status.name};
@@ -257,6 +266,10 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
     if (path === '/rest/api/2/search' && url.searchParams.get('expand') === 'changelog') {
       const keys = url.searchParams.get('jql')?.match(/[A-Z][A-Z0-9_]*-\d+/g) || [];
       return page(keys.map(key=>reportHistory.get(key) || issues.get(key)).filter(Boolean),url);
+    }
+    if (path === '/rest/api/2/search' && url.searchParams.get('fields') === 'summary,customfield_24000') {
+      const keys = url.searchParams.get('jql')?.match(/[A-Z][A-Z0-9_]*-\d+/g) || [];
+      if (keys.some(key=>reportEpics.has(key))) return page(keys.map(key=>reportEpics.get(key)).filter(Boolean),url);
     }
     if (match && url.searchParams.get('expand') === 'changelog' && reportHistory.has(match[1])) return json(reportHistory.get(match[1]));
     if (path === '/rest/api/2/search' && url.searchParams.get('fields')?.includes('customfield_24000')) {
