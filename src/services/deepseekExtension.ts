@@ -1,5 +1,4 @@
 import { answerMarkup } from '../utils/answerMarkup';
-import { structuredAnswer } from '../utils/structuredAnswer';
 ﻿import {
   completeDeepseekChat,
   DEEPSEEK_AUTHS_URL,
@@ -8,6 +7,7 @@ import { structuredAnswer } from '../utils/structuredAnswer';
   DEEPSEEK_TOKEN_STORAGE_KEY,
   DEFAULT_DEEPSEEK_SYSTEM_PROMPT,
   DESIGN_TASK_SYSTEM_PROMPT,
+  createJiraDraftLinkClient,
   parseJiraDraft,
   saveJiraDraft,
 } from './deepseek';
@@ -184,9 +184,9 @@ export function generateIssueEnhanceJs(): string {
   'use strict';
 
   const formatAnswer = ${answerMarkup.toString()};
-  const formatStructuredAnswer = ${structuredAnswer.toString()};
   const parseJiraDraft = ${parseJiraDraft.toString()};
   const saveJiraDraft = ${saveJiraDraft.toString()};
+  const jiraDraftLinks = (${createJiraDraftLinkClient.toString()})();
   const MESSAGE_TYPE = ${JSON.stringify(DEEPSEEK_CHAT_MESSAGE_TYPE)};
   const NATIVE_SELECTORS = [
     '#summary-val',
@@ -271,6 +271,7 @@ export function generateIssueEnhanceJs(): string {
       '#o3ds-layer .o3ds-draft{flex:1 1 0;min-height:min(140px,28vh);overflow:auto;padding:4px 4px 10px 0}#o3ds-layer .o3ds-draft .o3ds-answer{overflow:visible!important;background:#fff!important;border:1px solid #d7e0ec!important;border-radius:10px!important;padding:14px!important}#o3ds-layer .o3ds-draft h3:first-child{margin-top:0}',
       '#o3ds-layer .o3ds-draft-heading{display:block;font-size:13px;font-weight:700;margin:0 0 7px;color:#071026}#o3ds-layer .o3ds-draft-name{margin:0 0 12px;color:#334155}',
       '#o3ds-layer .o3ds-draft-notes .o3ds-answer{background:#f4f7fb!important}#o3ds-layer .o3ds-draft-notes ol{list-style:decimal outside!important;margin:0!important;padding:0 0 0 22px!important}#o3ds-layer .o3ds-draft-notes li{display:list-item!important;list-style:inherit!important;font-size:inherit!important;line-height:inherit!important;margin:0;padding:0 0 0 3px}#o3ds-layer .o3ds-draft-notes li+li{margin-top:6px}',
+      '#o3ds-layer .o3ds-theme-notice{margin:0 0 12px;padding:9px 12px;border-radius:8px;background:#f4f7fb;color:#334155}#o3ds-layer .o3ds-link-outcomes{margin:0 0 12px;padding:0;list-style:none}#o3ds-layer .o3ds-link-outcomes li{padding:7px 0;overflow-wrap:anywhere}#o3ds-layer .o3ds-link-outcomes a{color:#005bff}',
       '#o3ds-layer .o3ds-draft-links{margin:0 0 12px;padding:10px 12px;border:1px solid #d7e0ec;border-radius:8px;min-width:0}#o3ds-layer .o3ds-draft-link{display:flex;gap:8px;padding:6px 0;align-items:flex-start;cursor:pointer}#o3ds-layer .o3ds-draft-link input{width:15px;height:15px;margin-top:2px;flex:none;accent-color:#005bff}#o3ds-layer .o3ds-draft-link span{min-width:0;overflow-wrap:anywhere}#o3ds-layer .o3ds-draft-link small{display:block;color:#626f86}',
       '#o3ds-layer .o3ds-draft-footer{padding-top:12px;border-top:1px solid #d7e0ec;background:#fff;flex:none}#o3ds-layer .o3ds-draft-footer .o3ds-actions{justify-content:flex-start}#o3ds-layer .o3ds-draft-refine{margin-bottom:10px}#o3ds-layer .o3ds-draft-refine summary{cursor:pointer;color:#005bff;width:max-content}#o3ds-layer .o3ds-draft-refine[open] summary{margin-bottom:8px}',
       '@media(max-width:800px){body:has(#ozon-structure-root #ozon-ext-sidebar-panel) > #o3ds-layer{width:min(480px,100vw)!important;}}',
@@ -317,10 +318,13 @@ export function generateIssueEnhanceJs(): string {
     renderLayer();
     const serial = ++requestSerial;
     ask('analyze', issueKey)
-      .then((text) => {
+      .then(async (text) => {
+        if (serial !== requestSerial) return;
+        const warning = await themeWarning(issueKey, text);
         if (serial !== requestSerial) return;
         session.phase = 'preview';
         session.preview = text;
+        session.themeWarning = warning;
         renderLayer();
       })
       .catch((err) => {
@@ -336,6 +340,11 @@ export function generateIssueEnhanceJs(): string {
     const description = /<ftd_description>([\\s\\S]*?)<\\/ftd_description>/i.exec(String(text || ''))?.[1]?.trim();
     if (!summary || !description) throw new Error('Не удалось разобрать тему и описание дизайн-задачи. Попросите DeepSeek подготовить черновик заново.');
     return { summary, description };
+  }
+
+  function themeWarning(issueKey, preview) {
+    const theme = parseJiraDraft(preview, issueKey).links.find(link => link.kind === 'theme');
+    return theme ? jiraDraftLinks.themeWarning(issueKey, theme) : '';
   }
 
   function openDesignSession(issueKey) {
@@ -395,6 +404,7 @@ export function generateIssueEnhanceJs(): string {
     const issueKey = session.issueKey;
     const serial = ++requestSerial;
     session.phase = 'applying';
+    session.saveIncludesLinks = selectedLinks.length > 0;
     session.error = '';
     renderLayer();
     let saved;
@@ -408,22 +418,18 @@ export function generateIssueEnhanceJs(): string {
       return;
     }
     if (serial !== requestSerial) return;
-    document.dispatchEvent(new CustomEvent('ozon-fcrm-issue-applied', { detail: { issueKey } }));
-    session.savedText = saved.changed ? 'Описание сохранено в Jira' : 'Описание уже актуально в Jira';
-    session.success = '';
-    if (selectedLinks.length) {
-      session.applyingLinks = true;
-      renderLayer();
+    const outcomes = [];
+    for (const link of selectedLinks) {
       try {
-        session.success = await ask('apply_links', issueKey, JSON.stringify(selectedLinks));
+        outcomes.push({link, status:await jiraDraftLinks.apply(issueKey, link)});
       } catch (err) {
-        session.error = err?.message || 'Сохранение связей не подтверждено';
-      } finally {
-        session.applyingLinks = false;
-        document.dispatchEvent(new CustomEvent('ozon-fcrm-issue-applied', { detail: { issueKey } }));
+        outcomes.push({link, status:err?.message || 'Jira не подтвердила связь.', failed:true});
       }
     }
+    document.dispatchEvent(new CustomEvent('ozon-fcrm-issue-applied', { detail: { issueKey } }));
     if (serial !== requestSerial) return;
+    session.savedText = saved.changed ? 'Описание сохранено в Jira' : 'Описание уже актуально в Jira';
+    session.linkOutcomes = outcomes;
     session.phase = 'success';
     renderLayer();
   }
@@ -535,7 +541,10 @@ export function generateIssueEnhanceJs(): string {
     if (session.phase === 'loading' || session.phase === 'applying' || session.phase === 'design-creating') {
       const caption = document.createElement('p');
       caption.className = 'o3ds-key';
-      caption.textContent = session.phase === 'design-creating' ? 'Создаю задачу FTD и связываю с исходной…' : session.applyingLinks ? 'Описание сохранено. DeepSeek проверяет и устанавливает выбранные связи…' : session.phase === 'applying' ? 'Сохраняю описание в Jira…' : 'Готовлю черновик на основе задачи и нужных источников…';
+      caption.setAttribute('role', 'status');
+      caption.textContent = session.phase === 'design-creating' ? 'Создаю задачу FTD и связываю с исходной…' : session.phase === 'applying'
+        ? (session.saveIncludesLinks ? 'Сохраняю описание и выбранные связи в Jira…' : 'Сохраняю описание в Jira…')
+        : 'Готовлю черновик на основе задачи и нужных источников…';
       layer.appendChild(caption);
       for (let i = 0; i < 4; i += 1) {
         const bone = document.createElement('div');
@@ -606,13 +615,26 @@ export function generateIssueEnhanceJs(): string {
     if (session.phase === 'success') {
       const ok = document.createElement('p');
       ok.className = 'o3ds-ok';
+      ok.setAttribute('role', 'status');
       ok.textContent = session.savedText;
       layer.append(ok);
-      if (session.success) {
-        const result = document.createElement('div');
-        result.className = 'o3ds-answer';
-        result.innerHTML = formatStructuredAnswer(session.success, 'result', formatAnswer);
-        layer.append(result);
+      if (session.linkOutcomes.length) {
+        const list = document.createElement('ul');
+        list.className = 'o3ds-link-outcomes';
+        for (const outcome of session.linkOutcomes) {
+          const item = document.createElement('li');
+          const target = document.createElement('a');
+          target.href = outcome.link.kind === 'source' ? outcome.link.key : '/browse/' + encodeURIComponent(outcome.link.key);
+          target.target = '_blank';
+          target.rel = 'noopener noreferrer';
+          target.textContent = outcome.link.key;
+          const status = document.createElement('span');
+          status.textContent = outcome.failed ? ' · Требует внимания. ' + outcome.status : ' · ' + outcome.status;
+          if (outcome.failed) status.className = 'o3ds-error';
+          item.append(target, status);
+          list.append(item);
+        }
+        layer.append(list);
       }
       const actions = document.createElement('div');
       actions.className = 'o3ds-actions';
@@ -643,9 +665,13 @@ export function generateIssueEnhanceJs(): string {
       session.error = '';
       renderLayer();
       try {
-        const updated = await ask(session.kind === 'design' ? 'design' : 'analyze', session.issueKey, '', { preview: session.preview, reply: session.reply });
+        const issueKey = session.issueKey;
+        const updated = await ask(session.kind === 'design' ? 'design' : 'analyze', issueKey, '', { preview: session.preview, reply: session.reply });
+        if (serial !== requestSerial) return;
+        const warning = session.kind === 'description' ? await themeWarning(issueKey, updated) : '';
         if (serial !== requestSerial) return;
         session.preview = updated;
+        session.themeWarning = warning;
         session.designProposal = session.kind === 'design' ? parseDesignProposal(updated) : null;
         session.reply = '';
       } catch (err) {
@@ -695,13 +721,14 @@ export function generateIssueEnhanceJs(): string {
     const save = actionButton('Сохранить описание', 'o3ds-primary', () => applySession({
       description:draft.description, summary:approveTitle?.checked ? draft.summary : undefined
     }, [...selected.values()]), !draft.description);
-    if (draft.links.length) {
+    const proposals = draft.links.filter(link => link.kind !== 'theme' || !session.themeWarning);
+    if (proposals.length) {
       const group = document.createElement('fieldset');
       group.className = 'o3ds-draft-links';
       const legend = document.createElement('legend');
       legend.textContent = 'Предложенные связи';
       group.append(legend);
-      for (const link of draft.links) {
+      for (const link of proposals) {
         const label = document.createElement('label');
         label.className = 'o3ds-draft-link';
         const checkbox = document.createElement('input');
@@ -725,6 +752,13 @@ export function generateIssueEnhanceJs(): string {
         group.append(label);
       }
       content.append(group);
+    }
+    if (session.themeWarning) {
+      const notice = document.createElement('p');
+      notice.className = 'o3ds-theme-notice';
+      const theme = draft.links.find(link => link.kind === 'theme');
+      notice.textContent = 'Тематика ' + theme.key + ' пропущена. ' + session.themeWarning;
+      content.append(notice);
     }
     if (draft.notes) {
       const notes = document.createElement('section');
