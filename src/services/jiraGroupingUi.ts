@@ -2,7 +2,7 @@
 export function createJiraGroupingUi() {
   const escape = (value:string) => value.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
-  function html(id:string, order:string[], labels:Record<string,string>, checkboxAttribute='', options?:{hidden?:string[];locked?:string[]}) {
+  function html(id:string, order:string[], labels:Record<string,string>, checkboxAttribute='', options?:{hidden?:string[];locked?:string[];required?:string[]}) {
     const fields = [...order,...Object.keys(labels).filter(key=>!order.includes(key))];
     const movable=order.filter(key=>!options?.locked?.includes(key));
     const grouping=Boolean(checkboxAttribute && !options);
@@ -10,8 +10,8 @@ export function createJiraGroupingUi() {
       const title = escape(labels[key]);
       const index=movable.indexOf(key);
       const enabled=index>=0;
-      const locked=options?.locked?.includes(key);
-      const field=checkboxAttribute ? '<label><input type="checkbox" ' + checkboxAttribute + '="' + escape(key) + '"' + ((grouping ? order.includes(key) : !options?.hidden?.includes(key)) ? ' checked' : '') + (locked ? ' disabled' : '') + '><span>' + title + '</span></label>' : '<span class="ozon-grouping-title">' + title + '</span>';
+      const required=options?.locked?.includes(key) || options?.required?.includes(key);
+      const field=checkboxAttribute ? '<label><input type="checkbox" ' + checkboxAttribute + '="' + escape(key) + '"' + ((grouping ? order.includes(key) : !options?.hidden?.includes(key)) ? ' checked' : '') + (required ? ' disabled' : '') + '><span>' + title + '</span></label>' : '<span class="ozon-grouping-title">' + title + '</span>';
       const step = (delta:number,description:string,disabled:boolean) => '<button type="button" class="ozon-grouping-step" data-group-step="' + delta + '" aria-label="' + description + ' ' + title + '"' + (disabled ? ' disabled' : '') + '>' + (delta<0 ? '↑' : '↓') + '</button>';
       return '<div class="ozon-grouping-level" data-group-level="' + escape(key) + '"' + (enabled ? ' data-group-enabled' : '') + '>' +
         (enabled ? '<button type="button" class="ozon-grouping-grip" data-group-grip aria-label="Переместить ' + title + '" title="Перетащите или нажмите ↑ / ↓">' : '<span class="ozon-grouping-grip" aria-hidden="true">') +
