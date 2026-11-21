@@ -117,7 +117,7 @@ export function generateOptionsHtml(): string {
       <button type="button" class="subtle" id="clear">Очистить</button>
     </div>
     <label for="system-prompt" style="margin-top:22px">Системный промпт</label>
-    <p>Полный текст инструкции, которую расширение отправляет DeepSeek. Измените его и нажмите «Сохранить промпт».</p>
+    <p>Настройте общие правила для черновика. Порядок чтения Jira, проверки связей и формат ответа расширение добавляет автоматически.</p>
     <textarea id="system-prompt" spellcheck="false"></textarea>
     <div class="row">
       <button type="button" class="primary" id="save-prompt">Сохранить промпт</button>
@@ -504,7 +504,7 @@ export function generateIssueEnhanceJs(): string {
     if (session.phase === 'context') {
       const hint = document.createElement('p');
       hint.className = 'o3ds-key';
-      hint.textContent = 'Добавьте детали, пожелания или ограничения, которых нет в задаче. Поле необязательное.';
+      hint.textContent = 'Одной фразы достаточно. Можно оставить поле пустым.';
       const label = document.createElement('label');
       label.htmlFor = 'o3ds-additional-context';
       label.textContent = 'Дополнительный контекст';
@@ -712,7 +712,9 @@ export function generateIssueEnhanceJs(): string {
         };
         const text = document.createElement('span');
         const type = link.kind === 'theme' ? 'Задача проекта' : link.kind === 'development' ? 'В проекте' : 'Веб-ссылка';
-        text.textContent = type + ' · ' + link.key;
+        text.textContent = link.replaceKey
+          ? 'Заменить тематику ' + link.replaceKey + ' → ' + link.key
+          : (link.action === 'repair' ? 'Исправить связь · ' : '') + type + ' · ' + link.key;
         if (link.reason) {
           const reason = document.createElement('small');
           reason.textContent = link.reason;
