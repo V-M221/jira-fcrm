@@ -423,6 +423,9 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
   }
 
   const plot={width:960,height:180,left:58,right:40,top:27,bottom:44};
+  const projectPlot={...plot,width:480,height:268,left:48,right:24};
+  const preferredChartProjects=['OB','OBFRONT'];
+  const showProjectChart=(key:string)=>key.toUpperCase()!=='OBSPRINTGO';
   const dayBurn = (changes:{burned:number}[]) => changes.reduce((totals,change) => {
     totals.completed += Math.max(change.burned,0);
     totals.reopened += Math.max(-change.burned,0);
@@ -430,9 +433,11 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
   },{completed:0,reopened:0});
 
   function chartViews(report:Report) {
-    const canSplit=!state.project && report.byProject.size>1;
+    const projectKeys=[...report.byProject.keys()].filter(showProjectChart);
+    const canSplit=!state.project && report.byProject.size>1 && projectKeys.length>0;
     const split=canSplit && state.chartMode==='projects';
-    const series=split ? [...report.byProject].map(([key,detail])=>({key,report:{...report,...detail}})) : [{key:state.project,report}];
+    const keys=[...preferredChartProjects.filter(key=>projectKeys.includes(key)),...projectKeys.filter(key=>!preferredChartProjects.includes(key))];
+    const series=split ? keys.map(key=>({key,report:{...report,...report.byProject.get(key)!}})) : [{key:state.project,report}];
     const views=series.map(view=>{
       let cumulativeCompleted=0;
       const burnByDay=view.report.days.map(day=>{
@@ -451,10 +456,10 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     const magnitude=10 ** Math.floor(Math.log10(roughStep));
     const step=[1,2,2.5,5,10].find(value=>value>=roughStep/magnitude)! * magnitude;
     const ticks=Math.ceil(peak/step);
-    return {views,canSplit,split,step,ticks,max:ticks*step};
+    return {views,canSplit,split,plot:split ? projectPlot : plot,step,ticks,max:ticks*step};
   }
-  function chartGeometry(report:Report,max:number) {
-    const {width,height,left,right,top,bottom}=plot;
+  function chartGeometry(report:Report,max:number,bounds:typeof plot) {
+    const {width,height,left,right,top,bottom}=bounds;
     const daySpacing=(width-left-right)/(report.days.length+.5);
     return {
       daySpacing,
@@ -464,8 +469,8 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
   }
   type ChartView = ReturnType<typeof chartViews>['views'][number];
   function chart({key,report,burnByDay}:ChartView,scale:ReturnType<typeof chartViews>) {
-    const {width,height,left,right,top,bottom}=plot;
-    const {x,y,daySpacing}=chartGeometry(report,scale.max);
+    const {width,height,left,right,top,bottom}=scale.plot;
+    const {x,y,daySpacing}=chartGeometry(report,scale.max,scale.plot);
     const axisY=height-bottom;
     const points=[{scope:report.metrics.planned,remaining:report.metrics.initialRemaining},...report.days];
     const end=points.length-1;
@@ -474,7 +479,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
       const value=scale.step*index, row=y(value);
       return '<line x1="' + left + '" y1="' + row + '" x2="' + (width-right) + '" y2="' + row + '"/><text x="' + (left-9) + '" y="' + row + '" dominant-baseline="middle" text-anchor="end">' + escape(amount(value)) + '</text>';
     }).join('');
-    const axisTicks=Math.min(end,6);
+    const axisTicks=Math.min(end,scale.split ? 4 : 6);
     const dates=new Set(Array.from({length:axisTicks+1},(_,index)=>Math.round(end*index/axisTicks)));
     const gridX=points.map((_,index)=>{
       const major=dates.has(index);
@@ -518,20 +523,21 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
   }
 
   function charts(report:Report) {
-    if (!report.pointsField || !report.days.length) return '';
+    if (!report.pointsField || !report.days.length || !showProjectChart(state.project)) return '';
     const scale=chartViews(report);
     const mode=scale.canSplit ? '<div class="ozon-report-chart-modes" role="group" aria-label="Графики">' +
       [['total','Общий график'],['projects','По проектам']].map(([id,label])=>'<button type="button" class="ozon-ext-btn ' + (id===state.chartMode ? '' : 'ozon-ext-btn-surface') + '" data-report-chart-mode="' + id + '" aria-pressed="' + (id===state.chartMode) + '">' + label + '</button>').join('') + '</div>' : '';
+    const plots=scale.views.map(view=>'<div class="ozon-report-chart' + (scale.split ? ' is-project' : '') + '">' + (scale.split ? '<h3>' + escape(view.key) + '</h3>' : '') + chart(view,scale) + '</div>').join('');
     return '<div class="ozon-report-chart-toolbar">' + mode + '<div class="ozon-report-legend"><span>Незавершённые задачи</span><span>Все задачи в спринте</span><span class="ozon-report-burn-legend">В «Готово» с начала спринта</span>' +
-      (scale.split ? '<small>Одинаковая шкала для всех проектов</small>' : '') + '</div></div>' +
-      scale.views.map(view=>'<div class="ozon-report-chart">' + (scale.split ? '<h3>' + escape(view.key) + '</h3>' : '') + chart(view,scale) + '</div>').join('');
+      (scale.split && scale.views.length>1 ? '<small>Общая шкала SP</small>' : '') + '</div></div>' +
+      (scale.split && scale.views.length>1 ? '<div class="ozon-report-project-charts">' + plots + '</div>' : plots);
   }
 
   const dayCutoff = (report:Report,day:string) => day === report.days.at(-1)?.date
     ? report.closed ? 'на момент закрытия' : 'на момент обновления'
     : 'на конец дня';
 
-  function bindChart(graph:HTMLElement, {key,report,burnByDay}:ChartView, max:number, changeDay:(day:string)=>void) {
+  function bindChart(graph:HTMLElement, {key,report,burnByDay}:ChartView, scale:ReturnType<typeof chartViews>, changeDay:(day:string)=>void) {
     const svg=graph.querySelector('svg');
     const hit=svg?.querySelector('.ozon-report-graph-hit');
     const hover=svg?.querySelector('[data-report-hover]');
@@ -539,13 +545,14 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     if (!svg || !hit || !hover || !tip) return;
     const line=hover.querySelector('line')!, remaining=hover.querySelector('[data-report-dot="remaining"]')!, scope=hover.querySelector('[data-report-dot="scope"]')!;
     const values=['date','remaining','scope','burned','reopened'].map(key=>tip.querySelector('[data-tip-' + key + ']')!);
-    const {x,y,daySpacing}=chartGeometry(report,max);
+    const {width,height,left,right,top,bottom}=scale.plot;
+    const {x,y,daySpacing}=chartGeometry(report,scale.max,scale.plot);
     const nearest = (event:MouseEvent) => {
       const matrix=svg.getScreenCTM();
       if (!matrix) return -1;
       const point = new DOMPoint(event.clientX,event.clientY).matrixTransform(matrix.inverse());
-      if (point.x < plot.left || point.x > plot.width-plot.right || point.y < plot.top || point.y > plot.height-plot.bottom) return -1;
-      return Math.min(report.days.length,Math.max(0,Math.round((point.x-plot.left)/daySpacing)));
+      if (point.x < left || point.x > width-right || point.y < top || point.y > height-bottom) return -1;
+      return Math.min(report.days.length,Math.max(0,Math.round((point.x-left)/daySpacing)));
     };
     const hide = () => { tip.hidden=true; hover.setAttribute('visibility','hidden'); };
     let lastIndex = -1;
@@ -574,7 +581,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
       const index=key===state.chartProject ? report.days.findIndex(day=>day.date===state.chartDay) : -1;
       const matrix=svg.getScreenCTM();
       if (index<0 || !matrix) { hide(); return; }
-      show(index+1,new DOMPoint(x(index+1),plot.top).matrixTransform(matrix).x);
+      show(index+1,new DOMPoint(x(index+1),top).matrixTransform(matrix).x);
     };
     if (state.chartDay) showSelected();
     hit.addEventListener('pointermove', event => {
@@ -718,11 +725,12 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     const grouped = groupedRows(changes,change=>tasks.get(change.key),row,report.pointsField ? 6 : 5);
     const step = (delta:number,label:string,icon:string) => '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-report-day-step="' + delta + '" aria-label="' + label + '"' + (!report.days[dayIndex+delta] ? ' disabled' : '') + '>' + icon + '</button>';
     const dayOptions=report.days.map(day=>({id:day.date,name:dayLabel(day.date) + ' · ' + eventCount(day.changes.length)}));
+    const plots=charts(report);
     return '<section class="ozon-report-panel"><h2>Ход спринта</h2><div class="ozon-report-daybar"><span>Дата</span>' + step(-1,'Предыдущий день','‹') + picker('day','Дата',selected?.date || '',dayOptions) + step(1,'Следующий день','›') +
-      (selected && report.pointsField ? '<span>Перешло в «Готово» <strong>' + escape(metric(report,completed)) + '</strong>' + (reopened ? ' · Вернули при переоткрытии <strong>' + escape(metric(report,reopened)) + '</strong>' : '') + ' · Не завершено ' + dayCutoff(report,selected.date) + ' <strong>' + escape(metric(report,selected.remaining)) + '</strong></span>' : '') + '</div>' + charts(report) +
+      (selected && report.pointsField ? '<span>Перешло в «Готово» <strong>' + escape(metric(report,completed)) + '</strong>' + (reopened ? ' · Вернули при переоткрытии <strong>' + escape(metric(report,reopened)) + '</strong>' : '') + ' · Не завершено ' + dayCutoff(report,selected.date) + ' <strong>' + escape(metric(report,selected.remaining)) + '</strong></span>' : '') + '</div>' + plots +
       dayBreakdown(report,dayIndex) +
       (changes.length ? '<div class="ozon-report-tools"><strong>Изменения за день</strong>' + depthControl('details') + '</div>' + treeTable(grouped.html,'Что изменилось',report.pointsField ? 'Работа по статусам' : '',true) + more(grouped.visibleCount) : '<p class="ozon-report-empty">В этот день изменений не было.</p>') +
-      (report.pointsField ? '<details class="ozon-report-method"><summary>Как читать график</summary><p>Точки показывают состояние на конец дня по МСК. Последняя точка показывает состояние ' + (report.closed ? 'на момент закрытия' : 'на момент обновления') + '. Столбцы показывают накопительную сумму баллов, перешедших в «Готово» с начала спринта. «Готово» означает последнюю колонку доски. Возвраты при переоткрытии показаны отдельно в подсказке.</p></details>' : '') + '</section>';
+      (plots ? '<details class="ozon-report-method"><summary>Как читать график</summary><p>Точки показывают состояние на конец дня по МСК. Последняя точка показывает состояние ' + (report.closed ? 'на момент закрытия' : 'на момент обновления') + '. Столбцы показывают накопительную сумму баллов, перешедших в «Готово» с начала спринта. «Готово» означает последнюю колонку доски. Возвраты при переоткрытии показаны отдельно в подсказке.</p></details>' : '') + '</section>';
   }
 
   const more = (total:number) => total > state.limit ? '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-report-more>Показать ещё ' + Math.min(60,total-state.limit) + '</button>' : '';
@@ -899,7 +907,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     const graphs=section.querySelectorAll<HTMLElement>('[data-report-chart]');
     if (state.report && graphs.length) {
       const scale=chartViews(visibleReport(state.report));
-      graphs.forEach((graph,index)=>bindChart(graph,scale.views[index],scale.max,changeDay));
+      graphs.forEach((graph,index)=>bindChart(graph,scale.views[index],scale,changeDay));
     }
     section.querySelectorAll<HTMLButtonElement>('[data-report-chart-mode]').forEach(button=>button.addEventListener('click',()=>{
       const mode=button.dataset.reportChartMode==='projects' ? 'projects' : 'total';

@@ -62,7 +62,12 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
   }
   const baseColumns = { key:['Ключ',285], title:['Название',430], epic:['Epic Link',170], status:['Статус',175], sprint:['Спринт',235], component:['Компонент',180], points:['Story Points',120] } as Record<string, [string, number]>;
   const defaultColumnOrder = ['key','title','epic','status','sprint','component','points'];
-  const layout = { detailsOpen:true, epicDisplay:'full', order:[...defaultColumnOrder], children:[0,1,2,3,4,5], widths:{} as Record<string,number> };
+  const columns = pointColumns.definitions;
+  const defaultMetricOrder = columns.map((_,index)=>index);
+  const columnTitles = {...Object.fromEntries(Object.entries(baseColumns).map(([id,[title]])=>[id,title])),points:'Всего SP'};
+  const metricTitles = Object.fromEntries(columns.map(([title],index)=>['metric-'+index,title]));
+  const canHideColumn = (id:string) => id!=='key' && (Object.hasOwn(baseColumns,id) || Object.hasOwn(metricTitles,id));
+  const layout = { detailsOpen:true, epicDisplay:'full', order:[...defaultColumnOrder], children:[...defaultMetricOrder], hidden:[] as string[], widths:{} as Record<string,number> };
   try {
     const grouping = JSON.parse(localStorage.getItem(groupingStorage) || 'null');
     if (Array.isArray(grouping?.order) && grouping.order.every((key:string)=>Object.hasOwn(groupNames,key))) {
@@ -77,7 +82,8 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
         const savedOrder = saved.order as string[];
         layout.order = [...new Set<string>(savedOrder.filter(id => id in baseColumns)), ...defaultColumnOrder.filter(id => !savedOrder.includes(id))];
       }
-      if (Array.isArray(saved.children) && saved.children.length === 6 && new Set(saved.children).size === 6 && saved.children.every((id: number) => Number.isInteger(id) && id >= 0 && id < 6)) layout.children = saved.children;
+      if (Array.isArray(saved.children) && saved.children.length === defaultMetricOrder.length && new Set(saved.children).size === defaultMetricOrder.length && saved.children.every((id: number) => defaultMetricOrder.includes(id))) layout.children = saved.children;
+      if (Array.isArray(saved.hidden)) layout.hidden = [...new Set<string>(saved.hidden.filter((id:unknown)=>typeof id==='string' && canHideColumn(id)))];
       Object.entries(saved.widths || {}).forEach(([id, width]) => { if (Number.isFinite(width)) layout.widths[id] = Math.max(70, Math.min(1000, Number(width))); });
     }
   } catch (_) { /* Storage may be unavailable in a preview or restricted Jira page. */ }
@@ -91,7 +97,6 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
     if (child) layout.children = order.map(Number); else layout.order = order;
     saveLayout(); onRender();
   }
-  const columns = pointColumns.definitions;
   const escape = (value: any) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   const selectedTeams = () => teams.filter(item => state.teamIds.includes(item.id));
   const team = () => teams.find(item => item.id === state.teamId);
@@ -386,7 +391,11 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
   }
   const stateName = (value: string) => ({ active: 'Активный', future: 'Будущий', closed: 'Прошедший', backlog: 'Бэклог' }[value] || value);
   const issueLink = (key: string) => '<a class="ozon-mono" href="https://jit.o3.ru/browse/' + encodeURIComponent(key) + '" target="_blank" rel="noopener noreferrer">' + escape(key) + '</a>';
-  const flatColumns = () => layout.order.flatMap(id => id === 'points' ? ['points', ...(layout.detailsOpen ? layout.children.map(index => 'metric-' + index) : [])] : [id]);
+  const pointColumnsShown = () => [
+    ...(!layout.hidden.includes('points') ? ['points'] : []),
+    ...(layout.detailsOpen ? layout.children.map(index=>'metric-'+index).filter(id=>!layout.hidden.includes(id)) : [])
+  ];
+  const flatColumns = () => layout.order.flatMap(id => id === 'points' ? pointColumnsShown() : layout.hidden.includes(id) ? [] : [id]);
   const columnWidth = (id: string) => layout.widths[id] || baseColumns[id]?.[1] || 145;
   function rowCells(values: Record<string,string>) {
     return flatColumns().map(id => '<td data-column="' + id + '"' + (id === 'points' || id.startsWith('metric-') ? ' class="ozon-dev-points"' : '') + '>' + (values[id] || '') + '</td>').join('');
@@ -526,9 +535,19 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
     const items = visibleIssues();
     const ids = flatColumns();
     const resizer = (id:string) => '<span role="separator" aria-orientation="vertical" aria-label="Изменить ширину: ' + escape(baseColumns[id]?.[0] || columns[Number(id.slice(7))]?.[0] || id) + '" tabindex="0" class="ozon-dev-col-resizer" data-resize-column="' + id + '"></span>';
-    const top = layout.order.map(id => id === 'points' ? '<th colspan="' + (layout.detailsOpen ? 7 : 1) + '" scope="colgroup" class="ozon-dev-sp-parent"><button data-dev-action="toggle-sp" aria-expanded="' + layout.detailsOpen + '" aria-label="Детализация Story Points">' + (layout.detailsOpen ? '▾' : '▸') + ' Story Points</button> <span class="ozon-ext-group-total">Всего / Сожжено</span></th>' : '<th rowspan="2" scope="col">' + escape(baseColumns[id][0]) + (id === 'epic' ? ' <button type="button" class="ozon-dev-header-settings" data-dev-action="settings-open" aria-label="Настроить отображение Epic Link" title="Настроить отображение Epic Link"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6m8 4v6"/></svg></button>' : '') + resizer(id) + '</th>').join('');
-    const second = '<th scope="col">Всего SP' + resizer('points') + '</th>' + (layout.detailsOpen ? layout.children : []).map(index => '<th scope="col"><span tabindex="0" title="' + escape(columns[index][1]) + '">' + escape(columns[index][0]) + ' ⓘ</span>' + resizer('metric-'+index) + '</th>').join('');
-    return '<div class="ozon-dev-table-scroll"><table class="ozon-dev-table" style="width:max(100%, ' + ids.reduce((sum,id) => sum+columnWidth(id),0) + 'px);max-width:none!important;min-width:max(100%, ' + ids.reduce((sum,id) => sum+columnWidth(id),0) + 'px);"><colgroup>' + ids.map(id => '<col data-dev-col="' + id + '" style="width:' + columnWidth(id) + 'px;">').join('') + '</colgroup><thead><tr>' + top + '</tr><tr>' + second + '</tr></thead><tbody>' + (items.length ? renderGroups(items) : '<tr><td colspan="' + ids.length + '" class="ozon-dev-empty">Нет задач для выбранных спринтов и фильтров.</td></tr>') + '<tr class="ozon-dev-filler" aria-hidden="true"><td colspan="' + ids.length + '"></td></tr></tbody><tfoot><tr class="ozon-dev-total">' + groupCells('Итого · ' + items.length + ' задач ' + statusSummary(items),items) + '</tr></tfoot></table></div>';
+    const pointIds=pointColumnsShown();
+    const top = layout.order.map(id => {
+      if (id==='points') return pointIds.length ? '<th colspan="' + pointIds.length + '" scope="colgroup" class="ozon-dev-sp-parent"><button data-dev-action="toggle-sp" aria-expanded="' + layout.detailsOpen + '" aria-label="Детализация Story Points">' + (layout.detailsOpen ? '▾' : '▸') + ' Story Points</button> <span class="ozon-ext-group-total">Всего / Сожжено</span></th>' : '';
+      if (layout.hidden.includes(id)) return '';
+      return '<th' + (pointIds.length ? ' rowspan="2"' : '') + ' scope="col">' + escape(baseColumns[id][0]) + (id === 'epic' ? ' <button type="button" class="ozon-dev-header-settings" data-dev-action="settings-open" aria-label="Настроить отображение Epic Link" title="Настроить отображение Epic Link"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6m8 4v6"/></svg></button>' : '') + resizer(id) + '</th>';
+    }).join('');
+    const second=pointIds.map(id=>{
+      if (id==='points') return '<th scope="col">Всего SP' + resizer(id) + '</th>';
+      const [label,hint]=columns[Number(id.slice(7))];
+      return '<th scope="col"><span tabindex="0" title="' + escape(hint) + '">' + escape(label) + ' ⓘ</span>' + resizer(id) + '</th>';
+    }).join('');
+    const tableWidth=ids.reduce((sum,id)=>sum+columnWidth(id),0);
+    return '<div class="ozon-dev-table-scroll"><table class="ozon-dev-table" style="width:max(100%, ' + tableWidth + 'px);max-width:none!important;min-width:max(100%, ' + tableWidth + 'px);"><colgroup>' + ids.map(id => '<col data-dev-col="' + id + '" style="width:' + columnWidth(id) + 'px;">').join('') + '</colgroup><thead><tr>' + top + '</tr>' + (second ? '<tr>' + second + '</tr>' : '') + '</thead><tbody>' + (items.length ? renderGroups(items) : '<tr><td colspan="' + ids.length + '" class="ozon-dev-empty">Нет задач для выбранных спринтов и фильтров.</td></tr>') + '<tr class="ozon-dev-filler" aria-hidden="true"><td colspan="' + ids.length + '"></td></tr></tbody><tfoot><tr class="ozon-dev-total">' + groupCells('Итого · ' + items.length + ' задач ' + statusSummary(items),items) + '</tr></tfoot></table></div>';
   }
   function filterControl(kind: string, title: string, values: {value:string;label:string;status?:string;category?:string;summary?:string;component?:string;searchText?:string}[], selected: string) {
     const disabled = (kind === 'epic' || kind === 'stream' || kind === 'project') && (!state.loadedSelection.length || state.loadingTasks || state.loadingSprints);
@@ -790,7 +809,7 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
   function settingsHtml() {
     const draft = settingsDraft; if (!draft) return '';
     const stable = draft.presented; draft.presented=true;
-    return '<aside class="ozon-dev-settings' + (stable ? ' ozon-dev-settings-stable' : '') + '" role="dialog" aria-label="Настройки таблицы"><header class="ozon-dev-editor-head"><strong>Настройки таблицы</strong><button class="ozon-ext-btn ozon-ext-btn-surface" data-dev-action="settings-cancel" aria-label="Закрыть настройки">✕</button></header><strong>Уровень раскрытия</strong><div class="ozon-ext-toolbar-combo"><button class="ozon-ext-toolbar-trigger" data-dev-action="menu" data-menu="settings-depth"><span class="ozon-ext-toolbar-label">' + escape(groupNames[draft.grouping[draft.depth]] || 'Задачи') + '</span><span class="ozon-ext-toolbar-chevron"></span></button>' + (state.menu === 'settings-depth' ? '<div class="ozon-ext-combo-popover">' + [...draft.grouping,'task'].map((id,index) => '<button class="ozon-ext-combo-item ' + (index === draft.depth ? 'active' : '') + '" data-dev-action="settings-depth" data-depth="' + index + '">' + escape(groupNames[id] || 'Задачи') + '</button>').join('') + '</div>' : '') + '</div><strong>Отображение Epic Link</strong><div class="ozon-ext-toolbar-combo"><button class="ozon-ext-toolbar-trigger" data-dev-action="menu" data-menu="settings-epic" aria-expanded="' + (state.menu === 'settings-epic') + '"><span class="ozon-ext-toolbar-label">' + escape(({key:'Только ключ',status:'Ключ + статус',full:'Ключ + статус + название'} as Record<string,string>)[draft.layout.epicDisplay]) + '</span><span class="ozon-ext-toolbar-chevron"></span></button>' + (state.menu === 'settings-epic' ? '<div class="ozon-ext-combo-popover">' + [['key','Только ключ'],['status','Ключ + статус'],['full','Ключ + статус + название']].map(([value,label]) => '<button class="ozon-ext-combo-item ' + (draft.layout.epicDisplay === value ? 'active' : '') + '" data-dev-action="settings-epic-display" data-value="' + value + '">' + label + '</button>').join('') + '</div>' : '') + '</div><strong>Группировка</strong>' + (groupingUi?.html('development-settings',draft.grouping,groupNames,'data-settings-group') || '') + '<strong>Столбцы</strong><p class="ozon-dev-menu-hint">Ширину можно менять за границу заголовка таблицы.</p>' + (groupingUi?.html('development-columns',draft.layout.order,Object.fromEntries(draft.layout.order.map(id=>[id,baseColumns[id][0]]))) || '') + '<label class="ozon-dev-column-child"><input type="checkbox" data-settings-sp ' + (draft.layout.detailsOpen ? 'checked' : '') + '> Детализация Story Points</label>' + (draft.layout.detailsOpen ? groupingUi?.html('development-sp',draft.layout.children.map(String),Object.fromEntries(columns.map(([title],index)=>[String(index),title]))) || '' : '') + '<footer><button class="ozon-ext-btn" data-dev-action="settings-apply">Применить</button><button class="ozon-ext-btn ozon-ext-btn-surface" data-dev-action="settings-cancel">Отмена</button></footer></aside>';
+    return '<aside class="ozon-dev-settings' + (stable ? ' ozon-dev-settings-stable' : '') + '" role="dialog" aria-label="Настройки таблицы"><header class="ozon-dev-editor-head"><strong>Настройки таблицы</strong><button class="ozon-ext-btn ozon-ext-btn-surface" data-dev-action="settings-cancel" aria-label="Закрыть настройки">✕</button></header><strong>Уровень раскрытия</strong><div class="ozon-ext-toolbar-combo"><button class="ozon-ext-toolbar-trigger" data-dev-action="menu" data-menu="settings-depth"><span class="ozon-ext-toolbar-label">' + escape(groupNames[draft.grouping[draft.depth]] || 'Задачи') + '</span><span class="ozon-ext-toolbar-chevron"></span></button>' + (state.menu === 'settings-depth' ? '<div class="ozon-ext-combo-popover">' + [...draft.grouping,'task'].map((id,index) => '<button class="ozon-ext-combo-item ' + (index === draft.depth ? 'active' : '') + '" data-dev-action="settings-depth" data-depth="' + index + '">' + escape(groupNames[id] || 'Задачи') + '</button>').join('') + '</div>' : '') + '</div><strong>Отображение Epic Link</strong><div class="ozon-ext-toolbar-combo"><button class="ozon-ext-toolbar-trigger" data-dev-action="menu" data-menu="settings-epic" aria-expanded="' + (state.menu === 'settings-epic') + '"><span class="ozon-ext-toolbar-label">' + escape(({key:'Только ключ',status:'Ключ + статус',full:'Ключ + статус + название'} as Record<string,string>)[draft.layout.epicDisplay]) + '</span><span class="ozon-ext-toolbar-chevron"></span></button>' + (state.menu === 'settings-epic' ? '<div class="ozon-ext-combo-popover">' + [['key','Только ключ'],['status','Ключ + статус'],['full','Ключ + статус + название']].map(([value,label]) => '<button class="ozon-ext-combo-item ' + (draft.layout.epicDisplay === value ? 'active' : '') + '" data-dev-action="settings-epic-display" data-value="' + value + '">' + label + '</button>').join('') + '</div>' : '') + '</div><strong>Группировка</strong>' + (groupingUi?.html('development-settings',draft.grouping,groupNames,'data-settings-group') || '') + '<strong>Столбцы</strong><p class="ozon-dev-menu-hint">Ширину можно менять за границу заголовка таблицы.</p>' + (groupingUi?.html('development-columns',draft.layout.order,columnTitles,'data-settings-column',{hidden:draft.layout.hidden,required:['key']}) || '') + '<label class="ozon-dev-column-child"><input type="checkbox" data-settings-sp ' + (draft.layout.detailsOpen ? 'checked' : '') + '> Детализация Story Points</label>' + (draft.layout.detailsOpen ? groupingUi?.html('development-sp',draft.layout.children.map(index=>'metric-'+index),metricTitles,'data-settings-column',{hidden:draft.layout.hidden}) || '' : '') + '<footer><button class="ozon-ext-btn" data-dev-action="settings-apply">Применить</button><button class="ozon-ext-btn ozon-ext-btn-surface" data-dev-action="settings-cancel">Отмена</button></footer></aside>';
   }
   function html() {
     const busy = state.loadingSprints || state.loadingTasks;
@@ -820,7 +839,7 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
       if (!settingsDraft) return;
       if (id==='development-settings') settingsDraft.grouping=order;
       if (id==='development-columns') settingsDraft.layout.order=order;
-      if (id==='development-sp') settingsDraft.layout.children=order.map(Number);
+      if (id==='development-sp') settingsDraft.layout.children=order.map(id=>Number(id.slice(7)));
       onRender();
     });
     groupingUi?.bindDepth(root,value=>setDepth(Number(value)));
@@ -857,7 +876,14 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
       const action = button.dataset.devAction;
       if (action === 'settings-open') { settingsScroll=0; settingsDraft = {grouping:[...state.grouping],depth:state.depth,layout:JSON.parse(JSON.stringify(layout))}; state.menu=''; onRender(); return; }
       if (action === 'settings-cancel') { settingsDraft=null; state.menu=''; onRender(); return; }
-      if (action === 'settings-apply' && settingsDraft) { const draft=settingsDraft; settingsDraft=null; Object.assign(layout,draft.layout); saveLayout(); state.grouping=[...draft.grouping]; state.menu=''; setDepth(draft.depth); return; }
+      if (action === 'settings-apply' && settingsDraft) {
+        const draft=settingsDraft;
+        settingsDraft=null; state.menu=''; Object.assign(layout,draft.layout); saveLayout();
+        const treeChanged=draft.depth!==state.depth || draft.grouping.join()!==state.grouping.join();
+        state.grouping=[...draft.grouping];
+        if (treeChanged) setDepth(draft.depth); else onRender();
+        return;
+      }
       if (action === 'settings-epic-display' && settingsDraft) { settingsDraft.layout.epicDisplay=button.dataset.value || 'full'; state.menu=''; onRender(); return; }
       if (action === 'settings-depth' && settingsDraft) { settingsDraft.depth=Number(button.dataset.depth); state.menu=''; onRender(); return; }
 
@@ -870,7 +896,7 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
       }
       if (action === 'toggle-sp') { layout.detailsOpen = button.getAttribute('aria-expanded') !== 'true'; saveLayout(); onRender(); return; }
       if (action === 'column-move') { moveColumn(button.dataset.column!,Number(button.dataset.direction),button.dataset.child === 'true'); return; }
-      if (action === 'reset-columns') { layout.order = ['key','title','epic','status','sprint','points']; layout.children = [0,1,2,3,4,5]; layout.widths = {}; layout.detailsOpen = true; saveLayout(); onRender(); return; }
+      if (action === 'reset-columns') { layout.order=[...defaultColumnOrder]; layout.children=[...defaultMetricOrder]; layout.hidden=[]; layout.widths={}; layout.detailsOpen=true; saveLayout(); onRender(); return; }
       if (action === 'open-fcrm') { const link = state.groups.flatMap(group => group.issues).flatMap(issue => issue.links).find(link => link.key === button.dataset.key); if (link) onOpenTask?.(link); return; }
       if (action === 'team') { selectTeam(button.dataset.team || ''); return; }
       if (action === 'load') { loadTasks(); return; }
@@ -901,6 +927,12 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
     }));
     root.querySelectorAll<HTMLElement>('[role="button"][data-dev-action]').forEach(control => control.addEventListener('keydown',event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); control.click(); } }));
     root.querySelectorAll<HTMLInputElement>('[data-settings-group]').forEach(input => input.addEventListener('change',() => { if(!settingsDraft)return; const id=input.dataset.settingsGroup!; settingsDraft.grouping=input.checked?[...settingsDraft.grouping,id]:settingsDraft.grouping.filter(item=>item!==id); settingsDraft.depth=Math.min(settingsDraft.depth,settingsDraft.grouping.length); onRender(); }));
+    root.querySelectorAll<HTMLInputElement>('[data-settings-column]').forEach(input=>input.addEventListener('change',()=>{
+      const id=input.dataset.settingsColumn!;
+      if (!settingsDraft || !canHideColumn(id)) return;
+      const hidden=settingsDraft.layout.hidden.filter(column=>column!==id);
+      settingsDraft.layout.hidden=input.checked ? hidden : [...hidden,id];
+    }));
     root.querySelector<HTMLInputElement>('[data-settings-sp]')?.addEventListener('change',event => { if(settingsDraft)settingsDraft.layout.detailsOpen=(event.target as HTMLInputElement).checked; onRender(); });
     const editorSearch = root.querySelector<HTMLInputElement>('#ozon-dev-editor-search');
     const linkSprintSearch = root.querySelector<HTMLInputElement>('#ozon-dev-link-sprint-search');
