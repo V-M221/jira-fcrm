@@ -11,7 +11,7 @@ import { bindJiraLabelSuggestions } from '../services/jiraLabelSuggestions';
 import { createJiraGroupingUi } from '../services/jiraGroupingUi';
 import { createJiraPeopleUi } from '../services/jiraPeopleUi';
 
-export const EXTENSION_VERSION = '3.5.170';
+export const EXTENSION_VERSION = '3.5.171';
 
 export function generateManifestJson(config: ExtensionConfig): string {
   const manifest = {
@@ -621,16 +621,17 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-report-rollup-tools {margin-bottom:10px}
 .ozon-report-rollup-wrap {border:1px solid #e4ecf6;border-radius:8px}
 .ozon-report-rollup-wrap table {min-width:1050px;table-layout:fixed}
-.ozon-report-rollup-wrap tr>th:first-child {width:238px;position:sticky;left:0;z-index:1;border-right:1px solid #e4ecf6}
+.ozon-report-rollup-wrap .ozon-report-rollup-group {width:215px;position:sticky;left:0;z-index:1;border-right:1px solid #e4ecf6;vertical-align:middle}
+.ozon-report-rollup-wrap .ozon-report-rollup-measure {width:72px;color:#40536e}
 .ozon-report-rollup-wrap thead th {vertical-align:middle}
-.ozon-report-rollup-wrap tbody tr:not(.ozon-report-stream-project)>th {background:#fff;font-weight:400}
-.ozon-report-rollup-wrap .ozon-report-stream-project td,.ozon-report-rollup-wrap tfoot td {background:#f1f5fb}
+.ozon-report-rollup-wrap tbody .ozon-report-rollup-row:not(.ozon-report-rollup-highlight)>th {background:#fff;font-weight:400}
+.ozon-report-rollup-wrap .ozon-report-rollup-highlight td {background:#f1f5fb}
 .ozon-report-rollup-wrap td.ozon-report-rollup-total {background:#eaf2fb}
-.ozon-report-rollup-value {display:grid;grid-template-columns:29px auto;align-items:baseline;gap:2px 5px;color:#40536e;font-variant-numeric:tabular-nums;font-size:11px;white-space:nowrap}
-.ozon-report-rollup-value+div {margin-top:4px}
-.ozon-report-rollup-value.is-fact {color:#1755aa}
+.ozon-report-rollup-wrap .ozon-report-rollup-row.is-plan :is(td,.ozon-report-rollup-measure) {border-bottom-color:transparent}
+.ozon-report-rollup-wrap .ozon-report-rollup-row.is-fact :is(.ozon-report-rollup-value,.ozon-report-rollup-measure) {color:#1755aa}
+.ozon-report-rollup-value {display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px;color:#40536e;font-variant-numeric:tabular-nums;font-size:11px;white-space:nowrap}
 .ozon-report-rollup-value strong {font-size:13px}
-.ozon-report-rollup-value small {grid-column:2;color:inherit;font-size:10.5px}
+.ozon-report-rollup-value small {color:inherit;font-size:10.5px}
 .ozon-report-settings-button {margin-left:auto}
 .ozon-report-settings p {margin:0;color:#52647d}
 .ozon-report-settings [data-report-settings="inherit"][aria-pressed="true"] {background:#e4efff;color:#005bff}

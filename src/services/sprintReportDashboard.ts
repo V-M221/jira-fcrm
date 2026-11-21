@@ -376,8 +376,8 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     if (!report.pointsField || !report.byProject.size) return '';
     const scope=visibleReport(report);
     const levels=dimensions();
-    const value=(points:number,total:number,label:string)=>'<div class="ozon-report-rollup-value ' + (label==='Факт' ? 'is-fact' : '') + '"><span>' + label + '</span><strong>' + escape(amount(points)) + '</strong><small>' + (total ? escape(percent(points/total)) : '—') + '</small></div>';
-    const values=(tasks:Report['rows'])=>{
+    type PercentageBase = Pick<Report['metrics'],'planned'|'completedPoints'>;
+    const rowPair=(label:string,tasks:Report['rows'],base:PercentageBase,highlight:boolean)=>{
       const totals=Array.from({length:pointColumns.definitions.length+1},()=>({plan:0,fact:0}));
       for (const task of tasks) {
         const plan=task.started ? task.startPoints ?? 0 : 0;
@@ -391,27 +391,35 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
           totals[index+1].fact+=fact;
         });
       }
-      return totals.map(({plan,fact},index)=>'<td' + (index ? '' : ' class="ozon-report-rollup-total"') + '>' + value(plan,report.metrics.planned,'План') + value(fact,report.metrics.completedPoints,'Факт') + '</td>').join('');
+      const cells=(kind:'plan'|'fact',total:number)=>totals.map((column,index)=>{
+        const points=column[kind];
+        return '<td' + (index ? '' : ' class="ozon-report-rollup-total"') + '><div class="ozon-report-rollup-value"><strong>' + escape(amount(points)) + '</strong><small>' + (total ? escape(percent(points/total)) : '—') + '</small></div></td>';
+      }).join('');
+      const style=highlight ? ' ozon-report-rollup-highlight' : '';
+      return '<tr class="ozon-report-rollup-row is-plan' + style + '"><th scope="row" rowspan="2" class="ozon-report-rollup-group">' + label + '</th><th scope="row" class="ozon-report-rollup-measure">План</th>' + cells('plan',base.planned) + '</tr>' +
+        '<tr class="ozon-report-rollup-row is-fact' + style + '"><th scope="row" class="ozon-report-rollup-measure">Факт</th>' + cells('fact',base.completedPoints) + '</tr>';
     };
-    const rows=(tasks:Report['rows'],depth:number,path:string[]):string=>{
+    const rows=(tasks:Report['rows'],depth:number,path:string[],base:PercentageBase):string=>{
       const dimension=levels[depth];
       if (!dimension) return '';
       return buckets(tasks,dimension,task=>task).map(([key,children])=>{
+        const rowBase=dimension==='project' ? report.byProject.get(key)?.metrics ?? base : base;
         const nextPath=[...path,dimension + ':' + key];
         const id=JSON.stringify(nextPath);
         const expanded=groupExpanded('rollup',id,depth);
         const toggle=depth+1<levels.length ? groupToggle(id,key || emptyGroups[dimension],expanded,false,'rollup') : '';
-        return '<tr' + (depth===0 ? ' class="ozon-report-stream-project"' : '') + '><th scope="row"><div class="ozon-report-tree-line" style="--report-depth:' + depth + '">' + toggle + groupLabel(dimension,key,children[0],levels) + '</div></th>' + values(children) + '</tr>' + (expanded ? rows(children,depth+1,nextPath) : '');
+        const label='<div class="ozon-report-tree-line" style="--report-depth:' + depth + '">' + toggle + groupLabel(dimension,key,children[0],levels) + '</div>';
+        return rowPair(label,children,rowBase,depth===0) + (expanded ? rows(children,depth+1,nextPath,rowBase) : '');
       }).join('');
     };
     const route=levels.map(key=>groupNames[key]).join(' → ');
     const tasks=scope.rows.filter(task=>task.started || task.doneAtEnd);
     const headings=pointColumns.definitions.map(([title,hint])=>'<th scope="col" title="' + escape(hint) + '">' + escape(title) + '</th>').join('');
-    return '<details class="ozon-report-streams" data-report-rollup' + (state.rollupOpen ? ' open' : '') + '><summary>План и факт по группам</summary><p>План — SP на старте. Факт — завершённые SP ' + (report.closed ? 'к закрытию' : 'к текущему моменту') + '. Проценты от плана и факта всего спринта. Баллы без категории входят в «Всего SP».' +
+    return '<details class="ozon-report-streams" data-report-rollup' + (state.rollupOpen ? ' open' : '') + '><summary>План и факт по группам</summary><p>План — SP на старте. Факт — завершённые SP ' + (report.closed ? 'к закрытию' : 'к текущему моменту') + '. Доли в пределах проекта считаются от его плана и факта. Баллы без категории входят в «Всего SP».' +
       (levels.includes('component') ? ' Задача с несколькими компонентами видна в каждом из них. В итоге она учитывается один раз.' : '') + '</p>' +
       (levels.length>1 ? '<div class="ozon-report-rollup-tools">' + depthControl('rollup') + '</div>' : '') +
-      '<div class="ozon-report-table-wrap ozon-report-rollup-wrap"><table aria-label="План и факт по группам"><thead><tr><th scope="col">' + escape(route || 'Группы') + '</th><th scope="col">Всего SP</th>' + headings + '</tr></thead><tbody>' +
-      rows(tasks,0,['rollup']) + '</tbody><tfoot><tr><th scope="row">' + escape(state.project ? 'Всего по ' + state.project : 'Весь спринт') + '</th>' + values(tasks) + '</tr></tfoot></table></div></details>';
+      '<div class="ozon-report-table-wrap ozon-report-rollup-wrap"><table aria-label="План и факт по группам"><thead><tr><th scope="col" class="ozon-report-rollup-group">' + escape(route || 'Группы') + '</th><th scope="col" class="ozon-report-rollup-measure">Показатель</th><th scope="col">Всего SP</th>' + headings + '</tr></thead><tbody>' +
+      rows(tasks,0,['rollup'],scope.metrics) + '</tbody><tfoot>' + rowPair(escape(state.project ? 'Всего по ' + state.project : 'Весь спринт'),tasks,scope.metrics,true) + '</tfoot></table></div></details>';
   }
 
   const plot={width:960,height:180,left:58,right:40,top:27,bottom:44};
