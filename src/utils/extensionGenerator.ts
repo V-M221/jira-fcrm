@@ -11,7 +11,7 @@ import { bindJiraLabelSuggestions } from '../services/jiraLabelSuggestions';
 import { createJiraGroupingUi } from '../services/jiraGroupingUi';
 import { createJiraPeopleUi } from '../services/jiraPeopleUi';
 
-export const EXTENSION_VERSION = '3.5.175';
+export const EXTENSION_VERSION = '3.5.176';
 
 export function generateManifestJson(config: ExtensionConfig): string {
   const manifest = {

@@ -1,7 +1,8 @@
 import { answerMarkup } from '../utils/answerMarkup';
+import { structuredAnswer } from '../utils/structuredAnswer';
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { completeDeepseekChat, DEEPSEEK_TOKEN_STORAGE_KEY, DEFAULT_DEEPSEEK_SYSTEM_PROMPT, CHATZONE_RULE, DeepseekMode } from '../services/deepseek';
+import { completeDeepseekChat, DEEPSEEK_TOKEN_STORAGE_KEY, DEFAULT_DEEPSEEK_SYSTEM_PROMPT, parseJiraDraft, DeepseekMode } from '../services/deepseek';
 
 type Phase = 'idle' | 'loading' | 'preview' | 'applying' | 'success' | 'error';
 
@@ -57,14 +58,13 @@ export default function ImproveDescription({
         issueKey,
         mode,
         token.trim() || null,
-        mode === 'apply' ? preview.split('\n\nПредложения и вопросы к согласованию\n')[0] : '',
-        DEFAULT_DEEPSEEK_SYSTEM_PROMPT + "\n" + CHATZONE_RULE,
-        refining ? { preview, reply } : undefined,
-        mode === "apply" ? preview : ""
+        mode === 'apply' ? preview : '',
+        DEFAULT_DEEPSEEK_SYSTEM_PROMPT,
+        refining ? { preview, reply } : undefined
       );
       if (serial !== requestRef.current) return;
       if (mode === 'apply') {
-        onApplied(preview.split('\n\nПредложения и вопросы к согласованию\n')[0]);
+        onApplied(parseJiraDraft(preview,issueKey).description);
         setSuccessText(text);
         setPhase('success');
         return;
@@ -123,7 +123,7 @@ export default function ImproveDescription({
             {error && <p className="mb-3 text-[13px] text-[#AE2E24]">{error}</p>}
 
             {phase === 'preview' && (
-              <div className="studio-answer mb-3 min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words rounded-[3px] border border-[#DFE1E6] bg-[#F7F8F9] p-2.5 font-sans text-sm leading-relaxed text-[#172B4D]" dangerouslySetInnerHTML={{ __html: answerMarkup(preview) }} />
+              <div className="studio-answer mb-3 min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words rounded-[3px] border border-[#DFE1E6] bg-[#F7F8F9] p-2.5 font-sans text-sm leading-relaxed text-[#172B4D]" dangerouslySetInnerHTML={{ __html: structuredAnswer(preview,'description',answerMarkup) }} />
             )}
 
             {phase === 'success' && (
@@ -131,7 +131,7 @@ export default function ImproveDescription({
                 <p className="mb-2 text-[13px] font-semibold text-[#216E4E]">
                   Изменения отправлены в задачу через jit. В предпросмотре студии описание обновлено локально.
                 </p>
-                <div className="studio-answer mb-3 min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words rounded-[3px] border border-[#DFE1E6] bg-[#F7F8F9] p-2.5 font-sans text-sm leading-relaxed text-[#172B4D]" dangerouslySetInnerHTML={{ __html: answerMarkup(successText) }} />
+                <div className="studio-answer mb-3 min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words rounded-[3px] border border-[#DFE1E6] bg-[#F7F8F9] p-2.5 font-sans text-sm leading-relaxed text-[#172B4D]" dangerouslySetInnerHTML={{ __html: structuredAnswer(successText,'result',answerMarkup) }} />
               </>
             )}
 
