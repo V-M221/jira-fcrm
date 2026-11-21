@@ -255,11 +255,15 @@ assert.match(html,/class="ozon-report-axis-title"[^>]*>День спринта �
 assert.match(html,/class="ozon-report-plot-label remaining"[^>]*>5</);
 assert.match(html,/class="ozon-report-plot-label shared"[^>]*>8</);
 assert.equal([...html.matchAll(/class="ozon-report-grid-day/g)].length,report.days.length+1);
+const burnBars = markup => [...markup.matchAll(/data-report-burn-day="([^"]+)" x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"/g)]
+  .map(([,date,x,y,width,height])=>({date,x:Number(x),y:Number(y),width:Number(width),height:Number(height)}));
+assert.match(html,/ozon-report-burn-legend">Перешло в «Готово» за день/);
+assert.deepEqual(burnBars(html).map(bar=>bar.date),['2026-10-21']);
 assert.doesNotMatch(html,/data-report-chart-mode=/);
 assert.match(html,/data-report-section="scope" data-report-target-filter="estimate"[^>]*><span>Переоценка<\/span><strong>\+3 SP</);
 const hitBounds = html.match(/class="ozon-report-graph-hit" x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"/).slice(1).map(Number);
 dashboard.bind(root);
-const move = index => hit.listeners.get('pointermove')({clientX:hitBounds[0] + hitBounds[2] * index / report.days.length,clientY:hitBounds[1] + hitBounds[3]/2});
+const move = index => hit.listeners.get('pointermove')({clientX:hitBounds[0] + hitBounds[2] * index / (report.days.length+.5),clientY:hitBounds[1] + hitBounds[3]/2});
 move(3);
 assert.equal(tip.hidden,false);
 assert.equal(tip.querySelector('[data-tip-burned]').textContent,'Перешло в «Готово»: 3 SP');
@@ -276,6 +280,9 @@ const split = dashboard.html();
 assert.match(split,/data-report-chart-mode="projects" aria-pressed="true"/);
 assert.match(split,/<h3>OB<\/h3>/);
 assert.match(split,/<h3>OBFRONT<\/h3>/);
+const splitBars = [...split.matchAll(/<svg viewBox="0 0 960 180"[^>]*>.*?<\/svg>/g)].map(([svg])=>burnBars(svg));
+assert.deepEqual(splitBars.map(bars=>bars.map(bar=>bar.date)),[['2026-10-20'],['2026-10-21']]);
+assert.ok(Math.abs(splitBars[0][0].height / splitBars[1][0].height - 5/3) < 1e-9,'Project bars share the Story Point scale');
 assert.match(split,/<th>Лидер проекта<\/th>/);
 assert.match(split,/data-report-avatar="old-user" src="data:image\/png;base64,AA==".*Первый исполнитель<\/strong><small>5 SP · 1 задача/);
 const obRows = groupRows(groupTable(split),'<strong>OB</strong>');
@@ -302,6 +309,19 @@ assert.equal(axes.length,2);
 assert.equal(axes[0],axes[1],'Both projects use an identical date and Story Point scale');
 Object.assign(dashboard.getState(),{chartMode:'total'});
 assert.equal([...dashboard.html().matchAll(/class="ozon-report-graph"/g)].length,1);
+assert.deepEqual(burnBars(dashboard.html()).map(bar=>bar.date),['2026-10-20','2026-10-21']);
+
+const lastDay = report.days.at(-1);
+const sameDayTransitions = [{...report.events[0],burned:20},{...report.events[0],burned:-20}];
+dashboard.getState().report = {...report,days:[...report.days.slice(0,-1),{...lastDay,changes:sameDayTransitions,burned:0}]};
+const lastBar = burnBars(dashboard.html()).at(-1);
+assert.equal(lastBar.date,lastDay.date);
+assert.equal(lastBar.y,hitBounds[1],'The axis includes daily completed SP even when they exceed both lines');
+assert.ok(lastBar.x + lastBar.width <= hitBounds[0]+hitBounds[2],'The last bar fits inside the plot');
+dashboard.bind(root);
+move(report.days.length);
+assert.equal(tip.querySelector('[data-tip-burned]').textContent,'Перешло в «Готово»: 20 SP');
+assert.equal(tip.querySelector('[data-tip-reopened]').textContent,'Вернули при переоткрытии: 20 SP');
 
 Object.assign(dashboard.getState(),{report:edge,section:'finish',scopeFilter:'done'});
 const completedHtml = dashboard.html();
@@ -393,4 +413,4 @@ applySettings.listeners.get('click')();
 assert.deepEqual(JSON.parse(storage.get('ozon-sprint-report-v1')).grouping,null);
 assert.doesNotMatch(groupTable(dashboard.html()),/→ Компонент/);
 
-console.log('Sprint report checks passed: history, chart interaction, shared point categories, grouping settings and independent tree depths.');
+console.log('Sprint report checks passed: history, daily completion bars, chart interaction, point categories and tree controls.');
