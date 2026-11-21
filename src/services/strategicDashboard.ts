@@ -5,6 +5,7 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
   const state = { issues: [] as any[], loading: false, loaded: false, error: '', notice:'', progress: '', expanded: new Set<string>(), search:'', component:'', issueType:'', issueTypeOpen:false, sort:'priority', sortOpen:false, hideCanceled:false, hideDone:false, onlyThemes:false, filterCollapsed:new Set<string>(), filterComponents:[] as string[], filtersLoading:false, filtersReady:false, filtersError:'', componentOpen:false, componentQuery:'', labelOpen:false, labelQuery:'', labelFilter:new Set<string>(), settings:false, editor:null as any };
   const escape = (value: any) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   const collator = new Intl.Collator('ru', { numeric:true, sensitivity:'base' });
+  const plurals = new Intl.PluralRules('ru');
   const columnTitles:Record<string,string> = {task:'Задача',status:'Статус',component:'Компонент',priority:'Приоритет',sprint:'Спринт',labels:'Метки',epic:'Epic Link',obproject:'Эпик OBPROJECT'};
   const legacyOrder=['type','key','summary','status','component','priority','sprint','labels','epic','obproject'];
   const defaultOrder = Object.keys(columnTitles);
@@ -21,6 +22,8 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
   const exactIssueKey = () => /^(?:https?:\/\/[^/]+\/browse\/)?(FCRM-\d+)(?:[/?#].*)?$/i.exec(state.search.trim())?.[1].toUpperCase() || '';
   let outsideBound=false;
   let request = 0;
+  let firstPage:any[]=[];
+  let previewLookup:AbortController | undefined;
   let sprintField = configuredSprintField || '';
   let epicField = '';
   let epicNameField = '';
@@ -31,6 +34,7 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
   const obprojectKeyOf = (value:any) => { const field=Array.isArray(value) ? value[0] : value; const raw=field && typeof field === 'object' ? field.key || field.value || field.name || field.url || '' : field || ''; return String(raw).toUpperCase().match(/OBPROJECT-\d+/)?.[0] || ''; };
   async function loadObprojectMetadata(issues:any[],generation:number) {
     const keys=[...new Set<string>(issues.map(issue => obprojectKeyOf(issue.fields?.customfield_20100)).filter(Boolean))];
+    let updated=false;
     for (let i=0;i<keys.length;i+=100) {
       if (generation !== request) return;
       try {
@@ -44,9 +48,10 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
         data.issues.forEach((issue:any) => {
           if (issue?.key) obprojectMetadata.set(issue.key,{summary:issue.fields?.summary || '',status:issue.fields?.status?.name || '',category:issue.fields?.status?.statusCategory?.key || ''});
         });
-        onRender();
+        updated=true;
       } catch (_) { /* Ключ доступен и без деталей эпика. */ }
     }
+    if (updated && generation===request) onRender();
   }
   let fieldsDiscovered = false;
   const priorityIcon = (name:string) => priorityService?.icon ? priorityService.icon(name) : '';
@@ -116,30 +121,85 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
     if (state.loading) return;
     const current = ++request;
     sprintOptionsCache = null;
-    state.loading = true; state.error = ''; state.notice = ''; state.progress = 'Загружаем задачи проекта FCRM…'; onRender();
+    state.loading = true; state.error = ''; state.notice = ''; state.progress = 'Загружаем задачи проекта FCRM…';
+    firstPage=[]; previewLookup?.abort();
+    const began=performance.now();
+    onRender();
     try {
       if (!fieldsDiscovered) { try { const response=await fetch('/rest/api/2/field',{credentials:'same-origin',headers:{Accept:'application/json'}}); if (response.ok) { const fields=await response.json(); sprintField=fields.find((field:any) => String(field.schema?.custom || '').includes('gh-sprint'))?.id || fields.find((field:any) => /^(sprint|спринт)$/i.test(String(field.name || '').trim()))?.id || sprintField; epicField=fields.find((field:any) => field.schema?.custom === 'com.pyxis.greenhopper.jira:gh-epic-link')?.id || fields.find((field:any) => /^(epic link|ссылка на эпик)$/i.test(String(field.name || field.untranslatedName || '').trim()))?.id || ''; epicNameField=fields.find((field:any) => field.schema?.custom === 'com.pyxis.greenhopper.jira:gh-epic-label')?.id || ''; fieldsDiscovered=true; } } catch (_) { /* Other data is still available. */ } }
       const issues: any[] = [];
       const seen = new Set<string>();
-      let start = 0, total = Infinity;
-      while (start < total) {
-        const query = new URLSearchParams({jql:'project = FCRM ORDER BY key ASC', fields:['summary','issuetype','status','components','labels','issuelinks','priority','created','sprint','closedSprints','epic','customfield_20100',epicField,sprintField].filter(Boolean).join(','), startAt:String(start), maxResults:'100'});
+      async function page(startAt:number) {
+        const query = new URLSearchParams({jql:'project = FCRM ORDER BY key ASC', fields:['summary','issuetype','status','components','labels','issuelinks','priority','created','sprint','closedSprints','epic','customfield_20100',epicField,sprintField].filter(Boolean).join(','), startAt:String(startAt), maxResults:'100'});
         const response = await fetch('/rest/api/2/search?' + query.toString(), {credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json'}});
         if (!response.ok) throw new Error('Jira вернула HTTP ' + response.status);
         const data = await response.json();
-        if (!Array.isArray(data.issues) || !Number.isFinite(Number(data.total))) throw new Error('Jira вернула неполный список задач');
-        total = Number(data.total);
-        if (!data.issues.length && start < total) throw new Error('Jira вернула неполную страницу задач');
-        data.issues.forEach((issue:any) => { if (/^FCRM-\d+$/i.test(String(issue?.key || '')) && !seen.has(issue.key)) { seen.add(issue.key); issues.push(issue); } });
-        start += data.issues.length;
-        state.progress = 'Загружено ' + Math.min(start, total) + ' из ' + total + ' задач…';
-        if (current !== request) return;
-        onRender();
+        if (!Array.isArray(data.issues) || !Number.isFinite(Number(data.total)) || (data.startAt != null && Number(data.startAt)!==startAt)) throw new Error('Jira вернула неполный список задач');
+        return data as {issues:any[];total:number};
       }
-      if (current !== request) return;
+      let start=0, total=0;
+      function append(data:Awaited<ReturnType<typeof page>>) {
+        total=Number(data.total);
+        if (!data.issues.length && start<total) throw new Error('Jira вернула неполную страницу задач');
+        for (const issue of data.issues) {
+          if (!/^FCRM-\d+$/i.test(String(issue?.key || '')) || seen.has(issue.key)) continue;
+          seen.add(issue.key);
+          issues.push(issue);
+        }
+        start+=data.issues.length;
+        state.progress = 'Загружено ' + Math.min(start, total) + ' из ' + total + ' задач…';
+        const progress=document.getElementById('ozon-strategy-progress');
+        if (progress) progress.textContent=state.progress;
+      }
+      const first=await page(0);
+      if (current!==request) return;
+      append(first);
+      performance.measure('FCRM стратегия · первая страница',{start:began,end:performance.now()});
+      if (!state.loaded && start<total) {
+        firstPage=issues.slice();
+        onRender();
+        void lookupPreviewIssue();
+      }
+      let step=start || 100;
+      while (start<total) {
+        const offsets=[start,start+step,start+step*2].filter(offset=>offset<total);
+        const pages=await Promise.all(offsets.map(page));
+        if (current!==request) return;
+        for (let i=0;i<pages.length && start<total && start===offsets[i];i++) {
+          append(pages[i]);
+          if (pages[i].issues.length && pages[i].issues.length!==step) step=pages[i].issues.length;
+        }
+      }
+      performance.measure('FCRM стратегия · загрузка задач',{start:began,end:performance.now()});
       state.issues = issues; invalidateGraph(); state.loaded = true; void loadObprojectMetadata(issues,current);
     } catch (error:any) { if (current === request) state.error = error?.message || 'Не удалось загрузить задачи'; }
-    finally { if (current === request) { state.loading = false; state.progress = ''; onRender(); } }
+    finally {
+      if (current===request) {
+        previewLookup?.abort();
+        firstPage=[];
+        state.loading=false; state.progress='';
+        const renderStart=performance.now();
+        onRender();
+        if (!state.error) performance.measure('FCRM стратегия · построение таблицы',{start:renderStart,end:performance.now()});
+      }
+    }
+  }
+
+  async function lookupPreviewIssue() {
+    previewLookup?.abort();
+    const key=exactIssueKey();
+    if (state.loaded || !state.loading || !firstPage.length || !key || firstPage.some(issue=>issue.key===key)) return;
+    const controller=new AbortController();
+    previewLookup=controller;
+    try {
+      const response=await fetch('/rest/api/2/issue/' + encodeURIComponent(key) + '?fields=summary,issuetype,status,components,labels,priority,created',{credentials:'same-origin',signal:controller.signal});
+      if (!response.ok) return;
+      const issue=await response.json();
+      if (!controller.signal.aborted && state.loading && key===exactIssueKey() && issue?.key===key) {
+        firstPage=[...firstPage,issue];
+        onRender();
+      }
+    } catch (_) { /* The full search is available when the pages finish loading. */ }
   }
   function buildGraph(onlyThemes = false, includeEpic = false) {
     const cacheKey = [onlyThemes, includeEpic, state.hideCanceled, state.hideDone, state.sort].join('|');
@@ -216,8 +276,28 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
     const filters = '<div class="ozon-strategy-filters"><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-strategy-action="settings-open"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg> Настройки</button><button type="button" class="ozon-ext-btn" data-strategy-action="reload" ' + (state.loading ? 'disabled' : '') + '>' + (state.loaded ? 'Обновить задачи' : 'Загрузить задачи') + '</button><input id="ozon-strategy-search" type="search" placeholder="Поиск по ключу или названию" aria-label="Поиск по ключу или названию" value="' + escape(state.search) + '">' + componentCombo + typeCombo + labelCombo + depthControl() + '<div class="ozon-ext-toolbar-combo"><button type="button" class="ozon-ext-toolbar-trigger" data-strategy-action="sort-menu" aria-expanded="' + state.sortOpen + '"><span class="ozon-ext-toolbar-label">Сортировка: ' + (state.sort === 'created' ? 'Сначала новые' : 'Приоритет') + '</span><span class="ozon-ext-toolbar-chevron"></span></button>' + (state.sortOpen ? '<div class="ozon-ext-combo-popover ozon-ext-toolbar-popover"><button class="ozon-ext-combo-item" data-strategy-action="sort-pick" data-value="priority">Приоритет</button><button class="ozon-ext-combo-item" data-strategy-action="sort-pick" data-value="created">Дата: сначала новые</button></div>' : '') + '</div><button type="button" class="ozon-ext-btn ' + (state.hideCanceled ? '' : 'ozon-ext-btn-surface') + '" data-strategy-action="hide-canceled" aria-pressed="' + state.hideCanceled + '">Скрыть отменённые</button><button type="button" class="ozon-ext-btn ' + (state.hideDone ? '' : 'ozon-ext-btn-surface') + '" data-strategy-action="hide-done" aria-pressed="' + state.hideDone + '">Скрыть выполненные</button><button type="button" class="ozon-ext-btn ' + (state.onlyThemes ? '' : 'ozon-ext-btn-surface') + '" data-strategy-action="only-themes" aria-pressed="' + state.onlyThemes + '">Только тематики</button>' + ((state.search || state.component || state.issueType || state.labelFilter.size || state.onlyThemes || state.hideCanceled || state.hideDone) ? '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-strategy-action="reset-filters">Сбросить фильтры</button>' : '') + (state.loaded ? '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-strategy-action="create">+ Создать тематику</button>' : '') + '</div>' + (state.notice && !actions?.notify ? '<div class="ozon-strategy-notice" role="status">' + escape(state.notice) + ' <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-strategy-action="dismiss-notice" aria-label="Закрыть уведомление">✕</button></div>' : '') + (state.filtersError ? '<div class="ozon-strategy-message" role="alert">' + escape(state.filtersError) + ' <button type="button" class="ozon-ext-btn" data-strategy-action="retry-filters">Повторить</button></div>' : '');
     const visibleColumns = layout.order.filter(id => !layout.hidden.includes(id));
     const settings = state.settings ? '<aside class="ozon-dev-settings ozon-dev-settings-stable ozon-strategy-settings" role="dialog" aria-label="Настройки таблицы"><header class="ozon-dev-editor-head"><strong>Настройки таблицы</strong><button class="ozon-ext-btn ozon-ext-btn-surface" data-dev-action="settings-cancel" data-strategy-action="settings-close" aria-label="Закрыть">✕</button></header><strong>Порядок столбцов</strong><p class="ozon-dev-menu-hint">Ширину можно менять за границу заголовка таблицы.</p>' + (groupingUi?.html('strategy-columns',layout.order,columnTitles,'data-strategy-column-visible',{hidden:layout.hidden,locked:['task']}) || '') + '<footer><button class="ozon-ext-btn ozon-ext-btn-surface" data-strategy-action="columns-reset">По умолчанию</button><button class="ozon-ext-btn" data-strategy-action="settings-close">Готово</button></footer></aside>' : '';
-    if (state.loading) return '<section class="ozon-strategy-dashboard">' + header + filters + '<div class="ozon-strategy-message" role="status">' + escape(state.progress) + Array.from({length:8}, () => '<div class="ozon-ext-skeleton" style="height:25px;margin:10px 0"></div>').join('') + '</div>' + settings + '</section>';
-    if (state.error) return '<section class="ozon-strategy-dashboard">' + header + filters + '<div class="ozon-strategy-message" role="alert">Не удалось загрузить все задачи FCRM: ' + escape(state.error) + '. <button type="button" class="ozon-ext-btn" data-strategy-action="reload">Повторить</button></div>' + settings + '</section>';
+    const progress = state.loading ? '<div class="ozon-strategy-message" role="status"><span id="ozon-strategy-progress">' + escape(state.progress) + '</span>' + (state.loaded ? '<span> Показана предыдущая загрузка.</span>' : '') + '</div>' : '';
+    const error = state.error ? '<div class="ozon-strategy-message" role="alert">Не удалось загрузить все задачи FCRM: ' + escape(state.error) + '. <button type="button" class="ozon-ext-btn" data-strategy-action="reload">Повторить</button></div>' : '';
+    if (state.loading && !state.loaded) {
+      const query=state.search.trim().toLowerCase();
+      const exact=exactIssueKey();
+      const initial=firstPage.filter(issue=>{
+        const f=issue.fields || {};
+        const components=(f.components || []).map((component:any)=>component.name);
+        const labels=f.labels || [];
+        const canceled=/cancel|отмен|отклон|rejected/i.test(f.status?.name || '');
+        const done=f.status?.statusCategory?.key==='done' || /^(готово|закрыт[ао]?|done|closed)$/i.test(f.status?.name || '');
+        return (exact ? issue.key===exact : !query || (issue.key + ' ' + (f.summary || '')).toLowerCase().includes(query)) &&
+          (!state.component || (state.component==='__none__' ? !components.length : components.includes(state.component))) &&
+          (!state.issueType || state.issueType===f.issuetype?.name) && (!state.onlyThemes || labels.includes('fcrm_umb_epic')) &&
+          (!state.labelFilter.size || (!labels.length && state.labelFilter.has('')) || labels.some((label:string)=>state.labelFilter.has(label))) &&
+          !(state.hideCanceled && canceled) && !(state.hideDone && done && !canceled);
+      });
+      const previewRows=initial.map(issue=>'<tr><td><a class="ozon-mono" href="/browse/' + encodeURIComponent(issue.key) + '" target="_blank" rel="noopener noreferrer">' + escape(issue.key) + '</a> ' + escape(issue.fields?.summary || '') + '</td><td>' + renderBadge(escape(issue.fields?.status?.name || '—'),issue.fields?.status?.statusCategory?.key || '') + '</td></tr>').join('');
+      const preview=firstPage.length ? '<div class="ozon-strategy-description">Доступна часть задач. Связи появятся после загрузки.</div><div class="ozon-strategy-scroll"><table class="ozon-strategy-table ozon-strategy-preview"><thead><tr><th>Задача</th><th>Статус</th></tr></thead><tbody>' + (previewRows || '<tr><td colspan="2">Продолжаем поиск в остальных задачах…</td></tr>') + '</tbody></table></div>' : '<div class="ozon-strategy-message">' + Array.from({length:5},()=>'<div class="ozon-ext-skeleton" style="height:25px;margin:10px 0"></div>').join('') + '</div>';
+      return '<section class="ozon-strategy-dashboard">' + header + filters + progress + preview + settings + '</section>';
+    }
+    if (state.error && !state.loaded) return '<section class="ozon-strategy-dashboard">' + header + filters + error + settings + '</section>';
     if (!state.loaded) return '<section class="ozon-strategy-dashboard">' + header + filters + '<div class="ozon-strategy-message">Выберите фильтры и нажмите «Загрузить задачи». Для сохранения иерархии загружаются все задачи FCRM.</div>' + settings + '</section>';
     const {nodes, roots, cycles, compare} = buildGraph(state.onlyThemes, true);
     const filter = state.search.trim().toLowerCase();
@@ -275,6 +355,8 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
       }
       return result;
     };
+    const taskCount = filtering ? matches.size : nodes.size;
+    const taskNoun = ({one:'задача',few:'задачи',many:'задач'} as Record<string,string>)[plurals.select(taskCount)] || 'задач';
     const rows = renderGroup('Тематики и их задачи', rootThemes) + renderGroup('Без тематики', unlinked) + renderGroup('Циклические связи', cycles.filter(visible));
     const editor = state.editor;
     const currentComponents:any[] = state.issues.find(issue => issue.key === editor?.key)?.fields?.components || [];
@@ -313,7 +395,7 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
     const currentPriority = editor?.kind === 'priority' ? state.issues.find(item => item.key === editor.key)?.fields?.priority : null;
     const currentSprint = editor?.kind === 'sprint' ? sprintValue(state.issues.find(item => item.key === editor.key)?.fields || {}) : null;
     const panel = !editor ? '' : '<aside class="ozon-dev-editor ozon-ext-combo-popover" role="dialog" aria-label="Редактирование задачи"><div class="ozon-dev-editor-head"><strong>' + (editor.kind === 'priority' ? 'Приоритет' : editor.kind === 'component' ? 'Компонент задачи' : editor.kind === 'sprint' ? 'Спринт задачи' : editor.kind === 'epic' ? 'Эпик задачи' : editor.kind === 'link' ? 'Связать с тематикой' : editor.kind === 'create' ? 'Создать тематику' : 'Добавить метку') + (editor.key ? ' · ' + escape(editor.key) : '') + '</strong><button type="button" class="ozon-ext-btn" data-strategy-action="close-editor">✕</button></div>' + (editor.kind === 'sprint' ? '<div class="ozon-sprint-current"><span>Текущий спринт</span><strong>' + escape(currentSprint?.name || 'Бэклог') + '</strong></div>' : editor.kind === 'priority' ? '<div class="ozon-sprint-current"><span>Текущий приоритет</span><strong>' + priorityIcon(currentPriority?.name || '') + ' ' + escape(currentPriority?.name || 'Не указан') + '</strong></div>' : '') + (editor.error ? '<p role="alert" class="ozon-dev-error">' + escape(editor.error) + '</p>' : '') + (editor.loading ? '<p role="status">Загрузка…</p>' : editor.kind === 'sprint' ? '<input id="ozon-strategy-sprint-search" type="search" dir="ltr" placeholder="Поиск спринта…" aria-label="Поиск спринта" value="' + escape(editor.query || '') + '"><div class="ozon-dev-editor-options ozon-strategy-editor-options"><button type="button" class="ozon-ext-combo-item" data-strategy-action="save-sprint" data-id="" ' + (editor.busy ? 'disabled' : '') + '>Бэклог</button>' + editor.options.filter((sp) => !editor.query || sp.name.toLowerCase().includes(editor.query.toLowerCase())).map((sp) => '<button type="button" class="ozon-ext-combo-item" data-strategy-action="save-sprint" data-id="' + escape(sp.id) + '" ' + (editor.busy ? 'disabled' : '') + '><span>' + escape(sp.name) + '</span>' + renderBadge(String(sp.state).toLowerCase() === 'active' ? 'Активный' : 'Будущий', String(sp.state).toLowerCase() === 'active' ? 'done' : 'progress') + '</button>').join('') + '</div>' : editor.kind === 'component' ? '<input id="ozon-strategy-component-editor-search" type="search" dir="ltr" placeholder="Поиск компонента…" aria-label="Поиск компонента задачи" value="' + escape(editor.query || '') + '"><div class="ozon-dev-editor-options ozon-strategy-editor-options"><button type="button" class="ozon-ext-combo-item ' + (!currentComponents.length ? 'active' : '') + '" aria-pressed="' + !currentComponents.length + '" data-strategy-action="save-component" data-id="" ' + (editor.busy ? 'disabled' : '') + '>Без компонента</button>' + editor.options.filter((option) => !editor.query || String(option.name).toLowerCase().includes(editor.query.toLowerCase())).map((option) => '<button type="button" class="ozon-ext-combo-item ' + (componentSelected(option) ? 'active' : '') + '" aria-pressed="' + componentSelected(option) + '" data-strategy-action="save-component" data-id="' + escape(option.id) + '" ' + (editor.busy ? 'disabled' : '') + '>' + escape(option.name) + '</button>').join('') + '</div>' : editor.kind === 'epic' ? '<input id="ozon-strategy-epic-search" type="search" dir="ltr" placeholder="Поиск по ключу или названию…" value="' + escape(editor.query || '') + '"><div class="ozon-dev-editor-options ozon-dev-epic-options ozon-strategy-editor-options"><button type="button" class="ozon-ext-combo-item" data-strategy-action="save-epic" data-key="" ' + (editor.busy ? 'disabled' : '') + '>Без эпика</button>' + editor.options.map((item) => '<button type="button" class="ozon-ext-combo-item" data-strategy-action="save-epic" data-key="' + escape(item.key) + '" ' + (editor.busy ? 'disabled' : '') + '><span class="ozon-mono">' + escape(item.key) + '</span>' + renderBadge(escape(item.status), item.category === 'done' ? 'done' : item.category === 'indeterminate' ? 'progress' : 'todo') + '<span class="ozon-dev-option-title">' + escape(item.summary) + '</span><span class="ozon-dev-option-components">' + escape(item.components) + '</span></button>').join('') + (editor.searching ? '<p role="status">Загрузка…</p>' : '') + '</div>' : editor.kind === 'priority' ? '<div class="ozon-dev-editor-options ozon-strategy-editor-options">' + editor.options.map((option, index) => '<button type="button" class="ozon-ext-combo-item ' + ((String(option.value) === String(currentPriority?.id) || option.label === currentPriority?.name) ? 'active' : '') + '" aria-pressed="' + (String(option.value) === String(currentPriority?.id) || option.label === currentPriority?.name) + '" data-strategy-action="save-priority" data-index="' + index + '" ' + (editor.busy ? 'disabled' : '') + '>' + priorityIcon(option.label) + escape(option.label) + '</button>').join('') + '</div>' : editor.kind === 'link' ? linkedThemesHtml() + '<div class="ozon-strategy-theme-scope"><span>' + (currentComponents.length ? 'Компоненты задачи: ' + escape(currentComponents.map((item) => item.name).filter(Boolean).join(', ')) : 'У задачи не указан компонент') + '</span><button type="button" class="ozon-ext-btn ' + (editor.allComponents ? '' : 'ozon-ext-btn-surface') + '" data-strategy-action="theme-scope" aria-pressed="' + Boolean(editor.allComponents) + '">Все компоненты</button></div><input id="ozon-strategy-link-search" type="search" dir="ltr" aria-label="Поиск тематики" placeholder="Поиск по ключу или названию…" value="' + escape(editor.query || '') + '"><div class="ozon-dev-editor-options ozon-dev-epic-options ozon-strategy-editor-options">' + themeOptionsHtml() + '</div>' : editor.kind === 'create' ? '<form id="ozon-strategy-create-form"><label>Название<input id="ozon-strategy-create-name" required value="' + escape(editor.summary || '') + '"></label><label>Компонент<select id="ozon-strategy-create-component" required><option value="">Выберите компонент</option>' + editor.options.map((item) => '<option value="' + escape(item.id) + '" ' + (String(item.id) === String(editor.componentId || '') ? 'selected' : '') + '>' + escape(item.name) + '</option>').join('') + '</select></label><button type="submit" class="ozon-ext-btn" ' + (editor.busy ? 'disabled' : '') + '>Создать</button></form>' : '<form id="ozon-strategy-label-form"><input id="ozon-strategy-label-input" placeholder="Название метки" aria-label="Название метки" required><button type="submit" class="ozon-ext-btn" ' + (editor.busy ? 'disabled' : '') + '>Добавить</button></form>') + '</aside>';
-    return '<section class="ozon-strategy-dashboard">' + header + filters + '<div class="ozon-strategy-description">Все задачи FCRM · ' + (filtering ? matches.size : nodes.size) + ' задач' + (filtering ? ' по фильтрам · Родительские строки показаны для контекста' : '') + '. Задача может отображаться в нескольких тематиках. <span class="ozon-strategy-legend">Связи: <span class="ozon-strategy-relation">Задача проекта</span> <span class="ozon-strategy-epic-relation">Epic Link</span></span></div><div class="ozon-strategy-scroll"><table class="ozon-strategy-table" style="width:max(100%,' + visibleColumns.reduce((sum,id) => sum + layout.widths[id],0) + 'px)"><colgroup>' + visibleColumns.map(id => '<col data-strategy-col="' + id + '" style="width:' + layout.widths[id] + 'px">').join('') + '</colgroup><thead><tr>' + visibleColumns.map(id => '<th' + (id === 'task' ? ' class="ozon-strategy-task-header"' : '') + '>' + escape(columnTitles[id]) + '<span class="ozon-dev-col-resizer" role="separator" aria-orientation="vertical" aria-label="Изменить ширину: ' + escape(columnTitles[id]) + '" tabindex="0" data-strategy-resize="' + id + '"></span></th>').join('') + '</tr></thead><tbody>' + (rows || '<tr><td colspan="' + visibleColumns.length + '">Задачи FCRM не найдены</td></tr>') + '</tbody></table></div>' + panel + settings + '</section>';
+    return '<section class="ozon-strategy-dashboard">' + header + filters + progress + error + '<div class="ozon-strategy-description">Все задачи FCRM · ' + taskCount + ' ' + taskNoun + (filtering ? ' по фильтрам · Родительские строки показаны для контекста' : '') + '. Задача может отображаться в нескольких тематиках. <span class="ozon-strategy-legend">Связи: <span class="ozon-strategy-relation">Задача проекта</span> <span class="ozon-strategy-epic-relation">Epic Link</span></span></div><div class="ozon-strategy-scroll"><table class="ozon-strategy-table" style="width:max(100%,' + visibleColumns.reduce((sum,id) => sum + layout.widths[id],0) + 'px)"><colgroup>' + visibleColumns.map(id => '<col data-strategy-col="' + id + '" style="width:' + layout.widths[id] + 'px">').join('') + '</colgroup><thead><tr>' + visibleColumns.map(id => '<th' + (id === 'task' ? ' class="ozon-strategy-task-header"' : '') + '>' + escape(columnTitles[id]) + '<span class="ozon-dev-col-resizer" role="separator" aria-orientation="vertical" aria-label="Изменить ширину: ' + escape(columnTitles[id]) + '" tabindex="0" data-strategy-resize="' + id + '"></span></th>').join('') + '</tr></thead><tbody>' + (rows || '<tr><td colspan="' + visibleColumns.length + '">Задачи FCRM не найдены</td></tr>') + '</tbody></table></div>' + panel + settings + '</section>';
   }
   async function linkTheme(sourceKey:string,targetKey:string) {
     const theme=state.issues.find(item => item.key === targetKey);
@@ -433,7 +515,7 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
     });
     root.querySelector('.ozon-strategy-scroll')?.addEventListener('scroll', () => root.querySelectorAll<HTMLDetailsElement>('.ozon-strategy-copy-menu[open]').forEach(menu => { menu.open=false; }), {passive:true});
     const search = root.querySelector<HTMLInputElement>('#ozon-strategy-search');
-    search?.addEventListener('input', () => { state.search=search.value; state.filterCollapsed.clear(); clearTimeout(searchTimer); searchTimer=setTimeout(() => { const current=document.getElementById('ozon-strategy-search') as HTMLInputElement | null; if (!current || current.value !== state.search) return; const focused=document.activeElement === current, start=current.selectionStart, end=current.selectionEnd; onRender(); const next=document.getElementById('ozon-strategy-search') as HTMLInputElement | null; if (focused && next) { next.focus({preventScroll:true}); if (start !== null && end !== null) next.setSelectionRange(start,end); } if (exactIssueKey()) document.querySelector('.ozon-strategy-exact-match')?.scrollIntoView({block:'nearest',inline:'nearest'}); }, 180); });
+    search?.addEventListener('input', () => { state.search=search.value; state.filterCollapsed.clear(); clearTimeout(searchTimer); searchTimer=setTimeout(() => { const current=document.getElementById('ozon-strategy-search') as HTMLInputElement | null; if (!current || current.value !== state.search) return; const focused=document.activeElement === current, start=current.selectionStart, end=current.selectionEnd; onRender(); const next=document.getElementById('ozon-strategy-search') as HTMLInputElement | null; if (focused && next) { next.focus({preventScroll:true}); if (start !== null && end !== null) next.setSelectionRange(start,end); } if (exactIssueKey()) document.querySelector('.ozon-strategy-exact-match')?.scrollIntoView({block:'nearest',inline:'nearest'}); void lookupPreviewIssue(); }, 180); });
     root.querySelector<HTMLInputElement>('#ozon-strategy-component-search')?.addEventListener('input', event => { const input=event.target as HTMLInputElement; const position=input.selectionStart; state.componentQuery=input.value; onRender(); const next=document.getElementById('ozon-strategy-component-search') as HTMLInputElement | null; next?.focus({preventScroll:true}); if (next && position !== null) next.setSelectionRange(position,position); });
     const labelSearch = root.querySelector<HTMLInputElement>('#ozon-strategy-label-search');
     labelSearch?.addEventListener('input', () => {
@@ -485,7 +567,11 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
     };
     root.querySelectorAll<HTMLElement>('[data-strategy-path][data-strategy-expandable="true"]').forEach(row => row.addEventListener('click', event => { if ((event.target as Element).closest('button,a,input,select,details,summary')) return; toggle(row.dataset.strategyPath || ''); }));
     root.querySelectorAll<HTMLElement>('[data-strategy-action="edit-sprint"]').forEach(cell => cell.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); cell.click(); } }));
-    actions?.bindLabelSuggestions?.(root.querySelector<HTMLInputElement>('#ozon-strategy-label-input'));
+    const labelInput=root.querySelector<HTMLInputElement>('#ozon-strategy-label-input');
+    if (labelInput) {
+      const issue=state.issues.find(item=>item.key===state.editor?.key);
+      actions?.bindLabelSuggestions?.(labelInput,{issueId:issue?.id,existing:issue?.fields?.labels,known:()=>state.issues.flatMap(item=>item.fields?.labels || [])});
+    }
     root.querySelector<HTMLFormElement>('#ozon-strategy-label-form')?.addEventListener('submit', async event => { event.preventDefault(); const editor=state.editor; if (!editor || editor.busy) return; const input=root.querySelector<HTMLInputElement>('#ozon-strategy-label-input'); const label=input?.value.trim() || ''; editor.busy=true; try { await changeLabel(editor.key,label,'add'); state.editor=null; } catch(error:any) { editor.error=error.message; } finally { editor.busy=false; onRender(); } });
     root.querySelector<HTMLInputElement>('#ozon-strategy-sprint-search')?.addEventListener('input', event => { const input=event.target as HTMLInputElement; const pos=input.selectionStart; if (!state.editor || state.editor.kind !== 'sprint') return; state.editor.query=input.value; onRender(); const next=document.getElementById('ozon-strategy-sprint-search') as HTMLInputElement | null; next?.focus({preventScroll:true}); if (next && pos !== null) next.setSelectionRange(pos,pos); });
     root.querySelector<HTMLInputElement>('#ozon-strategy-component-editor-search')?.addEventListener('input', event => { const input=event.target as HTMLInputElement; const pos=input.selectionStart; if (!state.editor || state.editor.kind !== 'component') return; state.editor.query=input.value; onRender(); const next=document.getElementById('ozon-strategy-component-editor-search') as HTMLInputElement | null; next?.focus({preventScroll:true}); if (next && pos !== null) next.setSelectionRange(pos,pos); });

@@ -198,11 +198,13 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
     const path = url.pathname;
     const method = String(options.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
     if (url.hostname !== 'jit.o3.ru') return json({ errorMessages: ['Внешние запросы доступны в установленном расширении'] }, 403);
-    if (method === 'GET' && path === '/rest/api/1.0/labels/suggest') {
-      const query = (url.searchParams.get('query') || '').toLowerCase();
+    if (method === 'GET' && (/^\/rest\/api\/1\.0\/labels\/(?:\d+\/)?suggest$/.test(path) || path === '/rest/api/2/jql/autocompletedata/suggestions')) {
+      const jql = path.endsWith('/suggestions');
+      const query = (url.searchParams.get(jql ? 'fieldValue' : 'query') || '').toLowerCase();
       const labels = new Set<string>(['fcrm_umb_epic', 'fcrm_accounts', 'fcrm_card1', 'crm_support']);
       issues.forEach(issue => (issue.fields.labels || []).forEach((label: string) => labels.add(label)));
-      return json({ suggestions: [...labels].filter(label => label.toLowerCase().includes(query)).map(label => ({ label })) });
+      const matches=[...labels].filter(label=>label.toLowerCase().includes(query));
+      return json(jql ? {results:matches.map(value=>({value}))} : {suggestions:matches.map(label=>({label}))});
     }
     const match = /^\/rest\/api\/2\/issue\/([A-Z][A-Z0-9]+-\d+)(?:\/(.*))?$/.exec(path);
     if (method !== 'GET') {
