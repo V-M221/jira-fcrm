@@ -8,7 +8,8 @@ import { structuredAnswer } from '../utils/structuredAnswer';
   DEEPSEEK_TOKEN_STORAGE_KEY,
   DEFAULT_DEEPSEEK_SYSTEM_PROMPT,
   DESIGN_TASK_SYSTEM_PROMPT,
-  CHATZONE_RULE,
+  parseJiraDraft,
+  saveJiraDraft,
 } from './deepseek';
 
 export function generateBackgroundJs(): string {
@@ -25,7 +26,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     .then((stored) => {
       const raw = stored && stored[TOKEN_KEY] ? String(stored[TOKEN_KEY]) : '';
       const prompt = message.mode === 'design' ? ${JSON.stringify(DESIGN_TASK_SYSTEM_PROMPT)} : stored && stored[PROMPT_KEY] ? String(stored[PROMPT_KEY]) : ${JSON.stringify(DEFAULT_DEEPSEEK_SYSTEM_PROMPT)};
-      return completeDeepseekChat(message.issueKey, message.mode, raw || null, message.approvedDescription || '', prompt + "\\n" + ${JSON.stringify(CHATZONE_RULE)}, message.clarification, message.approvedPreview, message.additionalContext || '');
+      return completeDeepseekChat(message.issueKey, message.mode, raw || null, message.approvedDescription || '', prompt, message.clarification, message.additionalContext || '');
     })
     .then((text) => {
       sendResponse({ ok: true, text: text });
@@ -132,7 +133,7 @@ export function generateOptionsHtml(): string {
 export function generateOptionsJs(): string {
   return `const TOKEN_KEY = ${JSON.stringify(DEEPSEEK_TOKEN_STORAGE_KEY)};
 const PROMPT_KEY = ${JSON.stringify(DEEPSEEK_PROMPT_STORAGE_KEY)};
-const DEFAULT_PROMPT = ${JSON.stringify(DEFAULT_DEEPSEEK_SYSTEM_PROMPT + "\n" + CHATZONE_RULE)};
+const DEFAULT_PROMPT = ${JSON.stringify(DEFAULT_DEEPSEEK_SYSTEM_PROMPT)};
 const tokenInput = document.getElementById('token');
 const promptInput = document.getElementById('system-prompt');
 const statusEl = document.getElementById('status');
@@ -184,6 +185,8 @@ export function generateIssueEnhanceJs(): string {
 
   const formatAnswer = ${answerMarkup.toString()};
   const formatStructuredAnswer = ${structuredAnswer.toString()};
+  const parseJiraDraft = ${parseJiraDraft.toString()};
+  const saveJiraDraft = ${saveJiraDraft.toString()};
   const MESSAGE_TYPE = ${JSON.stringify(DEEPSEEK_CHAT_MESSAGE_TYPE)};
   const NATIVE_SELECTORS = [
     '#summary-val',
@@ -265,6 +268,11 @@ export function generateIssueEnhanceJs(): string {
       'body:has(#ozon-structure-root #ozon-ext-sidebar-panel) > #o3ds-layer{width:min(640px,50vw)!important;}',
       '#o3ds-layer .o3ds-answer,#o3ds-layer{scrollbar-width:thin!important;scrollbar-color:#a8b5c5 transparent!important;color-scheme:light;}',
       '#o3ds-layer .o3ds-answer h3{font-size:15px;font-weight:700;margin:12px 0 4px}#o3ds-layer .o3ds-answer p{margin:0 0 6px}#o3ds-layer .o3ds-answer ul,#o3ds-layer .o3ds-answer ol{padding-left:22px}#o3ds-layer .o3ds-answer a{color:#005bff;text-decoration:underline}',
+      '#o3ds-layer .o3ds-draft{flex:1 1 0;min-height:min(140px,28vh);overflow:auto;padding:4px 4px 10px 0}#o3ds-layer .o3ds-draft .o3ds-answer{overflow:visible!important;background:#fff!important;border:1px solid #d7e0ec!important;border-radius:10px!important;padding:14px!important}#o3ds-layer .o3ds-draft h3:first-child{margin-top:0}',
+      '#o3ds-layer .o3ds-draft-heading{display:block;font-size:13px;font-weight:700;margin:0 0 7px;color:#071026}#o3ds-layer .o3ds-draft-name{margin:0 0 12px;color:#334155}#o3ds-layer .o3ds-draft details{margin:0 0 12px;padding:9px 12px;background:#f4f7fb;border-radius:8px}#o3ds-layer .o3ds-draft summary{cursor:pointer;font-weight:650}#o3ds-layer .o3ds-draft details>div{margin-top:8px}',
+      '#o3ds-layer .o3ds-draft-links{margin:0 0 12px;padding:10px 12px;border:1px solid #d7e0ec;border-radius:8px;min-width:0}#o3ds-layer .o3ds-draft-link{display:flex;gap:8px;padding:6px 0;align-items:flex-start;cursor:pointer}#o3ds-layer .o3ds-draft-link input{width:15px;height:15px;margin-top:2px;flex:none;accent-color:#005bff}#o3ds-layer .o3ds-draft-link span{min-width:0;overflow-wrap:anywhere}#o3ds-layer .o3ds-draft-link small{display:block;color:#626f86}',
+      '#o3ds-layer .o3ds-draft-footer{padding-top:12px;border-top:1px solid #d7e0ec;background:#fff;flex:none}#o3ds-layer .o3ds-draft-footer .o3ds-actions{justify-content:flex-start}#o3ds-layer .o3ds-draft-refine{margin-bottom:10px}#o3ds-layer .o3ds-draft-refine summary{cursor:pointer;color:#005bff;width:max-content}#o3ds-layer .o3ds-draft-refine[open] summary{margin-bottom:8px}',
+      '@media(max-width:800px){body:has(#ozon-structure-root #ozon-ext-sidebar-panel) > #o3ds-layer{width:min(480px,100vw)!important;}}',
       '#o3ds-layer textarea{box-sizing:border-box;width:100%;min-height:76px!important;padding:10px;resize:vertical;border:1px solid #D7E0EC;border-radius:8px;font:inherit;margin-bottom:8px;background:#fff;color:#071026;}#o3ds-layer textarea:focus{outline:none;border-color:#005BFF;box-shadow:0 0 0 3px rgba(0,91,255,.12)}',
       '#o3ds-layer .o3ds-actions{flex-wrap:wrap;}'
     ].join('');
@@ -381,48 +389,41 @@ export function generateIssueEnhanceJs(): string {
     renderLayer();
   }
 
-  function applySession() {
+  async function applySession(draft, selectedLinks) {
     if (session.phase !== 'preview' || !session.issueKey) return;
-    session.phase = 'applying';
-    session.error = '';
-    renderLayer();
-    const serial = ++requestSerial;
     const issueKey = session.issueKey;
-    ask('apply', issueKey, session.preview)
-      .then((text) => {
-        if (serial !== requestSerial) return;
-        document.dispatchEvent(new CustomEvent('ozon-fcrm-issue-applied', { detail: { issueKey: issueKey } }));
-        session.phase = 'success';
-        session.success = text;
-        renderLayer();
-      })
-      .catch((err) => {
-        if (serial !== requestSerial) return;
-        session.phase = 'preview';
-        session.error = err && err.message ? err.message : 'Не удалось применить изменения';
-        renderLayer();
-      });
-  }
-
-  async function continueApply(reply) {
-    if (session.phase !== 'success' || !session.issueKey || !reply.trim()) return;
     const serial = ++requestSerial;
-    const previousResult = session.success;
     session.phase = 'applying';
     session.error = '';
     renderLayer();
+    let saved;
     try {
-      const text = await ask('apply', session.issueKey, session.preview, { preview: previousResult, reply: reply.trim() });
-      if (serial !== requestSerial) return;
-      document.dispatchEvent(new CustomEvent('ozon-fcrm-issue-applied', { detail: { issueKey: session.issueKey } }));
-      session.success = text;
-      session.reply = '';
-      session.phase = 'success';
+      saved = await saveJiraDraft(issueKey, draft);
     } catch (err) {
       if (serial !== requestSerial) return;
-      session.error = err && err.message ? err.message : 'Не удалось продолжить применение изменений';
-      session.phase = 'success';
+      session.phase = 'preview';
+      session.error = err && err.message ? err.message : 'Не удалось сохранить описание';
+      renderLayer();
+      return;
     }
+    if (serial !== requestSerial) return;
+    document.dispatchEvent(new CustomEvent('ozon-fcrm-issue-applied', { detail: { issueKey } }));
+    session.savedText = saved.changed ? 'Описание сохранено в Jira' : 'Описание уже актуально в Jira';
+    session.success = '';
+    if (selectedLinks.length) {
+      session.applyingLinks = true;
+      renderLayer();
+      try {
+        session.success = await ask('apply_links', issueKey, JSON.stringify(selectedLinks));
+      } catch (err) {
+        session.error = err?.message || 'Сохранение связей не подтверждено';
+      } finally {
+        session.applyingLinks = false;
+        document.dispatchEvent(new CustomEvent('ozon-fcrm-issue-applied', { detail: { issueKey } }));
+      }
+    }
+    if (serial !== requestSerial) return;
+    session.phase = 'success';
     renderLayer();
   }
 
@@ -445,7 +446,7 @@ export function generateIssueEnhanceJs(): string {
         reject(new Error('Нет доступа к background service worker'));
         return;
       }
-      chrome.runtime.sendMessage({ type: MESSAGE_TYPE, mode, issueKey, approvedDescription: approvedDescription || '', clarification, approvedPreview: mode === 'apply' ? session.preview : '', additionalContext: session.kind === 'description' ? session.additionalContext || '' : '' }, (response) => {
+      chrome.runtime.sendMessage({ type: MESSAGE_TYPE, mode, issueKey, approvedDescription: approvedDescription || '', clarification, additionalContext: session.kind === 'description' ? session.additionalContext || '' : '' }, (response) => {
         const runtimeError = chrome.runtime.lastError;
         if (runtimeError) {
           reject(new Error(runtimeError.message));
@@ -495,7 +496,7 @@ export function generateIssueEnhanceJs(): string {
     header.className = 'o3ds-header';
     const heading = document.createElement('div');
     heading.append(title, keyLine);
-    const close = actionButton('✕', 'o3ds-header-close', closeSession, false);
+    const close = actionButton('✕', 'o3ds-header-close', closeSession, session.phase === 'applying');
     close.setAttribute('aria-label', 'Закрыть помощника');
     header.append(heading, close);
     layer.appendChild(header);
@@ -533,7 +534,7 @@ export function generateIssueEnhanceJs(): string {
     if (session.phase === 'loading' || session.phase === 'applying' || session.phase === 'design-creating') {
       const caption = document.createElement('p');
       caption.className = 'o3ds-key';
-      caption.textContent = session.phase === 'design-creating' ? 'Создаю задачу FTD и связываю с исходной…' : session.phase === 'applying' ? 'Применяю изменения в задаче…' : 'Читаю задачу и связи…';
+      caption.textContent = session.phase === 'design-creating' ? 'Создаю задачу FTD и связываю с исходной…' : session.applyingLinks ? 'Описание сохранено. DeepSeek проверяет и устанавливает выбранные связи…' : session.phase === 'applying' ? 'Сохраняю описание в Jira…' : 'Готовлю черновик на основе задачи и нужных источников…';
       layer.appendChild(caption);
       for (let i = 0; i < 4; i += 1) {
         const bone = document.createElement('div');
@@ -560,6 +561,11 @@ export function generateIssueEnhanceJs(): string {
         actionButton('Повторить', 'o3ds-primary', () => session.kind === 'design' ? openDesignSession(session.issueKey) : startDescriptionAnalysis(), false),
         actionButton('Закрыть', 'o3ds-subtle', closeSession, false)
       );
+      if (session.kind === 'description') actions.insertBefore(actionButton('Добавить контекст', 'o3ds-subtle', () => {
+        session.error = '';
+        session.phase = 'context';
+        renderLayer();
+      }, false), actions.lastChild);
       layer.appendChild(actions);
       return;
     }
@@ -599,29 +605,18 @@ export function generateIssueEnhanceJs(): string {
     if (session.phase === 'success') {
       const ok = document.createElement('p');
       ok.className = 'o3ds-ok';
-      ok.textContent = 'Результат обработки';
-      const pre = document.createElement('div');
-      pre.className = 'o3ds-answer';
-      pre.innerHTML = formatStructuredAnswer(session.success, 'result', formatAnswer);
-      const reply = document.createElement('textarea');
-      reply.placeholder = 'Ответьте на новые вопросы или уточните изменения';
-      reply.setAttribute('aria-label', reply.placeholder);
-      reply.rows = 3;
-      reply.style.resize = 'vertical';
-      reply.style.minHeight = '76px';
-      reply.style.height = '76px';
-      reply.value = session.reply || '';
+      ok.textContent = session.savedText;
+      layer.append(ok);
+      if (session.success) {
+        const result = document.createElement('div');
+        result.className = 'o3ds-answer';
+        result.innerHTML = formatStructuredAnswer(session.success, 'result', formatAnswer);
+        layer.append(result);
+      }
       const actions = document.createElement('div');
       actions.className = 'o3ds-actions';
-      const next = actionButton('Продолжить', 'o3ds-primary', () => continueApply(reply.value), !reply.value.trim());
-      reply.oninput = () => {
-        session.reply = reply.value;
-        reply.style.height = '76px';
-        reply.style.height = Math.min(Math.max(reply.scrollHeight, 76), 180) + 'px';
-        next.disabled = !reply.value.trim();
-      };
-      actions.append(next, actionButton('Закрыть', 'o3ds-subtle', closeSession, false));
-      layer.append(ok, pre, reply, actions);
+      actions.append(actionButton('Закрыть', 'o3ds-subtle', closeSession, false));
+      layer.append(actions);
       return;
     }
 
@@ -629,11 +624,9 @@ export function generateIssueEnhanceJs(): string {
     pre.className = 'o3ds-answer';
     if (session.kind === 'design' && session.designProposal) {
       pre.innerHTML = formatAnswer('**Тема**\\n' + session.designProposal.summary + '\\n\\n**Описание**\\n' + session.designProposal.description);
-    } else {
-      pre.innerHTML = formatStructuredAnswer(session.preview, 'result', formatAnswer);
     }
     const reply = document.createElement('textarea');
-    reply.placeholder = session.kind === 'design' ? 'Уточнение к дизайн-задаче или ответ на вопросы DeepSeek' : 'Ответ на вопросы или уточнение к описанию';
+    reply.placeholder = session.kind === 'design' ? 'Уточнение к дизайн-задаче или ответ на вопросы DeepSeek' : 'Факты или правки для черновика';
     reply.setAttribute('aria-label', reply.placeholder);
     reply.rows = 2;
     reply.style.resize = 'none';
@@ -642,7 +635,7 @@ export function generateIssueEnhanceJs(): string {
     reply.style.maxHeight = '180px';
     reply.style.height = '76px';
     reply.value = session.reply || '';
-    const send = actionButton('Отправить ответ', 'o3ds-subtle', async () => {
+    const send = actionButton(session.kind === 'design' ? 'Отправить ответ' : 'Обновить черновик', 'o3ds-subtle', async () => {
       if (!reply.value.trim() || session.phase !== 'preview') return;
       const serial = ++requestSerial;
       session.phase = 'loading';
@@ -670,14 +663,86 @@ export function generateIssueEnhanceJs(): string {
     };
     const actions = document.createElement('div');
     actions.className = 'o3ds-actions';
-    actions.append(
-      session.kind === 'design'
-        ? actionButton('Перейти к подтверждению', 'o3ds-primary', () => { session.phase = 'design-confirm'; renderLayer(); }, false)
-        : actionButton(/chatzone[.]o3t[.]ru/i.test(session.preview) ? 'Применить описание и ссылки' : 'Применить описание', 'o3ds-primary', applySession, false),
-      actionButton('Отмена', 'o3ds-subtle', closeSession, false)
-    );
-    actions.prepend(send);
-    layer.append(pre, reply, actions);
+    const cancel = actionButton('Отмена', 'o3ds-subtle', closeSession, false);
+    if (session.kind === 'design') {
+      actions.append(send, actionButton('Перейти к подтверждению', 'o3ds-primary', () => { session.phase = 'design-confirm'; renderLayer(); }, false), cancel);
+      layer.append(pre, reply, actions);
+      return;
+    }
+
+    const draft = parseJiraDraft(session.preview, session.issueKey);
+    const content = document.createElement('div');
+    content.className = 'o3ds-draft';
+    pre.innerHTML = formatAnswer(draft.description);
+    const draftHeading = document.createElement('strong');
+    draftHeading.className = 'o3ds-draft-heading';
+    draftHeading.textContent = 'Черновик описания';
+    content.append(draftHeading, pre);
+    let approveTitle;
+    if (draft.summary) {
+      const proposedName = document.createElement('label');
+      proposedName.className = 'o3ds-draft-name o3ds-draft-link';
+      approveTitle = document.createElement('input');
+      approveTitle.type = 'checkbox';
+      const titleText = document.createElement('span');
+      titleText.textContent = 'Применить предложенное название — ' + draft.summary;
+      proposedName.append(approveTitle, titleText);
+      content.append(proposedName);
+    }
+
+    const selected = new Map();
+    const save = actionButton('Сохранить описание', 'o3ds-primary', () => applySession({
+      description:draft.description, summary:approveTitle?.checked ? draft.summary : undefined
+    }, [...selected.values()]), !draft.description);
+    if (draft.links.length) {
+      const group = document.createElement('fieldset');
+      group.className = 'o3ds-draft-links';
+      const legend = document.createElement('legend');
+      legend.textContent = 'Предложенные связи';
+      group.append(legend);
+      for (const link of draft.links) {
+        const label = document.createElement('label');
+        label.className = 'o3ds-draft-link';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.onchange = () => {
+          if (checkbox.checked) selected.set(link.key, link);
+          else selected.delete(link.key);
+          save.textContent = selected.size ? 'Сохранить и применить связи (' + selected.size + ')' : 'Сохранить описание';
+        };
+        const text = document.createElement('span');
+        const type = link.kind === 'theme' ? 'Задача проекта' : link.kind === 'development' ? 'В проекте' : 'Веб-ссылка';
+        text.textContent = type + ' · ' + link.key;
+        if (link.reason) {
+          const reason = document.createElement('small');
+          reason.textContent = link.reason;
+          text.append(reason);
+        }
+        label.append(checkbox, text);
+        group.append(label);
+      }
+      content.append(group);
+    }
+    if (draft.notes) {
+      const notes = document.createElement('details');
+      const title = document.createElement('summary');
+      title.textContent = 'Что требует уточнения';
+      const details = document.createElement('div');
+      details.innerHTML = formatAnswer(draft.notes);
+      notes.append(title, details);
+      content.append(notes);
+    }
+    const footer = document.createElement('footer');
+    footer.className = 'o3ds-draft-footer';
+    const refine = document.createElement('details');
+    refine.className = 'o3ds-draft-refine';
+    const refineLabel = document.createElement('summary');
+    refineLabel.textContent = 'Добавить контекст';
+    refine.open = Boolean(session.reply);
+    refine.append(refineLabel, reply, send);
+    actions.append(save, cancel);
+    footer.append(refine, actions);
+    layer.append(content, footer);
   }
 
   function mountNear(summaryEl) {

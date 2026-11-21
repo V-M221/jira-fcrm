@@ -17,7 +17,8 @@ export function structuredAnswer(source: string, kind = 'result', markup?: (cont
   }
   let html = created ? '<section style="margin:18px 0;"><strong style="' + headingStyle + '">Созданная задача</strong><div style="margin-top:10px;"><a target="_blank" rel="noopener noreferrer" style="color:#459bff;font-weight:700;font-size:15px;" href="/browse/' + encodeURIComponent(created) + '">' + escape(created) + '</a></div></section>' : '';
   html += section('Предложенное название', read('jira_summary'));
-  html += section('Описание', read('jira_description'));
+  html += section(kind === 'description' ? 'Черновик описания' : 'Описание', read('jira_description'));
+  if (kind === 'description') return html + section('Что требует уточнения', read('jira_notes'), true) || section('Итог', 'DeepSeek не вернул черновик');
   const summary = read('result_summary');
   const details = read('result_details');
   html += section(kind === 'links' ? 'Краткий итог' : 'Итог', summary);

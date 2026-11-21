@@ -450,8 +450,33 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
     return json({ errorMessages: ['Этот запрос не используется в локальном предпросмотре'] }, 404);
   };
   Object.defineProperty(window, 'chrome', { configurable: true, value: {
-    runtime: { lastError: null, sendMessage(_message: any, callback: (response: any) => void) {
-      window.setTimeout(() => callback({ ok: false, error: 'DeepSeek доступен в установленном расширении на jit.o3.ru. Здесь показан интерфейс на демонстрационных данных.' }), 300);
+    runtime: { lastError: null, sendMessage(message: any, callback: (response: any) => void) {
+      window.setTimeout(() => {
+        const issue = issues.get(message.issueKey);
+        if (issue && message.type === 'o3ds:chat' && message.mode === 'analyze') {
+          const designKey = 'FTD-90001';
+          const hasDesign = issue.fields.issuelinks?.some((link: any) => link.outwardIssue?.key === designKey);
+          const link = hasDesign ? '' : '<jira_links>' + JSON.stringify([{kind:'development',key:designKey,reason:'Демонстрационный макет для этого сценария.'}]) + '</jira_links>';
+          const draft = message.clarification?.reply?.trim() || message.additionalContext?.trim();
+          const base = issue.fields.description?.split('\n\nh2. Прежнее описание\n\n')[0] || issue.fields.summary;
+          callback({ok:true,text:'<jira_description>h2. Что делаем\n\n' + base + '\n\nh2. Как проверить\n\n' + (draft || 'Сверить результат с критериями приёмки в задаче.') + '</jira_description>' + link + '<jira_notes>Критерии приёмки можно дополнить перед сохранением.</jira_notes>'});
+          return;
+        }
+        if (issue && message.type === 'o3ds:chat' && message.mode === 'apply_links') {
+          const links = JSON.parse(message.approvedDescription || '[]');
+          if (links.some((link: any) => link.kind === 'development' && link.key === 'FTD-90001')) {
+            const design = toIssue({key:'FTD-90001',summary:'[Демо] Макет для проверки результата',component:'bank crm'});
+            issue.fields.issuelinks ||= [];
+            if (!issue.fields.issuelinks.some((link: any) => link.outwardIssue?.key === design.key)) {
+              issue.fields.issuelinks.push({id:String(nextLinkId++),type:{name:'Проект',outward:'В проекте',inward:'Задача проекта'},outwardIssue:{key:design.key,fields:design.fields}});
+              design.fields.issuelinks.push({id:String(nextLinkId - 1),type:{name:'Проект',outward:'В проекте',inward:'Задача проекта'},inwardIssue:{key:issue.key,fields:{summary:issue.fields.summary}}});
+            }
+            callback({ok:true,text:'<result_summary>Связь с FTD-90001 сохранена в демоданных.</result_summary>'});
+            return;
+          }
+        }
+        callback({ ok: false, error: 'Этот режим DeepSeek доступен в установленном расширении на jit.o3.ru.' });
+      }, 300);
     } },
   } });
   const storage = window.localStorage;
