@@ -2,7 +2,7 @@ import { createJiraPriorityService } from '../services/jiraPriority';
 import { ExtensionConfig, FcrmTask, LinkedIssueItem } from '../types/jira';
 import { structuredAnswer } from './structuredAnswer';
 import { answerMarkup } from './answerMarkup';
-import { createDevelopmentDashboard, renderJiraBadge } from '../services/developmentDashboard';
+import { createDevelopmentDashboard, createDevelopmentPointColumns, renderJiraBadge } from '../services/developmentDashboard';
 import { createSprintReportModel } from '../services/sprintReportModel';
 import { createSprintReportDashboard } from '../services/sprintReportDashboard';
 import { createStrategicDashboard } from '../services/strategicDashboard';
@@ -11,7 +11,7 @@ import { bindJiraLabelSuggestions } from '../services/jiraLabelSuggestions';
 import { createJiraGroupingUi } from '../services/jiraGroupingUi';
 import { createJiraPeopleUi } from '../services/jiraPeopleUi';
 
-export const EXTENSION_VERSION = '3.5.169';
+export const EXTENSION_VERSION = '3.5.170';
 
 export function generateManifestJson(config: ExtensionConfig): string {
   const manifest = {
@@ -542,6 +542,8 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-component-editor .component-editor-search input:focus {border-color:#005bff;box-shadow:0 0 0 1px #005bff}
 .ozon-component-editor .component-editor-caption {display:flex;justify-content:space-between;align-items:center;margin:0 0 8px;color:#64748b;font-size:11px}
 .ozon-component-editor .component-editor-list {overflow:auto;flex:1;min-height:0;scrollbar-width:thin;scrollbar-color:#a8b5c5 transparent}
+.ozon-component-editor .component-editor-section {margin:8px 10px 3px;color:#52647d;font-size:11px;font-weight:650}
+.ozon-component-editor .component-editor-option small {color:#64748b;font-size:11px;font-weight:400}
 .ozon-component-editor .component-editor-list::-webkit-scrollbar {width:6px}.ozon-component-editor .component-editor-list::-webkit-scrollbar-thumb {background:#a8b5c5;border-radius:8px}
 .ozon-component-editor .component-editor-option {display:flex;align-items:center;gap:10px;min-height:38px;box-sizing:border-box;padding:8px 10px;margin:2px 4px 2px 0;border-radius:7px;cursor:pointer;color:#071026;transition:background .15s}
 .ozon-component-editor .component-editor-option:hover {background:#f1f6ff}.ozon-component-editor .component-editor-option.is-selected {background:#eaf3ff;color:#005bff;font-weight:600}
@@ -579,9 +581,9 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-report-panel h2 {font-size:16px;margin:0 0 12px}.ozon-report-panel>p {margin:0 0 10px}
 .ozon-report-chart-toolbar,.ozon-report-chart-modes {display:flex;align-items:center;flex-wrap:wrap;gap:8px}
 .ozon-report-chart-toolbar {justify-content:space-between;margin:4px 0 10px}
-.ozon-report-chart {margin-bottom:12px}.ozon-report-chart + .ozon-report-chart {border-top:1px solid #e4ecf6;padding-top:12px}
+.ozon-report-chart {margin-bottom:8px}.ozon-report-chart + .ozon-report-chart {border-top:1px solid #e4ecf6;padding-top:8px}
 .ozon-report-chart h3 {margin:0 0 6px;font-size:13px;color:#071026}
-.ozon-report-graph {overflow-x:auto;position:relative;min-height:116px}.ozon-report-graph svg {display:block;width:100%;min-width:640px}
+.ozon-report-graph {overflow-x:auto;position:relative}.ozon-report-graph svg {display:block;width:100%;min-width:640px;max-height:204px}
 .ozon-report-graph-hit {cursor:crosshair}
 .ozon-report-tooltip {position:absolute;z-index:2;top:6px;min-width:145px;padding:8px 10px;border-radius:8px;background:#14223b;color:#fff;box-shadow:0 3px 12px #0f172a30;pointer-events:none;font-size:11.5px;line-height:1.45}
 .ozon-report-tooltip:not([hidden]) {display:grid;gap:2px}
@@ -591,11 +593,11 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-report-grid text,.ozon-report-axis-title {fill:#52647d;font-size:14px}
 .ozon-report-axis {fill:none;stroke:#97a9bf;stroke-width:1;vector-effect:non-scaling-stroke}.ozon-report-axis-title {font-weight:600;font-size:13px}
 .ozon-report-scope-dot {fill:#7b5ab8}.ozon-report-remaining-dot {fill:#005bff}
-.ozon-report-plot-label {font-size:14px;font-weight:650;stroke:#fff;stroke-width:3px;stroke-linejoin:round;paint-order:stroke}
+.ozon-report-plot-label {font-size:13px;font-weight:550;stroke:#fff;stroke-width:2px;stroke-linejoin:round;paint-order:stroke}
 .ozon-report-plot-label.scope {fill:#614396}.ozon-report-plot-label.remaining {fill:#0048cb}.ozon-report-plot-label.shared {fill:#334155}
 .ozon-report-line-scope,.ozon-report-line-remaining,.ozon-report-line-selected {fill:none;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}
-.ozon-report-line-scope {stroke:#7b5ab8;stroke-width:2;stroke-dasharray:6 4}.ozon-report-line-remaining {stroke:#005bff;stroke-width:2.5}.ozon-report-line-selected {stroke:#a9c3e9;stroke-width:1}
-.ozon-report-legend {color:#40536e;font-size:12px}.ozon-report-legend>span::before {content:'';display:inline-block;width:18px;border-top:2px solid #005bff;vertical-align:middle;margin-right:6px}.ozon-report-legend>span:nth-child(2)::before {border-top:2px dashed #7b5ab8}.ozon-report-legend>small {color:#64748b}
+.ozon-report-line-scope {stroke:#7b5ab8;stroke-width:1.25;stroke-dasharray:5 4}.ozon-report-line-remaining {stroke:#005bff;stroke-width:1.5}.ozon-report-line-selected {stroke:#a9c3e9;stroke-width:1}
+.ozon-report-legend {color:#40536e;font-size:12px}.ozon-report-legend>span::before {content:'';display:inline-block;width:18px;border-top:1.5px solid #005bff;vertical-align:middle;margin-right:6px}.ozon-report-legend>span:nth-child(2)::before {border-top:1.25px dashed #7b5ab8}.ozon-report-legend>small {color:#64748b}
 .ozon-report-daybar,.ozon-report-tools {margin:8px 0 12px}.ozon-report-tools input {width:min(280px,100%)}.ozon-report-filter {display:flex;align-items:center;gap:6px}
 .ozon-report-projectbar {display:flex;align-items:center;gap:8px;margin:0 0 7px;font-size:12px;color:#334155;font-weight:600}
 .ozon-report-view-options {display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:0 0 8px}
@@ -616,14 +618,22 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-report-streams>summary {font-weight:650;font-size:13px;cursor:pointer}
 .ozon-report-streams[open]>summary {margin-bottom:8px}
 .ozon-report-streams p {font-size:12px;color:#52647d;margin:0 0 10px}
-.ozon-report-streams table {min-width:360px}
-.ozon-report-rollup-wrap {max-height:270px;scrollbar-gutter:stable}
-.ozon-report-rollup-wrap thead th {position:sticky;top:0;z-index:1}
-.ozon-report-streams thead th:first-child {width:54%}
-.ozon-report-streams td {font-variant-numeric:tabular-nums;white-space:nowrap}
-.ozon-report-streams td small {margin-left:8px;color:#52647d;font-size:11px}
-.ozon-report-streams tbody tr:not(.ozon-report-stream-project)>th {padding-left:24px;background:#fff;font-weight:400}
-.ozon-report-stream-project td,.ozon-report-streams tfoot td {background:#f1f5fb}
+.ozon-report-rollup-tools {margin-bottom:10px}
+.ozon-report-rollup-wrap {border:1px solid #e4ecf6;border-radius:8px}
+.ozon-report-rollup-wrap table {min-width:1050px;table-layout:fixed}
+.ozon-report-rollup-wrap tr>th:first-child {width:238px;position:sticky;left:0;z-index:1;border-right:1px solid #e4ecf6}
+.ozon-report-rollup-wrap thead th {vertical-align:middle}
+.ozon-report-rollup-wrap tbody tr:not(.ozon-report-stream-project)>th {background:#fff;font-weight:400}
+.ozon-report-rollup-wrap .ozon-report-stream-project td,.ozon-report-rollup-wrap tfoot td {background:#f1f5fb}
+.ozon-report-rollup-wrap td.ozon-report-rollup-total {background:#eaf2fb}
+.ozon-report-rollup-value {display:grid;grid-template-columns:29px auto;align-items:baseline;gap:2px 5px;color:#40536e;font-variant-numeric:tabular-nums;font-size:11px;white-space:nowrap}
+.ozon-report-rollup-value+div {margin-top:4px}
+.ozon-report-rollup-value.is-fact {color:#1755aa}
+.ozon-report-rollup-value strong {font-size:13px}
+.ozon-report-rollup-value small {grid-column:2;color:inherit;font-size:10.5px}
+.ozon-report-settings-button {margin-left:auto}
+.ozon-report-settings p {margin:0;color:#52647d}
+.ozon-report-settings [data-report-settings="inherit"][aria-pressed="true"] {background:#e4efff;color:#005bff}
 .ozon-report-epic-title {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ozon-report-stream-chip {flex:none;padding:2px 6px;border-radius:6px;background:#eaf1fa;color:#435872;font-size:10px;font-weight:500;white-space:nowrap}
 .ozon-report-day-breakdown {margin:0 0 12px}.ozon-report-day-breakdown>div {margin-top:6px}
@@ -673,9 +683,9 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-label-suggestions [role="listbox"] {max-height:166px;overflow:auto}
 .ozon-label-suggestions [role="option"] {padding:6px 8px;border-radius:6px;overflow-wrap:anywhere;cursor:pointer}
 .ozon-label-suggestions [role="option"]:hover,.ozon-label-suggestions [aria-selected="true"] {background:#e5f0ff;color:#005bff}
-.ozon-depth-control {display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:0 7px;border:1px solid #d2deee;border-radius:9px;background:white;color:#526782;font-size:11px;white-space:nowrap}
-#ozon-structure-root .ozon-depth-control select {min-height:26px;padding:2px 14px 2px 2px;border:0;background:transparent;color:#071026;cursor:pointer;font:inherit;font-weight:600;max-width:170px}
-.ozon-depth-control:focus-within {border-color:#005bff;box-shadow:inset 0 0 0 1px #005bff}
+.ozon-depth-control {display:inline-block}
+.ozon-depth-label {color:#526782;margin-right:4px}
+.ozon-depth-options[hidden] {display:none!important}
 .ozon-grouping-level:not([data-group-enabled]) {background:#fff;color:#64748b}
 #ozon-structure-root :is(.ozon-grouping-grip,.ozon-grouping-step) {display:inline-grid;place-items:center;flex:0 0 25px;width:25px;height:26px;padding:0;border:0;border-radius:5px;color:#516783;background:transparent}
 #ozon-structure-root button.ozon-grouping-grip {cursor:grab;touch-action:none}
@@ -1676,6 +1686,7 @@ export function generateStylesCss(config: ExtensionConfig): string {
 #ozon-structure-root button.ozon-ext-copy-ref { display:inline-flex;align-items:center;justify-content:center;flex:0 0 18px;width:18px;height:20px;border:0;background:transparent;color:#64748B;padding:2px;cursor:pointer;vertical-align:middle;border-radius:4px; }
 #ozon-structure-root button.ozon-ext-copy-ref:hover { color:#005BFF;background:#E5F0FF; }
 .ozon-ext-select-content { display:flex;align-items:center;gap:7px;min-width:0;flex:1; }
+.ozon-ext-select-content>.ozon-ext-filter-icon {display:inline-flex;flex:none}
 .ozon-ext-select-content > .ozon-ext-select-text { min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1; }
 .ozon-ext-search-select-value:has(.ozon-ext-select-content) { flex:1; }
 .ozon-ext-link-compact-row:hover {
@@ -1750,14 +1761,28 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-sidebar-draft-dialog button {padding:8px 12px;border:1px solid #dbe4ef;border-radius:8px;color:#005bff;background:#fff;cursor:pointer}.ozon-sidebar-draft-dialog button.primary {background:#005bff;color:#fff;border-color:#005bff}
 .ozon-sidebar-more {position:relative}.ozon-sidebar-more summary {list-style:none;cursor:pointer;padding:4px 9px;border-radius:6px;background:#f0f3f8;color:#005bff;font-weight:700}.ozon-sidebar-more summary::-webkit-details-marker {display:none}.ozon-sidebar-more-menu {position:absolute;right:0;top:100%;z-index:20;min-width:180px;display:flex;flex-direction:column;gap:4px;padding:8px;background:#fff;border:1px solid #dbe4ef;border-radius:8px;box-shadow:0 8px 24px #07102626}.ozon-sidebar-more-menu button,.ozon-sidebar-more-menu a {width:auto!important;text-align:left!important}
 #ozon-ext-sidebar-panel {container-type:inline-size}
-@container (max-width: 720px) {
+@container (max-width: 780px) {
+  #ozon-structure-root #ozon-ext-sidebar-panel .ozon-ext-attributes-columns {grid-template-columns:minmax(0,1fr)!important}
+}
+@container (max-width: 740px) {
+  #ozon-ext-sidebar-panel .ozon-ext-ip-table-body {min-width:0}
   #ozon-ext-sidebar-panel .ozon-ext-ip-table-head {display:none!important}
-  #ozon-ext-sidebar-panel .ozon-ext-ip-table-row {display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;grid-auto-rows:auto;gap:2px!important;padding:6px!important;height:auto!important}
+  #ozon-structure-root #ozon-ext-sidebar-panel .ozon-ext-ip-table-row {grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto!important;grid-auto-rows:auto;gap:3px 6px!important;padding:6px 8px!important;height:auto!important}
   #ozon-ext-sidebar-panel .ozon-ext-ip-table-row>div {height:auto!important;min-height:26px;border:0;min-width:0}
-  #ozon-ext-sidebar-panel .ozon-ext-ip-table-row>.ozon-ext-ip-task-cell {grid-column:1;grid-row:1}
-  #ozon-ext-sidebar-panel .ozon-ext-ip-table-row>.ozon-ext-ip-action-cell {grid-column:2;grid-row:1}
-  #ozon-ext-sidebar-panel .ozon-ext-ip-table-row>.ozon-ext-sb-combo {grid-column:1/-1}
+  #ozon-ext-sidebar-panel .ozon-ext-ip-table-row>.ozon-ext-ip-task-cell {grid-column:1/3;grid-row:1}
+  #ozon-ext-sidebar-panel .ozon-ext-ip-table-row>.ozon-ext-ip-action-cell {grid-column:3;grid-row:1}
+  #ozon-ext-sidebar-panel .ozon-ext-ip-epic-cell {grid-column:1;grid-row:2}
+  #ozon-ext-sidebar-panel .ozon-ext-ip-status-cell {grid-column:2/-1;grid-row:2;justify-content:flex-end}
+  #ozon-ext-sidebar-panel .ozon-ext-ip-component-cell {grid-column:1;grid-row:3}
+  #ozon-ext-sidebar-panel .ozon-ext-ip-sprint-cell {grid-column:2/-1;grid-row:3}
+  #ozon-ext-sidebar-panel .ozon-ext-ip-table-row>.ozon-ext-sb-combo {display:grid;gap:2px}
+  #ozon-ext-sidebar-panel .ozon-ext-ip-table-row>[data-field-label]::before {content:attr(data-field-label);color:#52647d;font-size:10px}
   #ozon-ext-sidebar-panel .ozon-ext-ip-table-row>.ozon-ext-ip-table-secondary {grid-column:1/-1}
+}
+@container (max-width: 440px) {
+  #ozon-structure-root #ozon-ext-sidebar-panel .ozon-ext-attribute-field {grid-template-columns:minmax(0,1fr);gap:4px}
+  #ozon-ext-sidebar-panel .ozon-ext-ip-component-cell,#ozon-ext-sidebar-panel .ozon-ext-ip-sprint-cell {grid-column:1/-1}
+  #ozon-ext-sidebar-panel .ozon-ext-ip-sprint-cell {grid-row:4}
 }
 .ozon-ext-workflow > div { margin:0!important; }
 #ozon-sb-params-card { border-radius:12px; }
@@ -1766,9 +1791,13 @@ export function generateStylesCss(config: ExtensionConfig): string {
 #ozon-sb-desc-preview { background:#f8fafc;border:1px solid #dbe4ef;border-radius:9px; }
 .ozon-ext-field-grid { grid-template-columns:minmax(100px,32%) minmax(0,1fr);align-items:center; }
 .ozon-ext-field-grid > .ozon-ext-field-label { padding-top:0;align-self:center; }
-.ozon-ext-obproject-value { padding:5px 10px;border:1px solid #E2E8F0;border-radius:9px;background:#fff; }
+.ozon-ext-obproject-value { box-sizing:border-box;flex-wrap:wrap;padding:5px 10px;border:1px solid #E2E8F0;border-radius:9px;background:#fff; }
 .ozon-ext-obproject-value > a,.ozon-ext-obproject-value > .ozon-ext-badge { flex-shrink:0; }
-.ozon-ext-obproject-value > span:not(.ozon-ext-badge) { flex:1; }
+.ozon-ext-obproject-value > span:not(.ozon-ext-badge) { flex:1 1 48px; }
+#ozon-structure-root #ozon-sb-comp-trigger {height:auto!important}
+#ozon-structure-root #ozon-sb-comp-trigger>span:first-child {white-space:normal!important;overflow-wrap:anywhere;min-width:0}
+#ozon-structure-root .ozon-ext-field-grid .ozon-sb-priority-trigger {justify-content:flex-start!important;gap:6px;text-align:left}
+#ozon-structure-root .ozon-sb-priority-trigger>.ozon-ext-toolbar-chevron {margin-left:auto;flex:none}
 .ozon-ext-delivery-indicators { display:inline-flex;align-items:center;gap:3px;flex-shrink:0; }
 .ozon-ext-delivery-indicator { display:inline-flex;align-items:center;justify-content:center;width:21px;height:22px;border-radius:6px;flex-shrink:0; }
 .ozon-ext-delivery-indicator.absent { color:#94A3B8;background:#F1F5F9; }
@@ -1875,16 +1904,16 @@ export function generateStylesCss(config: ExtensionConfig): string {
 #ozon-structure-root .ozon-dev-team-option input[type="checkbox"]:checked::after,#ozon-structure-root .ozon-dev-sprint-option input[type="checkbox"]:checked::after,#ozon-structure-root .ozon-dev-settings input[type="checkbox"]:checked::after { content:"";width:7px;height:4px;border-left:2px solid #fff;border-bottom:2px solid #fff;transform:rotate(-45deg) translate(1px,-1px); }
 #ozon-structure-root .ozon-dev-team-option>.ozon-dev-team-name { display:block!important;position:static!important;inset:auto!important;flex:1 1 auto!important;min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;line-height:20px!important;text-align:left!important; }
 #ozon-structure-root .ozon-dev-team-popover>.ozon-ext-btn { display:flex!important;width:100%!important;justify-content:center!important;margin-top:6px!important; }
-#ozon-structure-root {--ozon-sidebar-compact-limit:clamp(340px,61vw,680px)}
+#ozon-structure-root {--ozon-sidebar-standard-limit:calc(100vw - 124px)}
 #ozon-structure-root :is(.ozon-ext-filter-bar,.ozon-strategy-filters,.ozon-report-toolbar,.ozon-report-view-options) {align-items:center}
-#ozon-structure-root :is(.ozon-ext-filter-bar,.ozon-strategy-filters,.ozon-report-toolbar,.ozon-report-view-options) :is(.ozon-ext-toolbar-trigger,.ozon-depth-control),
+#ozon-structure-root :is(.ozon-ext-filter-bar,.ozon-strategy-filters,.ozon-report-toolbar,.ozon-report-view-options) .ozon-ext-toolbar-trigger,
 #ozon-structure-root :is(.ozon-ext-filter-bar,.ozon-strategy-filters,.ozon-report-toolbar) > :is(button,a.ozon-ext-btn,input[type="search"]) {
   box-sizing:border-box;height:30px!important;min-height:30px!important;border-radius:9px!important;align-items:center;
 }
 #ozon-structure-root :is(.ozon-ext-filter-bar,.ozon-strategy-filters,.ozon-report-toolbar,.ozon-report-view-options) :is(button,input,select,a):focus-visible {outline:2px solid #005bff!important;outline-offset:2px}
 #ozon-structure-root #ozon-ext-sidebar-expand {width:28px;padding:0;justify-content:center}
-@media (max-width:680px) {
-  #ozon-structure-root {--ozon-sidebar-compact-limit:calc(100vw - 12px)}
+@media (max-width:820px) {
+  #ozon-structure-root {--ozon-sidebar-standard-limit:calc(100vw - 12px)}
   #ozon-structure-root #ozon-ext-sidebar-expand,#ozon-structure-root #ozon-ext-sidebar-resizer {display:none!important}
 }
 #ozon-structure-root .ozon-dev-sprint-option { display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:9px!important;width:100%;box-sizing:border-box; }
@@ -1961,7 +1990,7 @@ export function generateContentScriptJs(
 
   const STORAGE_KEY_COL_WIDTHS = 'ozon_fcrm_col_widths_v31';
   const STORAGE_KEY_COL_ORDER = 'ozon_fcrm_col_order_v31';
-  const STORAGE_KEY_SIDEBAR_W = 'ozon_fcrm_sidebar_width_v31';
+  const STORAGE_KEY_SIDEBAR_W = 'ozon_fcrm_sidebar_width_v32';
 
   let tasks = ${JSON.stringify(initialTasks, null, 2)};
   let umbCatalog = ${JSON.stringify(umbEpicCatalog, null, 2)};
@@ -1989,9 +2018,10 @@ export function generateContentScriptJs(
     selectedTaskKey = link.key; isSidebarOpen = true; isEditingDescription = false; collapsedSidebarSections.pt = true;
     reloadSingleTaskFromJira(link.key,true,true);
   }
-  const developmentDashboard = (${createDevelopmentDashboard.toString()})(() => renderStructure(), openSharedFcrmDetails,()=>{sbEpicComboOpen=false;sbCompComboOpen=false;sbIpCompOpenIdx=null;sbIpSprintOpenIdx=null;activeSearchSelectId='';}, renderBadge, getStatusCategoryClass, ${JSON.stringify(EXTENSION_VERSION)}, jiraPriorityService,jiraGroupingUi);
+  const developmentPointColumns = (${createDevelopmentPointColumns.toString()})();
+  const developmentDashboard = (${createDevelopmentDashboard.toString()})(() => renderStructure(), openSharedFcrmDetails,()=>{sbEpicComboOpen=false;sbCompComboOpen=false;sbIpCompOpenIdx=null;sbIpSprintOpenIdx=null;activeSearchSelectId='';}, renderBadge, getStatusCategoryClass, ${JSON.stringify(EXTENSION_VERSION)}, jiraPriorityService,jiraGroupingUi,developmentPointColumns);
   const sprintReport = (${createSprintReportDashboard.toString()})(() => { if (activeDashboardView === 'report') renderStructure(); }, (${createSprintReportModel.toString()})(),
-    [{id:String(CONFIG.rapidViewId),name:'FCRM'}, {id:'6197',name:'CS'}, {id:'7180',name:'CRM_CORE'}, {id:'12696',name:'CRM_BO'}], CONFIG.sprintFieldId, CONFIG.epicFieldId, renderBadge, isEpicIssueType,jiraPeople,()=>developmentDashboard.getState().grouping,jiraGroupingUi);
+    [{id:String(CONFIG.rapidViewId),name:'FCRM'}, {id:'6197',name:'CS'}, {id:'7180',name:'CRM_CORE'}, {id:'12696',name:'CRM_BO'}], CONFIG.sprintFieldId, CONFIG.epicFieldId, renderBadge, isEpicIssueType,jiraPeople,developmentPointColumns,()=>developmentDashboard.getState().grouping,jiraGroupingUi);
   const generatingLinkKeys = new Set();
   const ticketSearchStates = new Map();
   let draggedThreadChannel = null;
@@ -2591,10 +2621,11 @@ export function generateContentScriptJs(
   let sidebarBlockLoading = { taskKey: null, desc: false, params: false, links: false, ipMeta: false };
   let frontDesignLinksByKey = {};
   const rememberedSidebarWidth=Number(localStorage.getItem(STORAGE_KEY_SIDEBAR_W));
-  let sidebarWidth=rememberedSidebarWidth>=340 && rememberedSidebarWidth<=680 ? rememberedSidebarWidth : 540;
+  const legacySidebarWidth=Number(localStorage.getItem('ozon_fcrm_sidebar_width_v31'));
+  let sidebarWidth=rememberedSidebarWidth>=340 && rememberedSidebarWidth<=1040 ? rememberedSidebarWidth : legacySidebarWidth>=800 && legacySidebarWidth<=1040 ? legacySidebarWidth : 900;
   let sidebarExpanded=false;
   function sidebarWidthCss() {
-    return sidebarExpanded ? 'min(1100px,calc(100vw - 12px))' : 'min(' + sidebarWidth + 'px,var(--ozon-sidebar-compact-limit),calc(100vw - 12px))';
+    return sidebarExpanded ? 'min(1100px,calc(100vw - 12px))' : 'min(' + sidebarWidth + 'px,var(--ozon-sidebar-standard-limit))';
   }
 
   // ПО УМОЛЧАНИЮ ВСЕ СПРИНТЫ И ВСЕ КОМПОНЕНТЫ СВЕРНУТЫ!
@@ -5169,7 +5200,7 @@ export function generateContentScriptJs(
                 issueTypeIdByName[typeName] = typeId;
               }
               if (!typesList.some((it) => it.name === typeName)) {
-                typesList.push({ id: typeId, name: typeName, subtask: Boolean(issueTypeObj.subtask) });
+                typesList.push({ id: typeId, name: typeName, subtask: Boolean(issueTypeObj.subtask), iconUrl:issueTypeObj.iconUrl });
               }
             }
             if (typeName.toLowerCase() === 'epic' || typeName.toLowerCase() === 'эпик') {
@@ -5219,7 +5250,7 @@ export function generateContentScriptJs(
                 const tId = it.id ? String(it.id) : '';
                 if (tId) issueTypeIdByName[tName] = tId;
                 if (!projectIssueTypesList.some((x) => x.name === tName)) {
-                  projectIssueTypesList.push({ id: tId, name: tName, subtask: Boolean(it.subtask) });
+                  projectIssueTypesList.push({ id: tId, name: tName, subtask: Boolean(it.subtask), iconUrl:it.iconUrl });
                 }
               }
             });
@@ -6095,8 +6126,8 @@ export function generateContentScriptJs(
       if (results[0].status === 'fulfilled') projectComponentsList = results[0].value.map(item => item.name).filter(Boolean);
       if (results[1].status === 'fulfilled' && Array.isArray(results[1].value)) {
         const types = results[1].value;
-        projectIssueTypesList = types.filter(item => item?.name).map(item => ({id:String(item.id || ''),name:item.name,subtask:Boolean(item.subtask)}));
-        projectStatusesList = Array.from(new Set(types.flatMap(item => (item.statuses || []).map(status => status.name).filter(Boolean))));
+        projectIssueTypesList = types.filter(item => item?.name).map(item => ({id:String(item.id || ''),name:item.name,subtask:Boolean(item.subtask),iconUrl:item.iconUrl}));
+        projectStatusesList = Array.from(new Set(types.flatMap(item => (item.statuses || []).map(status => readStatusName(status,'')).filter(Boolean))));
       }
       productFiltersReady = results.every(result => result.status === 'fulfilled');
       if (!productFiltersReady && !productDashboardLoaded) statusMessage = 'Не удалось загрузить часть фильтров. Повторите открытие страницы.';
@@ -7372,7 +7403,7 @@ export function generateContentScriptJs(
             \${getIssueTypeBadgeHtml(currentIssueType, true)}
           </div>
           <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
-            <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-ext-sidebar-expand" title="\${sidebarExpanded ? 'Вернуть компактный сайдбар' : 'Развернуть сайдбар'}" aria-label="\${sidebarExpanded ? 'Вернуть компактный сайдбар' : 'Развернуть сайдбар'}" aria-pressed="\${sidebarExpanded}"><span aria-hidden="true">\${sidebarExpanded ? '⤡' : '⤢'}</span></button>
+            <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-ext-sidebar-expand" title="\${sidebarExpanded ? 'Вернуть обычную ширину сайдбара' : 'Развернуть сайдбар'}" aria-label="\${sidebarExpanded ? 'Вернуть обычную ширину сайдбара' : 'Развернуть сайдбар'}" aria-pressed="\${sidebarExpanded}"><span aria-hidden="true">\${sidebarExpanded ? '⤡' : '⤢'}</span></button>
             <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-ext-sidebar-refresh" title="Обновить все" aria-label="Обновить все">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.9-3L4 10"/><path d="M4 4v6h6"/><path d="M4 13a8 8 0 0 0 14.9 3L20 14"/><path d="M20 20v-6h-6"/></svg>
             </button>
@@ -7868,11 +7899,25 @@ export function generateContentScriptJs(
     const query = toolbarFilterSearch.trim().toLowerCase();
     const matches = options.filter(option => !query || option.label.toLowerCase().includes(query));
     if (id === 'epic' && /^fcrm-\\d+$/i.test(query) && !matches.some(option => String(option.value).toLowerCase() === query)) matches.push({value:query.toUpperCase(),label:query.toUpperCase()});
+    const optionLabel = (option) => {
+      if (option.value !== 'all' && id === 'status') return getStatusBadgeHtml(option.label);
+      if (option.value !== 'all' && id === 'issue-type') {
+        let icon = getJiraIssueTypeIconSvg(option.value);
+        if (option.iconUrl) {
+          try {
+            const url = new URL(option.iconUrl,location.href);
+            if (url.origin === location.origin && /^https?:$/.test(url.protocol)) icon = '<img width="12" height="12" alt="" src="' + escapeHtml(url.href) + '">';
+          } catch (_) { /* Keep the local type icon. */ }
+        }
+        return '<span class="ozon-ext-select-content"><span class="ozon-ext-filter-icon" aria-hidden="true">' + icon + '</span><span class="ozon-ext-select-text">' + escapeHtml(option.label) + '</span></span>';
+      }
+      return escapeHtml(option.label);
+    };
     return '<div class="ozon-ext-toolbar-combo">' +
       '<button type="button" class="ozon-ext-toolbar-trigger" data-action="toggle-toolbar-filter" data-filter="' + id + '" ' + ((id === 'sprint' && isInitialBoardLoading) || (['component','epic','status','issue-type'].includes(id) && (!productDashboardLoaded || isInitialBoardLoading)) ? 'disabled ' : '') + 'aria-expanded="' + open + '">' +
-      '<span class="ozon-ext-toolbar-label">' + escapeHtml(current ? current.label : id === 'epic' && value !== 'all' ? 'Эпик: ' + value : title) + '</span><span class="ozon-ext-toolbar-chevron" aria-hidden="true"></span></button>' +
+      '<span class="ozon-ext-toolbar-label">' + (current ? optionLabel(current) : escapeHtml(id === 'epic' && value !== 'all' ? 'Эпик: ' + value : title)) + '</span><span class="ozon-ext-toolbar-chevron" aria-hidden="true"></span></button>' +
       (open ? '<div class="ozon-ext-combo-popover ozon-ext-toolbar-popover ' + (id === 'epic' ? 'ozon-ext-epic-filter-popover ozon-dev-epic-filter-sidebar' : '') + '">' + (id === 'epic' ? '<div class="ozon-dev-editor-head"><strong>Фильтр по эпику</strong><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-action="toggle-toolbar-filter" data-filter="epic" aria-label="Закрыть">✕</button></div>' : '') + '<input type="search" id="ozon-toolbar-filter-search" placeholder="' + escapeHtml(placeholder || 'Поиск...') + '" value="' + escapeHtml(toolbarFilterSearch) + '" autocomplete="off" />' +
-        '<div class="ozon-dev-filter-list">' + (matches.length ? matches.map(option => '<button type="button" class="ozon-ext-combo-item ' + (option.value === value ? 'active' : '') + '" data-action="pick-toolbar-filter" data-filter="' + id + '" data-value="' + escapeHtml(option.value) + '">' + escapeHtml(option.label) + '</button>').join('') : '<div class="ozon-ext-toolbar-empty">Ничего не найдено</div>') + '</div></div>' : '') +
+        '<div class="ozon-dev-filter-list">' + (matches.length ? matches.map(option => '<button type="button" class="ozon-ext-combo-item ' + (option.value === value ? 'active' : '') + '" data-action="pick-toolbar-filter" data-filter="' + id + '" data-value="' + escapeHtml(option.value) + '">' + optionLabel(option) + '</button>').join('') : '<div class="ozon-ext-toolbar-empty">Ничего не найдено</div>') + '</div></div>' : '') +
       '</div>';
   }
 
@@ -8105,9 +8150,13 @@ export function generateContentScriptJs(
     inner.querySelectorAll('.ozon-ext-link-group-header').forEach(group => group.remove());
     headings.innerHTML = '<span>Задача · Приоритет</span><span>Эпик</span><span>Статус</span><span>Компонент</span><span>Спринт</span><span>Действия</span>';
     inner.prepend(headings);
-    let widths = [470,90,125,200,245,70];
+    const minWidths = [250,105,95,115,146,44];
+    let widths = [330,110,100,136,174,60];
     try { const saved = JSON.parse(localStorage.getItem('ozon-ip-column-widths-v3') || 'null'); if (Array.isArray(saved) && saved.length === 6 && saved.every(value => Number.isFinite(value) && value >= 60)) widths = saved; } catch (_) {}
-    const applyWidths = () => { const weights=[...widths]; weights[0]=Math.max(weights[0],...weights.slice(1).map(value=>value*1.6)); inner.style.setProperty('--ozon-ip-columns',weights.map(value => 'minmax(0,' + value + 'fr)').join(' ')); inner.style.setProperty('--ozon-ip-width','0px'); };
+    const applyWidths = () => {
+      inner.style.setProperty('--ozon-ip-columns',widths.map((value,index) => 'minmax(' + minWidths[index] + 'px,' + value + 'fr)').join(' '));
+      inner.style.setProperty('--ozon-ip-width',minWidths.reduce((sum,value)=>sum+value,0) + 'px');
+    };
     applyWidths();
     Array.from(headings.children).forEach((cell,index) => {
       const handle = document.createElement('span'); handle.className = 'ozon-ip-column-resizer'; handle.setAttribute('role','separator'); handle.setAttribute('aria-label','Ширина: ' + cell.textContent); handle.tabIndex = 0;
@@ -8132,10 +8181,12 @@ export function generateContentScriptJs(
       const epicRef = Array.from(left.children).find(child => child.tagName === 'SPAN' && String(child.getAttribute('title') || '').startsWith('Эпик:'));
       if (epicRef) { const key=epicRef.textContent.trim(); const anchor=document.createElement('a'); anchor.href='/browse/'+encodeURIComponent(key); anchor.className='ozon-mono'; anchor.textContent=key; anchor.title=epicRef.title; epic.appendChild(anchor); epicRef.remove(); } else epic.textContent='—';
       const secondary = Array.from(row.children).filter(child => child !== first && child !== detail);
-      const status = document.createElement('div'); const badge = actions.querySelector('.ozon-ext-badge');
+      const status = document.createElement('div'); status.className='ozon-ext-ip-status-cell'; const badge = actions.querySelector('.ozon-ext-badge');
       if (badge) { status.appendChild(badge); if (/готово|закрыт|done|closed/i.test(badge.textContent)) row.classList.add('completed'); }
       Array.from(left.children).filter(child => child.tagName === 'SPAN' && child.style.textOverflow === 'ellipsis').forEach(child => child.classList.add('ozon-ip-summary'));
       left.classList.add('ozon-ext-ip-task-cell'); actions.classList.add('ozon-ext-ip-action-cell');
+      component.classList.add('ozon-ext-ip-component-cell'); component.dataset.fieldLabel='Компонент';
+      sprint.classList.add('ozon-ext-ip-sprint-cell'); sprint.dataset.fieldLabel='Спринт';
       row.classList.add('ozon-ext-ip-table-row'); row.replaceChildren(left,epic,status,component,sprint,actions);
       secondary.forEach(child => { child.classList.add('ozon-ext-ip-table-secondary'); row.appendChild(child); });
       const trigger = component.querySelector('button'); const label = trigger && trigger.querySelector('span');
@@ -8210,7 +8261,7 @@ export function generateContentScriptJs(
     if (activeDashboardView === 'report') {
       const top = root.querySelector('.ozon-report-scroll')?.scrollTop || 0;
       const tableLeft = root.querySelector('.ozon-report-tree-wrap')?.scrollLeft || 0;
-      const rollupTop = root.querySelector('.ozon-report-rollup-wrap')?.scrollTop || 0;
+      const rollupLeft = root.querySelector('.ozon-report-rollup-wrap')?.scrollLeft || 0;
       root.innerHTML = renderDashboardNavigation() + sprintReport.html();
       bindDashboardNavigation(root);
       sprintReport.bind(root);
@@ -8218,7 +8269,7 @@ export function generateContentScriptJs(
       const tree = root.querySelector('.ozon-report-tree-wrap');
       const rollup = root.querySelector('.ozon-report-rollup-wrap');
       if (tree) tree.scrollLeft = tableLeft;
-      if (rollup) rollup.scrollTop = rollupTop;
+      if (rollup) rollup.scrollLeft = rollupLeft;
       if (scroll) scroll.scrollTop = top;
       animateDashboardSurfaces(root);
       return;
@@ -8286,7 +8337,8 @@ export function generateContentScriptJs(
     const componentFilterOptions = [{ value: 'all', label: 'Компонент: Все' }, ...allComponents.map(c => ({ value: c, label: c }))];
     const epicFilterOptions = [{ value: 'all', label: 'Эпик: Все' }, ...epicKeys.map(k => ({ value: k, label: k + ' · ' + (epicMap[k] || '') }))];
     const statusFilterOptions = [{ value: 'all', label: 'Статус: Все' }, ...allStatuses.map(status => ({ value: status, label: status }))];
-    const issueTypeFilterOptions = [{ value: 'all', label: 'Тип запроса: Все' }, ...Array.from(new Set([...projectIssueTypesList.map(type => type.name), ...(productDashboardLoaded ? tasks.map(task => task.issueTypeName || 'Задача') : [])])).sort((a,b) => a.localeCompare(b, 'ru')).map(name => ({ value: name, label: name }))];
+    const typeIcons = new Map(projectIssueTypesList.map(type => [type.name,type.iconUrl]));
+    const issueTypeFilterOptions = [{ value: 'all', label: 'Тип запроса: Все' }, ...Array.from(new Set([...typeIcons.keys(), ...(productDashboardLoaded ? tasks.map(task => task.issueTypeName || 'Задача') : [])])).sort((a,b) => a.localeCompare(b, 'ru')).map(name => ({ value: name, label: name, iconUrl:typeIcons.get(name) }))];
     const treeLevelOptions = [
       ...(productGroupingOrder.length ? [{ value: 'sprints', label: (productGroupingOrder[0] === 'sprint' ? 'Спринты' : 'Компоненты') }] : []),
       ...(productGroupingOrder.length > 1 ? [{ value: 'components', label: (productGroupingOrder[1] === 'sprint' ? 'Спринты' : 'Компоненты') }] : []),
@@ -9514,7 +9566,7 @@ export function generateContentScriptJs(
 
         function onMove(moveEv) {
           sidebarExpanded=false;
-          sidebarWidth=Math.max(340,Math.min(680,window.innerWidth-moveEv.clientX));
+          sidebarWidth=Math.max(340,Math.min(1040,window.innerWidth-moveEv.clientX));
           sbPanel.style.width=sidebarWidthCss();
           sbResizer.style.right=sidebarWidthCss();
         }
@@ -9637,7 +9689,7 @@ export function generateContentScriptJs(
         sidebarExpanded=!sidebarExpanded;
         if (sbPanel) sbPanel.style.width=sidebarWidthCss();
         if (sbResizer) sbResizer.style.right=sidebarWidthCss();
-        const caption=sidebarExpanded ? 'Вернуть компактный сайдбар' : 'Развернуть сайдбар';
+        const caption=sidebarExpanded ? 'Вернуть обычную ширину сайдбара' : 'Развернуть сайдбар';
         expandBtn.setAttribute('aria-label',caption);
         expandBtn.setAttribute('title',caption);
         expandBtn.setAttribute('aria-pressed',String(sidebarExpanded));
@@ -10649,12 +10701,25 @@ export function generateContentScriptJs(
         addEditorTaskContext(panel, key);
         const list = panel.querySelector('[data-list]');
         const search = panel.querySelector('[data-search]');
+        const favorites = ['CS','CRM_CORE','CRM_BO'];
+        const optionId = (component) => String(component.id || component.name);
+        const favoriteRank = (component) => favorites.indexOf(String(component.name || '').trim().toUpperCase());
+        const row = (component,checked) => '<label class="component-editor-option ' + (checked ? 'is-selected' : '') + '"><input type="checkbox" data-component-id="' + escapeHtml(optionId(component)) + '" ' + (checked ? 'checked' : '') + '><span>' + escapeHtml(component.name || '') + (component.unavailable ? ' <small>· недоступен для добавления</small>' : '') + '</span></label>';
         function renderOptions() {
           const query = search.value.trim().toLowerCase();
-          const filtered = allOptions.filter((c) => (!c.unavailable || selected.has(String(c.id || c.name))) && String(c.name || '').toLowerCase().includes(query))
-            .sort((a, b) => Number(selected.has(String(b.id || b.name))) - Number(selected.has(String(a.id || a.name))));
+          const picked = [], pinned = [], others = [];
+          for (const component of allOptions) {
+            if (!String(component.name || '').toLowerCase().includes(query)) continue;
+            if (selected.has(optionId(component))) picked.push(component);
+            else if (component.unavailable) continue;
+            else if (favoriteRank(component) >= 0) pinned.push(component);
+            else others.push(component);
+          }
           panel.querySelector('[data-count]').textContent = 'Выбрано: ' + selected.size;
-          list.innerHTML = filtered.length ? filtered.map((c) => '<label class="component-editor-option ' + (selected.has(String(c.id || c.name)) ? 'is-selected' : '') + '"><input type="checkbox" data-component-id="' + escapeHtml(String(c.id || c.name)) + '" ' + (selected.has(String(c.id || c.name)) ? 'checked' : '') + '><span>' + escapeHtml(c.name || '') + (c.unavailable ? ' <span style="color:#71839b;font-size:11px;font-weight:400">· недоступен для добавления</span>' : '') + '</span></label>').join('') : '<div style="padding:12px 10px;color:#64748b">Компоненты не найдены</div>';
+          list.innerHTML = picked.map(component=>row(component,true)).join('') +
+            (pinned.length ? '<div class="component-editor-section">Избранные</div>' + pinned.sort((a,b)=>favoriteRank(a)-favoriteRank(b)).map(component=>row(component,false)).join('') : '') +
+            (pinned.length && others.length ? '<div class="component-editor-section">Остальные компоненты</div>' : '') + others.map(component=>row(component,false)).join('') ||
+            '<div style="padding:12px 10px;color:#64748b">Компоненты не найдены</div>';
         }
         search.addEventListener('input', renderOptions);
         list.addEventListener('change', (event) => { const id = event.target.getAttribute('data-component-id'); if (!id) return; if (event.target.checked) selected.add(id); else selected.delete(id); const scrollTop = list.scrollTop; renderOptions(); list.scrollTop = scrollTop; [...list.querySelectorAll('[data-component-id]')].find((input) => input.getAttribute('data-component-id') === id)?.focus({preventScroll:true}); });

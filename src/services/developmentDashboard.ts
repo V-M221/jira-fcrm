@@ -7,7 +7,20 @@ export function renderJiraBadge(escapedLabel: string, category: string) {
   return '<span class="ozon-ext-badge ozon-ext-badge-' + color + '" title="' + escapedLabel + '">' + escapedLabel + '</span>';
 }
 
-export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (task:any) => void, onBeforeEditor?:()=>void, renderBadge = renderJiraBadge, inferCategory?: (name: string) => string, widgetVersion = '', priorityService?: any, groupingUi?:ReturnType<typeof createJiraGroupingUi>) {
+export function createDevelopmentPointColumns() {
+  const definitions = [
+    ['Продукты', 'Story Points задач, у эпика которых customfield_24000 = «Стрим 1».'],
+    ['Внепроектное', 'Story Points задач со «Стрим 2» у эпика, кроме эпика OBPROJECT-5201.'],
+    ['Внепроектные баги', 'Story Points задач с Epic Link = OBPROJECT-5201, независимо от типа задачи.'],
+    ['Проектное', 'Story Points задач, у эпика которых customfield_24000 = «Стрим 3».'],
+    ['Технострим', 'Story Points задач, у эпика которых customfield_24000 = «Стрим 4».'],
+    ['Роузи', 'Story Points задач, у эпика которых customfield_24000 = «Стрим 5».'],
+  ];
+  const matches = (stream:string,epicKey:string) => [stream==='Стрим 1',stream==='Стрим 2' && epicKey!=='OBPROJECT-5201',epicKey==='OBPROJECT-5201',stream==='Стрим 3',stream==='Стрим 4',stream==='Стрим 5'];
+  return {definitions,matches};
+}
+
+export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (task:any) => void, onBeforeEditor?:()=>void, renderBadge = renderJiraBadge, inferCategory?: (name: string) => string, widgetVersion = '', priorityService?: any, groupingUi?:ReturnType<typeof createJiraGroupingUi>, pointColumns = createDevelopmentPointColumns()) {
   const teams = [{ id:'cs', name:'CS', boardId:6197,pointsField:'' },{id:'crm_core',name:'CRM_CORE',boardId:7180,pointsField:''},{id:'crm_bo',name:'CRM_BO',boardId:12696,pointsField:''}];
   const groupNames: Record<string, string> = { sprint:'Спринт', project:'Проект', epic:'Epic', stream:'Стрим', component:'Компонент' };
   const groupingStorage = 'ozon-dev-grouping-v1';
@@ -78,14 +91,7 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
     if (child) layout.children = order.map(Number); else layout.order = order;
     saveLayout(); onRender();
   }
-  const columns = [
-    ['Продукты', 'Story Points задач, у эпика которых customfield_24000 = «Стрим 1».'],
-    ['Внепроектное', 'Story Points задач со «Стрим 2» у эпика, кроме эпика OBPROJECT-5201.'],
-    ['Внепроектные баги', 'Story Points задач с Epic Link = OBPROJECT-5201, независимо от типа задачи.'],
-    ['Проектное', 'Story Points задач, у эпика которых customfield_24000 = «Стрим 3».'],
-    ['Технострим', 'Story Points задач, у эпика которых customfield_24000 = «Стрим 4».'],
-    ['Роузи', 'Story Points задач, у эпика которых customfield_24000 = «Стрим 5».'],
-  ];
+  const columns = pointColumns.definitions;
   const escape = (value: any) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   const selectedTeams = () => teams.filter(item => state.teamIds.includes(item.id));
   const team = () => teams.find(item => item.id === state.teamId);
@@ -276,8 +282,7 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
     }).at(-1);
   }
   function allocate(issue: any) {
-    const matches = [issue.stream === 'Стрим 1', issue.stream === 'Стрим 2' && issue.epicKey !== 'OBPROJECT-5201', issue.epicKey === 'OBPROJECT-5201', issue.stream === 'Стрим 3', issue.stream === 'Стрим 4', issue.stream === 'Стрим 5'];
-    issue.allocations = matches.map(match => match ? issue.points : null);
+    issue.allocations = pointColumns.matches(issue.stream,issue.epicKey).map(match => match ? issue.points : null);
   }
   async function loadTasks() {
     if (!team() || !pointsField || !state.selected.length || state.loadingSprints || state.loadingTasks) return;

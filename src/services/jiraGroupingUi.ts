@@ -83,17 +83,45 @@ export function createJiraGroupingUi() {
     });
   }
 
-  function depthHtml(id:string,levels:{value:string;label:string}[],selected:string,disabled=false) {
-    const options=levels.some(level=>level.value===selected) ? levels : [{value:selected,label:'Вручную'},...levels];
-    return '<label class="ozon-depth-control"><span>Раскрыть до</span><select data-table-depth="' + id + '" aria-label="Раскрыть до уровня"' + (disabled ? ' disabled' : '') + '>' + options.map(level=>'<option value="' + escape(level.value) + '"' + (level.value===selected ? ' selected' : '') + '>' + escape(level.label) + '</option>').join('') + '</select></label>';
+  function depthHtml(id:string,levels:{value:string;label:string}[],selected:string,disabled=false,label='Раскрыть до уровня') {
+    const current=escape(levels.find(level=>level.value===selected)?.label || 'Вручную');
+    const popupId='ozon-depth-' + escape(id);
+    return '<div class="ozon-ext-toolbar-combo ozon-depth-control"><button type="button" role="combobox" class="ozon-ext-toolbar-trigger" data-table-depth="' + escape(id) + '" aria-label="' + escape(label) + '" aria-description="' + current + '" aria-haspopup="listbox" aria-expanded="false" aria-controls="' + popupId + '"' + (disabled ? ' disabled' : '') + '><span class="ozon-ext-toolbar-label"><span class="ozon-depth-label">Раскрыть до</span> ' + current + '</span><span class="ozon-ext-toolbar-chevron" aria-hidden="true"></span></button>' +
+      '<div class="ozon-ext-combo-popover ozon-ext-toolbar-popover ozon-depth-options" id="' + popupId + '" role="listbox" aria-label="' + escape(label) + '" hidden>' + levels.map(level=>'<button type="button" role="option" class="ozon-ext-combo-item' + (level.value===selected ? ' active' : '') + '" aria-selected="' + (level.value===selected) + '" tabindex="-1" data-depth-value="' + escape(level.value) + '">' + escape(level.label) + '</button>').join('') + '</div></div>';
   }
 
-  function bindDepth(root:HTMLElement,change:(value:string)=>void) {
-    root.querySelectorAll<HTMLSelectElement>('[data-table-depth]').forEach(select=>select.addEventListener('change',()=>{
-      const id=select.dataset.tableDepth;
-      change(select.value);
-      root.querySelector<HTMLElement>('[data-table-depth="' + id + '"]')?.focus({preventScroll:true});
-    }));
+  function bindDepth(root:HTMLElement,change:(value:string,id:string)=>void) {
+    root.querySelectorAll<HTMLButtonElement>('[data-table-depth]').forEach(trigger=>{
+      const id=trigger.dataset.tableDepth!;
+      const popup=trigger.nextElementSibling as HTMLElement;
+      const options=Array.from(popup.querySelectorAll<HTMLButtonElement>('[data-depth-value]'));
+      const setOpen=(open:boolean)=>{
+        popup.hidden=!open;
+        trigger.setAttribute('aria-expanded',String(open));
+        if (open) (options.find(option=>option.getAttribute('aria-selected')==='true') || options[0])?.focus();
+      };
+      trigger.parentElement?.addEventListener('focusout',event=>{
+        if (!trigger.parentElement?.contains(event.relatedTarget as Node)) setOpen(false);
+      });
+      trigger.addEventListener('click',()=>setOpen(popup.hidden));
+      trigger.addEventListener('keydown',event=>{
+        if (event.key==='ArrowDown' || event.key==='ArrowUp') { event.preventDefault(); setOpen(true); }
+      });
+      options.forEach((option,index)=>{
+        option.addEventListener('click',()=>{
+          setOpen(false);
+          change(option.dataset.depthValue!,id);
+          root.querySelector<HTMLElement>('[data-table-depth="' + id + '"]')?.focus({preventScroll:true});
+        });
+        option.addEventListener('keydown',event=>{
+          if (event.key==='Escape') { event.preventDefault(); event.stopPropagation(); trigger.focus(); setOpen(false); return; }
+          if (!['ArrowDown','ArrowUp','Home','End'].includes(event.key)) return;
+          event.preventDefault();
+          const next=event.key==='Home' ? 0 : event.key==='End' ? options.length-1 : index + (event.key==='ArrowDown' ? 1 : -1);
+          options[Math.max(0,Math.min(options.length-1,next))]?.focus();
+        });
+      });
+    });
   }
 
   return {html,bind,depthHtml,bindDepth};
