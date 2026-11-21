@@ -7,7 +7,7 @@ import JSZip from 'jszip';
 const outputDir = 'FCRM-Chrome-3.3';
 const archivePath = outputDir + '.zip';
 const source = await readFile('src/utils/extensionGenerator.ts', 'utf8');
-const bundledAssets = ['options.html', 'options.js', 'update.bat', 'update.ps1'];
+const bundledAssets = ['options.html', 'update.bat', 'update.ps1'];
 let previousArchive;
 async function readPackagedFile(name) {
   try {
@@ -107,6 +107,7 @@ const files = {
   'popup.js': generator.generatePopupJs(config),
   'background.js': deepseekExtension.generateBackgroundJs(),
   'issue-enhance.js': deepseekExtension.generateIssueEnhanceJs(),
+  'options.js': deepseekExtension.generateOptionsJs(),
 };
 for (const name of bundledAssets) files[name] = await readPackagedFile(name);
 

@@ -1,5 +1,5 @@
 // Also embedded in the extension content script. Keep all helpers local.
-export function answerMarkup(source: string): string {
+export function answerMarkup(source: string, numberedList = false): string {
   const escape = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const inline = (value: string) => value.split(/(\[[^\]\n]+\]\(https?:\/\/[^\s)]+\)|\[[^\]\n]+\|https?:\/\/[^\s\]]+\]|https?:\/\/[^\s<>]+|\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/gi).map(part => {
     const link = /^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/i.exec(part) || /^\[([^\]|\n]+)\|(https?:\/\/[^\s\]]+)\]$/i.exec(part);
@@ -11,6 +11,12 @@ export function answerMarkup(source: string): string {
     if (part.startsWith('`') && part.endsWith('`')) return '<code>' + escape(part.slice(1, -1)) + '</code>';
     return escape(part);
   }).join('');
+  if (numberedList) {
+    const items = source.split(/\r?\n/)
+      .map(line => line.trim().replace(/^(?:\d+[.)]|[-*#•–—])\s+/, ''))
+      .filter(Boolean);
+    return items.length ? '<ol>' + items.map(item => '<li>' + inline(item) + '</li>').join('') + '</ol>' : '';
+  }
   const blocks: string[] = [];
   const jiraWiki = /^h[1-6]\.\s/m.test(source);
   let list = '';

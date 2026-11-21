@@ -53,7 +53,29 @@ vm.runInNewContext(compiled,context);
 const {parseJiraDraft,saveJiraDraft,completeDeepseekChat,DEFAULT_DEEPSEEK_SYSTEM_PROMPT} = context.exports;
 const call = (mode,approved='',clarification,context='') => completeDeepseekChat('FCRM-2970',mode,null,approved,DEFAULT_DEEPSEEK_SYSTEM_PROMPT,clarification,context);
 
+function loadFormatter(name) {
+  const module = {exports:{}};
+  const source = fs.readFileSync(`src/utils/${name}.ts`, 'utf8');
+  const {outputText} = ts.transpileModule(source, {
+    compilerOptions: {module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
+  });
+  vm.runInNewContext(outputText,module);
+  return module.exports[name];
+}
+
 (async()=>{
+  const answerMarkup = loadFormatter('answerMarkup');
+  const structuredAnswer = loadFormatter('structuredAnswer');
+  const notes = '1. Какую роль указать?\n\n- Какой срок подтвердить?\nЕсть ли *согласованный* макет?';
+  const numberedNotes = '<ol><li>Какую роль указать?</li><li>Какой срок подтвердить?</li><li>Есть ли <strong>согласованный</strong> макет?</li></ol>';
+  assert.equal(answerMarkup(notes, true),numberedNotes);
+  assert.equal(answerMarkup('1) Что значит <поле>?', true),'<ol><li>Что значит &lt;поле&gt;?</li></ol>');
+  const visibleNotes = structuredAnswer('<jira_notes>'+notes+'</jira_notes>', 'description', answerMarkup);
+  assert.match(visibleNotes,/^<section[^>]*>/);
+  assert.ok(visibleNotes.includes(numberedNotes));
+  assert.doesNotMatch(visibleNotes,/<details/);
+  assert.doesNotMatch(structuredAnswer('<jira_description>Черновик</jira_description>', 'description', answerMarkup),/Что требует уточнения/);
+
   const suggestions = [
     {kind:'theme',key:'FCRM-2970'},
     {kind:'theme',key:'fcrm-123',reason:'Подтверждённая тематика'},
@@ -87,6 +109,22 @@ const call = (mode,approved='',clarification,context='') => completeDeepseekChat
   assert.match(prompt,/проверь существующих родителей в Jira по точным ключам/i);
   assert.match(prompt,/Завершённый статус сам по себе не означает, что связь устарела/);
   assert.match(prompt,/свежим запросом project = FCRM AND labels = fcrm_umb_epic/);
+  assert.match(prompt,/используй только «Цель» и «Что меняется»/);
+  assert.match(prompt,/условия приёмки указывай в «Что меняется»/);
+  assert.match(prompt,/«Как проверить» в отдельный раздел только по явной просьбе пользователя/);
+  assert.match(prompt,/Каждый пункт начинай с новой строки и номера/);
+  assert.match(prompt,/до 1000 символов.*существенные подтверждённые требования/);
+  assert.match(prompt,/Переноси ограничения, права доступа и решения.*только при явном подтверждении/);
+  assert.match(prompt,/Используй поле «Компонент» для поиска тематики, не выводи из него требования/);
+  assert.match(prompt,/Если значения в источниках расходятся, не объединяй их.*оба значения и источники в <jira_notes>/);
+  assert.match(prompt,/Персональные настройки промпта задают стиль\. При расхождении следуй правилам формата/);
+  assert.match(prompt,/список источников.*не входят в черновик/);
+  assert.match(prompt,/Epic Link явно пуст, текущей тематической связи нет.*обязательно проверь актуальный каталог тематик/);
+  assert.match(prompt,/действует и для задач в статусе «Готово»/);
+  assert.match(prompt,/в <jira_notes> укажи конкретную причину, почему подбор не дал однозначной связи/);
+  assert.match(prompt,/совпал со снятой связью.*только в <jira_notes>\. Не включай этот ключ в <jira_links>/);
+  assert.match(prompt,/В её Jira issuelinks для ключа в inwardIssue используй type\.inward, для ключа в outwardIssue — type\.outward/);
+  assert.match(prompt,/Если на исходной задаче уже стоит «В проекте» к задаче разработки, направление верное/);
 
   modelReplies.push(preview);
   await call('analyze','',undefined,'  Для оператора, коротко.  ');
@@ -102,6 +140,7 @@ const call = (mode,approved='',clarification,context='') => completeDeepseekChat
   await call('analyze','',{preview:analysis,reply:'Уточняем только роль'});
   assert.equal(completionRequest.messages[1].content,'Задача Jira FCRM-2970.\n\nПредыдущий черновик:\n'+analysis+'\n\nУточнение пользователя:\nУточняем только роль');
   assert.match(completionRequest.messages[0].content,/не повторяй сбор источников/i);
+  assert.match(completionRequest.messages[0].content,/используй только «Цель» и «Что меняется»/);
   assert.doesNotMatch(completionRequest.messages[0].content,/project = FCRM AND labels/);
   assert.doesNotMatch(completionRequest.messages[0].content,/существующих родителей в Jira по точным ключам/);
   assert.deepEqual(completionRequest.tool_ids,[]);

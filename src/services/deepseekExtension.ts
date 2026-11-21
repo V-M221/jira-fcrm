@@ -269,7 +269,8 @@ export function generateIssueEnhanceJs(): string {
       '#o3ds-layer .o3ds-answer,#o3ds-layer{scrollbar-width:thin!important;scrollbar-color:#a8b5c5 transparent!important;color-scheme:light;}',
       '#o3ds-layer .o3ds-answer h3{font-size:15px;font-weight:700;margin:12px 0 4px}#o3ds-layer .o3ds-answer p{margin:0 0 6px}#o3ds-layer .o3ds-answer ul,#o3ds-layer .o3ds-answer ol{padding-left:22px}#o3ds-layer .o3ds-answer a{color:#005bff;text-decoration:underline}',
       '#o3ds-layer .o3ds-draft{flex:1 1 0;min-height:min(140px,28vh);overflow:auto;padding:4px 4px 10px 0}#o3ds-layer .o3ds-draft .o3ds-answer{overflow:visible!important;background:#fff!important;border:1px solid #d7e0ec!important;border-radius:10px!important;padding:14px!important}#o3ds-layer .o3ds-draft h3:first-child{margin-top:0}',
-      '#o3ds-layer .o3ds-draft-heading{display:block;font-size:13px;font-weight:700;margin:0 0 7px;color:#071026}#o3ds-layer .o3ds-draft-name{margin:0 0 12px;color:#334155}#o3ds-layer .o3ds-draft details{margin:0 0 12px;padding:9px 12px;background:#f4f7fb;border-radius:8px}#o3ds-layer .o3ds-draft summary{cursor:pointer;font-weight:650}#o3ds-layer .o3ds-draft details>div{margin-top:8px}',
+      '#o3ds-layer .o3ds-draft-heading{display:block;font-size:13px;font-weight:700;margin:0 0 7px;color:#071026}#o3ds-layer .o3ds-draft-name{margin:0 0 12px;color:#334155}',
+      '#o3ds-layer .o3ds-draft-notes .o3ds-answer{background:#f4f7fb!important}#o3ds-layer .o3ds-draft-notes ol{list-style:decimal outside!important;margin:0!important;padding:0 0 0 22px!important}#o3ds-layer .o3ds-draft-notes li{display:list-item!important;list-style:inherit!important;font-size:inherit!important;line-height:inherit!important;margin:0;padding:0 0 0 3px}#o3ds-layer .o3ds-draft-notes li+li{margin-top:6px}',
       '#o3ds-layer .o3ds-draft-links{margin:0 0 12px;padding:10px 12px;border:1px solid #d7e0ec;border-radius:8px;min-width:0}#o3ds-layer .o3ds-draft-link{display:flex;gap:8px;padding:6px 0;align-items:flex-start;cursor:pointer}#o3ds-layer .o3ds-draft-link input{width:15px;height:15px;margin-top:2px;flex:none;accent-color:#005bff}#o3ds-layer .o3ds-draft-link span{min-width:0;overflow-wrap:anywhere}#o3ds-layer .o3ds-draft-link small{display:block;color:#626f86}',
       '#o3ds-layer .o3ds-draft-footer{padding-top:12px;border-top:1px solid #d7e0ec;background:#fff;flex:none}#o3ds-layer .o3ds-draft-footer .o3ds-actions{justify-content:flex-start}#o3ds-layer .o3ds-draft-refine{margin-bottom:10px}#o3ds-layer .o3ds-draft-refine summary{cursor:pointer;color:#005bff;width:max-content}#o3ds-layer .o3ds-draft-refine[open] summary{margin-bottom:8px}',
       '@media(max-width:800px){body:has(#ozon-structure-root #ozon-ext-sidebar-panel) > #o3ds-layer{width:min(480px,100vw)!important;}}',
@@ -726,12 +727,15 @@ export function generateIssueEnhanceJs(): string {
       content.append(group);
     }
     if (draft.notes) {
-      const notes = document.createElement('details');
-      const title = document.createElement('summary');
+      const notes = document.createElement('section');
+      notes.className = 'o3ds-draft-notes';
+      const title = document.createElement('strong');
+      title.className = 'o3ds-draft-heading';
       title.textContent = 'Что требует уточнения';
-      const details = document.createElement('div');
-      details.innerHTML = formatAnswer(draft.notes);
-      notes.append(title, details);
+      const questions = document.createElement('div');
+      questions.className = 'o3ds-answer';
+      questions.innerHTML = formatAnswer(draft.notes, true);
+      notes.append(title, questions);
       content.append(notes);
     }
     const footer = document.createElement('footer');
