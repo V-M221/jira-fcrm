@@ -10,6 +10,7 @@ const compiled = ts.transpileModule(source, {
 
 let completionRequest;
 let assistantId;
+let temporaryChatInput;
 const modelReplies = [];
 const jiraWrites = [];
 let jira = {description:'h2. Предыдущее содержание\n\n  Сохранить пробелы.\n',summary:'Исходное название',assignee:'owner'};
@@ -30,7 +31,9 @@ const context = {
     if (url.endsWith('/auths/')) return respond({});
     if (url.endsWith('/api/models')) return respond([]);
     if (url.endsWith('/chats/new')) {
-      assistantId = JSON.parse(options.body).chat.history.currentId;
+      const {history} = JSON.parse(options.body).chat;
+      assistantId = history.currentId;
+      temporaryChatInput = Object.values(history.messages).find(message=>message.role==='user').content;
       return respond({id:'test-chat'});
     }
     if (url.endsWith('/chat/completions')) {
@@ -48,7 +51,7 @@ const context = {
 };
 vm.runInNewContext(compiled,context);
 const {parseJiraDraft,saveJiraDraft,completeDeepseekChat,DEFAULT_DEEPSEEK_SYSTEM_PROMPT} = context.exports;
-const call = (mode,approved='',clarification) => completeDeepseekChat('FCRM-2970',mode,null,approved,DEFAULT_DEEPSEEK_SYSTEM_PROMPT,clarification);
+const call = (mode,approved='',clarification,context='') => completeDeepseekChat('FCRM-2970',mode,null,approved,DEFAULT_DEEPSEEK_SYSTEM_PROMPT,clarification,context);
 
 (async()=>{
   const suggestions = [
@@ -69,10 +72,26 @@ const call = (mode,approved='',clarification) => completeDeepseekChat('FCRM-2970
   assert.deepEqual(completionRequest.tool_ids,['server:mcp:jit','server:mcp:chatzone','server:mcp:confluence']);
   assert.deepEqual(completionRequest.skill_ids,[]);
   assert.equal(completionRequest.features.memory,false);
-  const prompt = completionRequest.messages[1].content;
-  assert.match(prompt,/как только данные достаточны.*остановись/i);
+  assert.equal(completionRequest.messages[1].content,'Задача Jira FCRM-2970.');
+  assert.equal(completionRequest.messages[1].content,completionRequest.user_message.content);
+  assert.equal(completionRequest.messages[1].content,temporaryChatInput);
+  const prompt = completionRequest.messages[0].content;
+  assert.match(prompt,/Просмотри все прямые связи/);
+  assert.match(prompt,/Сделай это и при заполненном описании/);
+  assert.match(prompt,/не читай один источник дважды/i);
+  assert.match(prompt,/дублирующую «Связанная задача»/);
   assert.match(prompt,/не запускай интерактивный запрос контекста/i);
   assert.match(prompt,/обычный FCRM-эпик без fcrm_umb_epic/);
+  assert.match(prompt,/Поле, которого нет в ответе Jira, считается неизвестным/);
+  assert.match(prompt,/Недоступность Epic Link, Owner, компонента, статуса или меток не блокирует описание/);
+  assert.match(prompt,/проверь существующих родителей в Jira по точным ключам/i);
+  assert.match(prompt,/Завершённый статус сам по себе не означает, что связь устарела/);
+  assert.match(prompt,/свежим запросом project = FCRM AND labels = fcrm_umb_epic/);
+
+  modelReplies.push(preview);
+  await call('analyze','',undefined,'  Для оператора, коротко.  ');
+  assert.equal(completionRequest.messages[1].content,'Задача Jira FCRM-2970.\n\nДля оператора, коротко.');
+  assert.equal(completionRequest.messages[0].content,prompt);
 
   const draft = parseJiraDraft(analysis,'FCRM-2970');
   assert.deepEqual(Array.from(draft.links,link=>link.key),['FCRM-123','FTD-456','https://chatzone.o3t.ru/ozon/pl/test']);
@@ -81,18 +100,61 @@ const call = (mode,approved='',clarification) => completeDeepseekChat('FCRM-2970
 
   modelReplies.push(preview);
   await call('analyze','',{preview:analysis,reply:'Уточняем только роль'});
-  assert.match(completionRequest.messages[1].content,/не повторяй сбор источников/i);
+  assert.equal(completionRequest.messages[1].content,'Задача Jira FCRM-2970.\n\nПредыдущий черновик:\n'+analysis+'\n\nУточнение пользователя:\nУточняем только роль');
+  assert.match(completionRequest.messages[0].content,/не повторяй сбор источников/i);
+  assert.doesNotMatch(completionRequest.messages[0].content,/project = FCRM AND labels/);
+  assert.doesNotMatch(completionRequest.messages[0].content,/существующих родителей в Jira по точным ключам/);
+  assert.deepEqual(completionRequest.tool_ids,[]);
+
+  modelReplies.push(preview);
+  await call('analyze','',{preview:analysis,reply:'Сократи. И проверь данные в приложенном источнике.'});
+  assert.match(completionRequest.messages[0].content,/Открой только тот источник/);
+  assert.deepEqual(completionRequest.tool_ids,['server:mcp:jit','server:mcp:chatzone','server:mcp:confluence']);
+
+  modelReplies.push(preview);
+  await call('analyze','',{preview:analysis,reply:'Проверь, актуальна ли тематика.'});
+  assert.match(completionRequest.messages[0].content,/существующих родителей в Jira по точным ключам/);
+  assert.doesNotMatch(completionRequest.messages[0].content,/project = FCRM AND labels/);
 
   modelReplies.push('<result_errors>Карточка недоступна.</result_errors>');
   await assert.rejects(call('analyze'),/Карточка недоступна/);
   modelReplies.push('<result_summary>Связь с FTD-456 проверена.</result_summary>');
   assert.match(await call('apply_links',JSON.stringify([draft.links[1]])),/FTD-456 проверена/);
   assert.deepEqual(completionRequest.tool_ids,['server:mcp:jit']);
-  const linkPrompt = completionRequest.messages[1].content;
-  assert.match(linkPrompt,/development.*FTD-456/);
-  assert.doesNotMatch(linkPrompt,/FCRM-123|\/ozon\/pl\/test/);
+  assert.equal(completionRequest.messages[1].content,'Задача Jira FCRM-2970.\n\nСогласованные связи:\n[{"kind":"development","key":"FTD-456"}]');
+  const linkPrompt = completionRequest.messages[0].content;
+  assert.doesNotMatch(linkPrompt,/FTD-456|FCRM-123|\/ozon\/pl\/test/);
   assert.match(linkPrompt,/на FCRM — «В проекте: задача разработки»/i);
+  assert.doesNotMatch(linkPrompt,/существующих родителей в Jira по точным ключам/);
+
+  modelReplies.push('<result_errors>Метка тематики больше не действует.</result_errors>');
+  await call('apply_links',JSON.stringify([draft.links[0]]));
+  const themePrompt = completionRequest.messages[0].content;
+  assert.match(themePrompt,/перечитай согласованную тематику по ключу/);
+  assert.match(themePrompt,/Если Epic Link неизвестен, пропусти установку/);
+  assert.match(themePrompt,/пропусти запись и укажи причину/);
+  assert.doesNotMatch(themePrompt,/project = FCRM AND labels/);
   await assert.rejects(call('apply_links',JSON.stringify([suggestions[0]])),/неподдерживаемая связь/);
+
+  const corrections = [
+    {kind:'development',key:'OB-42',action:'repair'},
+    {kind:'theme',key:'FCRM-124',action:'repair',replaceKey:'fcrm-125'},
+    {kind:'development',key:'OB-43',action:'repair',replaceKey:'FCRM-125'},
+    {kind:'theme',key:'FCRM-126',action:'repair',replaceKey:''},
+    {kind:'source',key:'https://chatzone.o3t.ru/ozon/pl/test',action:'repair'},
+  ];
+  const repairs = parseJiraDraft('<jira_links>'+JSON.stringify(corrections)+'</jira_links>','FCRM-2970').links;
+  assert.equal(repairs.length,2);
+  assert.equal(repairs[0].action,'repair');
+  assert.equal(repairs[1].replaceKey,'FCRM-125');
+  modelReplies.push('<result_summary>Исправления проверены.</result_summary>');
+  await call('apply_links',JSON.stringify(repairs));
+  const [repairSystem,repairUser] = completionRequest.messages;
+  assert.match(repairSystem.content,/Сначала установи правильную связь.*Проверь обе стороны\. Только после этого убери неверную связь/);
+  assert.match(repairSystem.content,/старая прямая связь с указанным ключом всё ещё существует и устарела/);
+  assert.match(repairUser.content,/"action":"repair","replaceKey":"FCRM-125"/);
+  assert.doesNotMatch(repairSystem.content,/FCRM-125/);
+  await assert.rejects(call('apply_links',JSON.stringify([corrections[2]])),/некорректно указана прежняя тематика/);
 
   const original = jira.description;
   assert.equal((await saveJiraDraft('FCRM-2970',draft)).changed,true);
