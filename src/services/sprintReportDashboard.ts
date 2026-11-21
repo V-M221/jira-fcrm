@@ -1,15 +1,21 @@
 import type { createSprintReportModel } from './sprintReportModel';
 import type { createJiraPeopleUi, JiraPerson } from './jiraPeopleUi';
 import type {createJiraGroupingUi} from './jiraGroupingUi';
+import type {createDevelopmentPointColumns} from './developmentDashboard';
 
 // Serialized into content.js. Receives its model and the local board list from the host.
-export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<typeof createSprintReportModel>, boards:{id:string;name:string}[], configuredSprintField:string, configuredEpicField:string, renderBadge:(label:string, state:string)=>string, isEpicIssueType:(type:string)=>boolean, people:ReturnType<typeof createJiraPeopleUi>, developmentGrouping:()=>string[] = ()=>['project','epic'], groupingUi?:ReturnType<typeof createJiraGroupingUi>) {
+export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<typeof createSprintReportModel>, boards:{id:string;name:string}[], configuredSprintField:string, configuredEpicField:string, renderBadge:(label:string, state:string)=>string, isEpicIssueType:(type:string)=>boolean, people:ReturnType<typeof createJiraPeopleUi>, pointColumns:ReturnType<typeof createDevelopmentPointColumns>, developmentGrouping:()=>string[] = ()=>['project','epic'], groupingUi?:ReturnType<typeof createJiraGroupingUi>) {
   type Report = ReturnType<typeof model.build>;
   type Leader = NonNullable<ReturnType<Report['byProject']['get']>>['leaders'][number];
   const state = {board:boards[0].id,sprint:'',sprints:[] as any[],report:null as Report | null, section:'days',day:'',query:'',limit:60,rollupOpen:false,
     scopeFilter:'all',project:'',picker:'',chartMode:'total' as 'total'|'projects',chartDay:'',chartProject:'',loading:'',error:'',sprintFailed:false,epicField:configuredEpicField};
-  const groupOverrides = new Map<string,boolean>();
-  let groupDepth=Infinity;
+  type Tree = 'details' | 'rollup';
+  const groupOverrides = {details:new Map<string,boolean>(),rollup:new Map<string,boolean>()};
+  const groupDepth = {details:Infinity,rollup:0};
+  const groupNames:Record<string,string> = {project:'Проект',epic:'Эпик',stream:'Стрим',component:'Компонент'};
+  const validGroups = (keys:string[])=>[...new Set(keys.filter(key=>Object.hasOwn(groupNames,key)))];
+  let customGrouping:string[] | null=null;
+  let groupingDraft:{order:string[];inherit:boolean} | null=null;
   type EpicUpdate = {id:string;name:string;fields?:{summary?:string;customfield_24000?:unknown}};
   type TaskUpdate = {epic?:EpicUpdate;assigneeName?:string;assignee?:JiraPerson | null};
   const pendingTaskUpdates = new Map<string,TaskUpdate>();
@@ -20,6 +26,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
       state.sprint = String(saved.sprint || '');
       if (saved.chartMode === 'projects') state.chartMode = 'projects';
     }
+    if (Array.isArray(saved?.grouping)) customGrouping=validGroups(saved.grouping);
   } catch (_) { /* Selection remains available for this visit. */ }
   let controller:AbortController | null = null;
   let generation = 0;
@@ -32,14 +39,27 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
   const percent = new Intl.NumberFormat('ru',{style:'percent',maximumFractionDigits:1}).format;
   const compareGroup = new Intl.Collator('ru',{numeric:true}).compare;
   const groupOrder = (a:string,b:string) => Number(!a)-Number(!b) || compareGroup(a,b);
-  const groupNames:Record<string,string> = {project:'Проект',epic:'Эпик',stream:'Стрим',component:'Компонент'};
   const emptyGroups:Record<string,string> = {project:'Без проекта',epic:'Без эпика',stream:'Без стрима',component:'Без компонента'};
-  const dimensions=()=>developmentGrouping().filter(key=>Object.hasOwn(groupNames,key));
-  const groupExpanded=(id:string,depth:number)=>groupOverrides.get(id) ?? depth<groupDepth;
-  function depthControl() {
+  const dimensions=()=>customGrouping ?? validGroups(developmentGrouping());
+  const groupExpanded=(tree:Tree,id:string,depth:number)=>groupOverrides[tree].get(id) ?? depth<groupDepth[tree];
+  const resetGroupOverrides=()=>Object.values(groupOverrides).forEach(groups=>groups.clear());
+  const searchingTasks=()=>state.section!=='days' && Boolean(state.query.trim());
+  function depthControl(tree:Tree) {
     const levels=dimensions();
     if (!levels.length) return '';
-    return groupingUi?.depthHtml('report',[...levels.map((value,index)=>({value:String(index),label:groupNames[value]})),{value:'all',label:'Задачи'}],groupDepth>=levels.length ? 'all' : String(groupDepth)) || '';
+    const options=levels.map((value,index)=>({value:String(index),label:groupNames[value]}));
+    if (tree==='details') options.push({value:'all',label:'Задачи'});
+    const disabled=tree==='details' && searchingTasks();
+    const depth=tree==='rollup' ? String(Math.min(groupDepth.rollup,levels.length-1)) : disabled || groupDepth.details>=levels.length ? 'all' : String(groupDepth.details);
+    const selected=groupOverrides[tree].size && !disabled ? 'manual' : depth;
+    return groupingUi?.depthHtml('report-' + tree,options,selected,disabled,tree==='rollup' ? 'Раскрыть план и факт до уровня' : 'Раскрыть список задач до уровня') || '';
+  }
+  function groupingSettings() {
+    if (!groupingDraft || !groupingUi) return '';
+    return '<aside class="ozon-dev-settings ozon-dev-settings-stable ozon-report-settings" role="dialog" aria-labelledby="ozon-report-settings-title"><header class="ozon-dev-editor-head"><strong id="ozon-report-settings-title">Группировка отчёта</strong><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-report-settings="cancel" aria-label="Закрыть настройки">✕</button></header>' +
+      '<p>Применяется к спискам задач и таблице плана и факта.</p>' + groupingUi.html('report-grouping',groupingDraft.order,groupNames,'data-report-group-field') +
+      '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-report-settings="inherit" aria-pressed="' + groupingDraft.inherit + '">Как в «Командах разработки»</button>' +
+      '<footer><button type="button" class="ozon-ext-btn" data-report-settings="apply">Применить</button><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-report-settings="cancel">Отмена</button></footer></aside>';
   }
   const plurals = new Intl.PluralRules('ru');
   const taskCount = (count:number) => amount(count) + ' ' + ({one:'задача',few:'задачи'}[plurals.select(count)] || 'задач');
@@ -49,7 +69,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
   const shortDate = (time:number) => dateFormat.format(time).replace(/\.$/,'');
   const dayLabel = (day:string) => shortDate(Date.parse(day + 'T12:00:00Z'));
   const issueLink = (key:string) => '<a class="ozon-mono" href="/browse/' + encodeURIComponent(key) + '" target="_blank" rel="noopener noreferrer">' + escape(key) + '</a>';
-  const remember = () => { try { localStorage.setItem('ozon-sprint-report-v1',JSON.stringify({board:state.board,sprint:state.sprint,chartMode:state.chartMode})); } catch (_) {} };
+  const remember = () => { try { localStorage.setItem('ozon-sprint-report-v1',JSON.stringify({board:state.board,sprint:state.sprint,chartMode:state.chartMode,grouping:customGrouping})); } catch (_) {} };
 
   async function json(path:string, signal:AbortSignal) {
     const response = await fetch(path,{credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json'},signal});
@@ -95,7 +115,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     controller = new AbortController();
     const signal = controller.signal;
     state.board = board; state.sprint = preferred; state.sprints = []; state.report = null; state.project = '';
-    groupOverrides.clear();
+    resetGroupOverrides();
     state.loading = 'Загружаем спринты…'; state.error = ''; state.sprintFailed = false;
     onRender();
     try {
@@ -356,29 +376,45 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     if (!report.pointsField || !report.byProject.size) return '';
     const scope=visibleReport(report);
     const levels=dimensions();
-    const value=(points:number,total:number)=>'<td><strong>' + escape(metric(report,points)) + '</strong> <small>' + (total ? escape(percent(points/total)) : '—') + '</small></td>';
-    const values=(plan:number,fact:number)=>value(plan,report.metrics.planned) + value(fact,report.metrics.completedPoints);
+    const value=(points:number,total:number,label:string)=>'<div class="ozon-report-rollup-value ' + (label==='Факт' ? 'is-fact' : '') + '"><span>' + label + '</span><strong>' + escape(amount(points)) + '</strong><small>' + (total ? escape(percent(points/total)) : '—') + '</small></div>';
+    const values=(tasks:Report['rows'])=>{
+      const totals=Array.from({length:pointColumns.definitions.length+1},()=>({plan:0,fact:0}));
+      for (const task of tasks) {
+        const plan=task.started ? task.startPoints ?? 0 : 0;
+        const fact=task.doneAtEnd ? task.endPoints ?? 0 : 0;
+        totals[0].plan+=plan;
+        totals[0].fact+=fact;
+        if (!plan && !fact) continue;
+        pointColumns.matches(task.stream,task.epicKey).forEach((matches,index)=>{
+          if (!matches) return;
+          totals[index+1].plan+=plan;
+          totals[index+1].fact+=fact;
+        });
+      }
+      return totals.map(({plan,fact},index)=>'<td' + (index ? '' : ' class="ozon-report-rollup-total"') + '>' + value(plan,report.metrics.planned,'План') + value(fact,report.metrics.completedPoints,'Факт') + '</td>').join('');
+    };
     const rows=(tasks:Report['rows'],depth:number,path:string[]):string=>{
       const dimension=levels[depth];
       if (!dimension) return '';
       return buckets(tasks,dimension,task=>task).map(([key,children])=>{
-        const plan=children.reduce((sum,task)=>sum + (task.started ? task.startPoints ?? 0 : 0),0);
-        const fact=children.reduce((sum,task)=>sum + (task.doneAtEnd ? task.endPoints ?? 0 : 0),0);
         const nextPath=[...path,dimension + ':' + key];
         const id=JSON.stringify(nextPath);
-        const expanded=groupExpanded(id,depth);
-        const toggle=depth+1<levels.length ? groupToggle(id,key || emptyGroups[dimension],expanded) : '';
-        return '<tr' + (depth===0 ? ' class="ozon-report-stream-project"' : '') + '><th scope="row"><div class="ozon-report-tree-line" style="--report-depth:' + depth + '">' + toggle + groupLabel(dimension,key,children[0],levels) + '</div></th>' + values(plan,fact) + '</tr>' + (expanded ? rows(children,depth+1,nextPath) : '');
+        const expanded=groupExpanded('rollup',id,depth);
+        const toggle=depth+1<levels.length ? groupToggle(id,key || emptyGroups[dimension],expanded,false,'rollup') : '';
+        return '<tr' + (depth===0 ? ' class="ozon-report-stream-project"' : '') + '><th scope="row"><div class="ozon-report-tree-line" style="--report-depth:' + depth + '">' + toggle + groupLabel(dimension,key,children[0],levels) + '</div></th>' + values(children) + '</tr>' + (expanded ? rows(children,depth+1,nextPath) : '');
       }).join('');
     };
     const route=levels.map(key=>groupNames[key]).join(' → ');
-    return '<details class="ozon-report-streams" data-report-rollup' + (state.rollupOpen ? ' open' : '') + '><summary>План и факт по группам</summary><p>План на старте и завершённые SP ' + (report.closed ? 'к закрытию' : 'к текущему моменту') + '. Проценты от плана и факта всего спринта.' +
+    const tasks=scope.rows.filter(task=>task.started || task.doneAtEnd);
+    const headings=pointColumns.definitions.map(([title,hint])=>'<th scope="col" title="' + escape(hint) + '">' + escape(title) + '</th>').join('');
+    return '<details class="ozon-report-streams" data-report-rollup' + (state.rollupOpen ? ' open' : '') + '><summary>План и факт по группам</summary><p>План — SP на старте. Факт — завершённые SP ' + (report.closed ? 'к закрытию' : 'к текущему моменту') + '. Проценты от плана и факта всего спринта. Баллы без категории входят в «Всего SP».' +
       (levels.includes('component') ? ' Задача с несколькими компонентами видна в каждом из них. В итоге она учитывается один раз.' : '') + '</p>' +
-      '<div class="ozon-report-table-wrap ozon-report-rollup-wrap"><table aria-label="План и факт по группам"><thead><tr><th>' + escape(route || 'Группы') + '</th><th>План</th><th>Факт</th></tr></thead><tbody>' +
-      rows(scope.rows.filter(task=>task.started || task.doneAtEnd),0,['rollup']) + '</tbody><tfoot><tr><th scope="row">' + escape(state.project ? 'Всего по ' + state.project : 'Весь спринт') + '</th>' + values(scope.metrics.planned,scope.metrics.completedPoints) + '</tr></tfoot></table></div></details>';
+      (levels.length>1 ? '<div class="ozon-report-rollup-tools">' + depthControl('rollup') + '</div>' : '') +
+      '<div class="ozon-report-table-wrap ozon-report-rollup-wrap"><table aria-label="План и факт по группам"><thead><tr><th scope="col">' + escape(route || 'Группы') + '</th><th scope="col">Всего SP</th>' + headings + '</tr></thead><tbody>' +
+      rows(tasks,0,['rollup']) + '</tbody><tfoot><tr><th scope="row">' + escape(state.project ? 'Всего по ' + state.project : 'Весь спринт') + '</th>' + values(tasks) + '</tr></tfoot></table></div></details>';
   }
 
-  const plot={width:960,height:232,left:58,right:40,top:35,bottom:57};
+  const plot={width:960,height:180,left:58,right:40,top:27,bottom:44};
   function chartViews(report:Report) {
     const canSplit=!state.project && report.byProject.size>1;
     const split=canSplit && state.chartMode==='projects';
@@ -419,7 +455,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
       if (!major && index%Math.ceil(end/90) !== 0) return '';
       const column=x(index);
       return '<line class="ozon-report-grid-day' + (major ? ' is-major' : '') + '" x1="' + column + '" x2="' + column + '" y1="' + top + '" y2="' + (axisY+(major ? 5 : 0)) + '"/>' +
-        (major ? '<text x="' + column + '" y="' + (axisY+33) + '" text-anchor="middle">' + escape(index ? dayLabel(report.days[index-1].date) : 'Старт') + '</text>' : '');
+        (major ? '<text x="' + column + '" y="' + (axisY+26) + '" text-anchor="middle">' + escape(index ? dayLabel(report.days[index-1].date) : 'Старт') + '</text>' : '');
     }).join('');
     const selected = report.days.findIndex(day=>day.date===state.day)+1;
     const labels=new Set([0,end]);
@@ -432,11 +468,11 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     const pointLabels=[...labels].map(index=>{
       const {scope,remaining}=points[index];
       if (scope===remaining) return number('shared',scope,index,-9);
-      return number('scope',scope,index,-9) + number('remaining',remaining,index,17);
+      return number('scope',scope,index,-8) + number('remaining',remaining,index,14);
     }).join('');
     const dots=points.map(({scope,remaining},index)=>{
       if (end>35 && !labels.has(index)) return '';
-      const radius=index===selected && selected ? 4 : 2.5;
+      const radius=index===selected && selected ? 3 : 1.8;
       return '<circle class="ozon-report-scope-dot" cx="' + x(index) + '" cy="' + y(scope) + '" r="' + radius + '"/>' +
         '<circle class="ozon-report-remaining-dot" cx="' + x(index) + '" cy="' + y(remaining) + '" r="' + radius + '"/>';
     }).join('');
@@ -548,8 +584,8 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     return issueLink(key) + title + stream;
   }
 
-  function groupToggle(id:string,label:string,expanded:boolean,disabled=false) {
-    return '<button type="button" data-report-group="' + escape(id) + '" aria-expanded="' + expanded + '" aria-label="' + (expanded ? 'Свернуть ' : 'Развернуть ') + escape(label) + '"' + (disabled ? ' disabled' : '') + '>' + (expanded ? '▾' : '▸') + '</button>';
+  function groupToggle(id:string,label:string,expanded:boolean,disabled=false,tree:Tree='details') {
+    return '<button type="button" data-report-group="' + escape(id) + '" aria-expanded="' + expanded + '" data-report-tree="' + tree + '" aria-label="' + (expanded ? 'Свернуть ' : 'Развернуть ') + escape(label) + '"' + (disabled ? ' disabled' : '') + '>' + (expanded ? '▾' : '▸') + '</button>';
   }
   function applyTaskUpdate(key:string,update:TaskUpdate) {
     const task=state.report?.rows.find(row=>row.key===key);
@@ -596,11 +632,11 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
       let html='';
       buckets(entries,dimension,taskFor).forEach(([key,entries])=>{
         const nextPath=[...path,dimension + ':' + key], id=JSON.stringify(nextPath);
-        const expanded=Boolean(state.query.trim()) || groupExpanded(id,depth);
+        const expanded=searchingTasks() || groupExpanded('details',id,depth);
         const label=key || emptyGroups[dimension];
         const count=taskCount(new Set(entries.map(entry=>taskFor(entry).key)).size);
         if (renderedCount < state.limit) {
-          html+='<tr class="ozon-report-group ozon-report-group-' + depth + '"><th colspan="' + columns + '"><div class="ozon-report-tree-line" style="--report-depth:' + depth + '">' + groupToggle(id,label,expanded,Boolean(state.query.trim())) +
+          html+='<tr class="ozon-report-group ozon-report-group-' + depth + '"><th colspan="' + columns + '"><div class="ozon-report-tree-line" style="--report-depth:' + depth + '">' + groupToggle(id,label,expanded,searchingTasks()) +
             groupLabel(dimension,key,taskFor(entries[0]),levels) + '<small>' + escape(count) + '</small></div></th></tr>';
         }
         if (expanded) html+=renderLevel(entries,depth+1,nextPath);
@@ -658,7 +694,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     return '<section class="ozon-report-panel"><h2>Ход спринта</h2><div class="ozon-report-daybar"><span>Дата</span>' + step(-1,'Предыдущий день','‹') + picker('day','Дата',selected?.date || '',dayOptions) + step(1,'Следующий день','›') +
       (selected && report.pointsField ? '<span>Перешло в «Готово» <strong>' + escape(metric(report,completed)) + '</strong>' + (reopened ? ' · Вернули при переоткрытии <strong>' + escape(metric(report,reopened)) + '</strong>' : '') + ' · Не завершено ' + dayCutoff(report,selected.date) + ' <strong>' + escape(metric(report,selected.remaining)) + '</strong></span>' : '') + '</div>' + charts(report) +
       dayBreakdown(report,dayIndex) +
-      (changes.length ? treeTable(grouped.html,'Что изменилось',report.pointsField ? 'Работа по статусам' : '',true) + more(grouped.visibleCount) : '<p class="ozon-report-empty">В этот день изменений не было.</p>') +
+      (changes.length ? '<div class="ozon-report-tools"><strong>Изменения за день</strong>' + depthControl('details') + '</div>' + treeTable(grouped.html,'Что изменилось',report.pointsField ? 'Работа по статусам' : '',true) + more(grouped.visibleCount) : '<p class="ozon-report-empty">В этот день изменений не было.</p>') +
       (report.pointsField ? '<details class="ozon-report-method"><summary>Как читать график</summary><p>Точки показывают состояние на конец дня по МСК. Последняя точка показывает состояние ' + (report.closed ? 'на момент закрытия' : 'на момент обновления') + '. «Готово» означает последнюю колонку доски. При переоткрытии баллы возвращаются в незавершённые задачи.</p></details>' : '') + '</section>';
   }
 
@@ -691,7 +727,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     };
     const grouped=groupedRows(filtered,task=>task,row,report.pointsField ? 5 : 4);
     return '<section class="ozon-report-panel"><h2>' + title + '</h2>' + note + '<div class="ozon-report-tools"><input id="ozon-report-search" type="search" placeholder="Ключ или название задачи" aria-label="Поиск задачи в списке" value="' + escape(state.query) + '">' +
-      (filters.length ? picker('scope','Какие задачи показать',state.scopeFilter,filters) : '') + '<span>' + taskCount(filtered.length) + '</span></div>' +
+      (filters.length ? picker('scope','Какие задачи показать',state.scopeFilter,filters) : '') + depthControl('details') + '<span>' + taskCount(filtered.length) + '</span></div>' +
       (filtered.length ? treeTable(grouped.html,isScope ? 'Изменение' : 'Статус',report.pointsField ? (isScope ? 'Изменение · ' : '') + (report.pointsName || 'Оценка') : '') + more(grouped.visibleCount) : '<p class="ozon-report-empty">Задач нет.</p>') + '</section>';
   }
 
@@ -709,8 +745,9 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
       (state.error ? '<div class="ozon-report-banner ozon-report-warning" role="alert">' + escape(state.error) + '</div>' : '') +
       (report && visible ? '<div class="ozon-report-period"><strong>' + escape(selected?.name || '') + '</strong>' + sprintBadge(report.closed ? 'closed' : 'active') + '<span>Отчёт за ' + shortDate(report.start) + ' — ' + shortDate(report.end) + ' · МСК</span></div>' +
         (report.warnings.length ? '<ul class="ozon-report-warning">' + report.warnings.map(warning=>'<li>' + escape(warning) + '</li>').join('') + '</ul>' : '') +
-        '<div class="ozon-report-view-options">' + projectFilter(report) + depthControl() + '</div>' + overview(visible) + '<div class="ozon-report-sections" role="group" aria-label="Разделы отчёта">' + choices.map(choice=>'<button type="button" class="ozon-ext-btn ' + (state.section === choice.id ? '' : 'ozon-ext-btn-surface') + '" data-report-section="' + choice.id + '" aria-pressed="' + (state.section === choice.id) + '">' + choice.title + '</button>').join('') + '</div>' + projectBreakdown(report) + groupBreakdown(report) + definitions(visible) +
-        (state.section==='days' ? daily(visible) : taskList(visible)) : state.loading || state.error ? '' : '<p class="ozon-report-empty">На доске нет активных или закрытых спринтов.</p>') + '</div></div></section>';
+        '<div class="ozon-report-view-options">' + projectFilter(report) + '</div>' + overview(visible) + '<div class="ozon-report-sections" role="group" aria-label="Разделы отчёта">' + choices.map(choice=>'<button type="button" class="ozon-ext-btn ' + (state.section === choice.id ? '' : 'ozon-ext-btn-surface') + '" data-report-section="' + choice.id + '" aria-pressed="' + (state.section === choice.id) + '">' + choice.title + '</button>').join('') +
+        (groupingUi ? '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface ozon-report-settings-button" data-report-settings="open" aria-haspopup="dialog" aria-expanded="' + Boolean(groupingDraft) + '">Группировка</button>' : '') + '</div>' + projectBreakdown(report) + groupBreakdown(report) + definitions(visible) +
+        (state.section==='days' ? daily(visible) : taskList(visible)) : state.loading || state.error ? '' : '<p class="ozon-report-empty">На доске нет активных или закрытых спринтов.</p>') + '</div></div>' + groupingSettings() + '</section>';
   }
 
   function bind(root:HTMLElement) {
@@ -718,10 +755,42 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     if (!section) return;
     const rollup=section.querySelector<HTMLDetailsElement>('[data-report-rollup]');
     rollup?.addEventListener('toggle',()=>{if (rollup.isConnected) state.rollupOpen=rollup.open;});
-    groupingUi?.bindDepth(root,value=>{
-      groupDepth=value==='all' ? Infinity : Number(value);
-      groupOverrides.clear();state.limit=60;onRender();
+    groupingUi?.bindDepth(root,(value,id)=>{
+      const tree:Tree=id==='report-rollup' ? 'rollup' : 'details';
+      groupDepth[tree]=value==='all' ? Infinity : Number(value);
+      groupOverrides[tree].clear();
+      if (tree==='details') state.limit=60;
+      onRender();
     });
+    const focusSettings = (action:string) => root.querySelector<HTMLElement>('[data-report-settings="' + action + '"]')?.focus({preventScroll:true});
+    const closeSettings = () => { groupingDraft=null; onRender(); focusSettings('open'); };
+    const changeGrouping = (order:string[]) => { groupingDraft={order,inherit:false}; onRender(); };
+    section.querySelectorAll<HTMLButtonElement>('[data-report-settings]').forEach(button=>button.addEventListener('click',()=>{
+      switch (button.dataset.reportSettings) {
+        case 'open':
+          groupingDraft={order:[...dimensions()],inherit:customGrouping===null}; onRender(); focusSettings('cancel'); break;
+        case 'cancel': closeSettings(); break;
+        case 'inherit':
+          groupingDraft={order:validGroups(developmentGrouping()),inherit:true}; onRender(); focusSettings('inherit'); break;
+        case 'apply':
+          if (!groupingDraft) return;
+          customGrouping=groupingDraft.inherit ? null : groupingDraft.order;
+          resetGroupOverrides(); groupDepth.details=Infinity; groupDepth.rollup=0; state.limit=60;
+          remember(); closeSettings(); break;
+      }
+    }));
+    section.querySelector('.ozon-report-settings')?.addEventListener('keydown',event=>{
+      if ((event as KeyboardEvent).key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeSettings(); }
+    });
+    if (groupingDraft) {
+      groupingUi?.bind(root,changeGrouping);
+      section.querySelectorAll<HTMLInputElement>('[data-report-group-field]').forEach(input=>input.addEventListener('change',()=>{
+        const field=input.dataset.reportGroupField!;
+        const order=groupingDraft!.order;
+        changeGrouping(input.checked ? [...order,field] : order.filter(key=>key!==field));
+        root.querySelector<HTMLElement>('[data-report-group-field="' + field + '"]')?.focus({preventScroll:true});
+      }));
+    }
     section.querySelectorAll<HTMLImageElement>('[data-report-avatar]').forEach(image=>{
       if (image.complete && !image.naturalWidth) image.hidden=true;
       image.addEventListener('error',()=>{image.hidden=true;},{once:true});
@@ -752,7 +821,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
         state.picker='';
         if (name==='board' || name==='sprint') {
           if (value === state[name]) { onRender(); focusPicker(name); return; }
-          state.day=''; state.limit=60; state.query=''; state.scopeFilter='all'; state.project=''; groupOverrides.clear();
+          state.day=''; state.limit=60; state.query=''; state.scopeFilter='all'; state.project=''; resetGroupOverrides();
           if (name==='board') void chooseBoard(value);
           else { state.sprint=value; state.report=null; void loadReport(); }
           focusPicker(name);
@@ -786,7 +855,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     section.querySelectorAll<HTMLButtonElement>('[data-report-project]').forEach(button=>button.addEventListener('click',()=>selectProject(button.dataset.reportProject || '')));
     section.querySelectorAll<HTMLButtonElement>('[data-report-group]').forEach(button => button.addEventListener('click',()=>{
       const key=button.dataset.reportGroup!;
-      groupOverrides.set(key,button.getAttribute('aria-expanded')!=='true');
+      groupOverrides[button.dataset.reportTree==='rollup' ? 'rollup' : 'details'].set(key,button.getAttribute('aria-expanded')!=='true');
       onRender();
       Array.from(root.querySelectorAll<HTMLButtonElement>('[data-report-group]')).find(item=>item.dataset.reportGroup===key)?.focus({preventScroll:true});
     }));

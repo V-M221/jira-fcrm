@@ -379,6 +379,7 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
       const project = /\/project\/([^/]+)\/components$/.exec(path)?.[1]?.toUpperCase();
       const names = new Set<string>();
       issues.forEach(issue => { if (!project || issue.key?.split('-')[0]?.toUpperCase() === project) (issue.fields?.components || []).forEach((item:any) => { if (item?.name) names.add(item.name); }); });
+      if (project === 'OB' || project === 'OBFRONT') ['CS','CRM_CORE','CRM_BO'].forEach(name=>names.add(name));
       return json([...names].map(name => ({ id:componentId(name), name, project, archived:false, deleted:false })).concat([{id:'preview-archived',name:'[Демо] Архивный компонент',project,archived:true,deleted:false}]));
     }
     if (path.endsWith('/statuses')) return json(types.map(type => ({ ...type, statuses })));

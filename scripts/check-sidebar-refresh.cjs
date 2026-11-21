@@ -64,14 +64,20 @@ function bind(name, context) {
   assert.equal((await pages('/issues', 95)).ok, false);
   // Opening a toolbar dropdown must not depend on the sidebar select's local renderer.
   const filterContext = { productDashboardLoaded: true, isInitialBoardLoading: false, activeToolbarFilter: '', toolbarFilterSearch: '', escapeHtml: value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') };
+  filterContext.getStatusCategoryClass = bind('getStatusCategoryClass',{categoryByStatus:new Map([['CRM <Core>','done']])});
+  filterContext.renderBadge = (label,category)=>'<span class="ozon-ext-badge-' + category + '">' + label + '</span>';
+  filterContext.getStatusBadgeHtml = bind('getStatusBadgeHtml',filterContext);
+  filterContext.getJiraIssueTypeIconSvg = bind('getJiraIssueTypeIconSvg',filterContext);
   const renderFilter = bind('renderToolbarFilter', filterContext);
-  for (const id of ['component', 'epic', 'status', 'sprint-state', 'sort']) {
+  for (const id of ['component', 'epic', 'status', 'issue-type', 'sprint-state', 'sort']) {
     filterContext.activeToolbarFilter = id;
     filterContext.toolbarFilterSearch = '';
     const options = [{ value: 'all', label: 'Все' }, { value: 'one', label: 'CRM <Core>' }];
     const html = renderFilter(id, 'Фильтр', 'all', options, 'Поиск');
     assert.ok(html.includes('aria-expanded="true"'));
     assert.ok(html.includes('CRM &lt;Core&gt;'));
+    if (id === 'status') assert.ok(html.includes('ozon-ext-badge-done'));
+    if (id === 'issue-type') assert.match(html,/ozon-ext-filter-icon[^>]*><svg/);
     filterContext.toolbarFilterSearch = 'core';
     assert.ok(renderFilter(id, 'Фильтр', 'all', options).includes('data-value="one"'));
     filterContext.toolbarFilterSearch = 'no matching value';
