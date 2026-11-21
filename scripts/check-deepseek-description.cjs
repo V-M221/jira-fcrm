@@ -63,6 +63,98 @@ function loadFormatter(name) {
   return module.exports[name];
 }
 
+async function checkDraftLinkWrites() {
+  const source = 'FCRM-100';
+  const theme = 'FCRM-200';
+  const development = 'OB-300';
+  const epic = 'FCRM-400';
+  const epicField = 'customfield_12345';
+  const issue = (name, links = []) => ({
+    summary:name, labels:[], components:[{name:'Демо'}], status:{name:'В работе'},
+    issuetype:{name:'Задача'}, [epicField]:null, issuelinks:links,
+  });
+  const issues = {[source]:issue('Исходная задача'), [development]:issue('Разработка'), [theme]:{
+    ...issue('Тематика: Демо'), labels:['fcrm_umb_epic'], issuetype:{name:'Epic'},
+  }};
+  let type = {name:'Проект',inward:'Задача проекта',outward:'В проекте'};
+  const writes = [];
+  const webLinks = [];
+  let nextId = 1;
+  let hideNewReverseLink = false;
+  const fixture = {exports:{},fetch:async (path,options={}) => {
+    const method = options.method || 'GET';
+    if (method !== 'GET') writes.push({method,path,body:options.body && JSON.parse(options.body)});
+    if (path === '/rest/api/2/field') return respond([{id:epicField,schema:{custom:'com.pyxis.greenhopper.jira:gh-epic-link'}}]);
+    if (path === '/rest/api/2/issueLinkType') return respond({issueLinkTypes:[type]});
+    if (path.endsWith('/remotelink')) {
+      if (method === 'POST') webLinks.push(JSON.parse(options.body));
+      return respond(webLinks);
+    }
+    if (path === '/rest/api/2/issueLink' && method === 'POST') {
+      const {inwardIssue, outwardIssue} = JSON.parse(options.body);
+      const id = String(nextId++);
+      issues[outwardIssue.key].issuelinks.push({id,type,inwardIssue});
+      if (!hideNewReverseLink) issues[inwardIssue.key].issuelinks.push({id,type,outwardIssue});
+      return respond(null);
+    }
+    if (method === 'DELETE') {
+      const id = path.split('/').at(-1);
+      Object.values(issues).forEach(fields => { fields.issuelinks = fields.issuelinks.filter(link => link.id !== id); });
+      return respond(null);
+    }
+    const key = path.split('?')[0].split('/').at(-1);
+    assert.ok(issues[key], 'Unexpected Jira request: ' + path);
+    return respond({key,fields:issues[key]});
+  }};
+  vm.runInNewContext(compiled,fixture);
+  const client = fixture.exports.createJiraDraftLinkClient();
+  const proposal = {kind:'theme',key:theme};
+  issues[source][epicField] = epic;
+  assert.match(await client.themeWarning(source,proposal),new RegExp(epic));
+  await assert.rejects(client.apply(source,proposal),/Epic Link/);
+  assert.equal(writes.length,0);
+  delete issues[source][epicField];
+  assert.match(await client.themeWarning(source,proposal),/не вернула значение Epic Link/);
+  issues[source][epicField] = null;
+  assert.equal(await client.themeWarning(source,proposal),'');
+  issues[theme].labels = [];
+  assert.match(await client.themeWarning(source,proposal),/не подтверждена актуальная тематика/);
+  issues[theme].labels = ['fcrm_umb_epic'];
+  assert.equal(await client.apply(source,proposal),'Добавлена');
+  assert.deepEqual(writes[0].body,{type:{name:'Проект'},inwardIssue:{key:theme},outwardIssue:{key:source}});
+  assert.equal(await client.apply(source,proposal),'Уже есть в Jira');
+  assert.equal(writes.length,1);
+  const replacement = 'FCRM-201';
+  issues[replacement] = {...issues[theme], summary:'Тематика: Новая',issuelinks:[]};
+  const changeTheme = {kind:'theme',key:replacement,action:'repair',replaceKey:theme};
+  assert.match(await client.themeWarning(source,changeTheme),/не подтверждает, что текущая тематика/);
+  await assert.rejects(client.apply(source,changeTheme),/Проверьте замену вручную/);
+  assert.equal(writes.length,1);
+
+  const engineering = {kind:'development',key:development,action:'repair'};
+  issues[source].issuelinks.push({id:'900',type,inwardIssue:{key:development}});
+  issues[development].issuelinks.push({id:'900',type,outwardIssue:{key:source}});
+  hideNewReverseLink = true;
+  await assert.rejects(client.apply(source,engineering),/не подтвердила новую связь с обеих сторон/);
+  assert.deepEqual(writes.slice(1).map(write => write.method),['POST']);
+  issues[source].issuelinks = issues[source].issuelinks.filter(link => link.id !== '2');
+  hideNewReverseLink = false;
+  assert.equal(await client.apply(source,engineering),'Исправлена');
+  assert.deepEqual(writes[2].body,{type:{name:'Проект'},inwardIssue:{key:source},outwardIssue:{key:development}});
+  assert.equal(writes[3].path,'/rest/api/2/issueLink/900');
+
+  const web = {kind:'source',key:'https://chatzone.o3t.ru/ozon/pl/test'};
+  assert.equal(await client.apply(source,web),'Добавлена');
+  assert.equal(await client.apply(source,web),'Уже есть в Jira');
+  assert.equal(webLinks.length,1);
+
+  type = {...type,inward:'В проекте',outward:'Задача проекта'};
+  issues[source].issuelinks = [];
+  issues[theme].issuelinks = [];
+  assert.equal(await client.apply(source,proposal),'Добавлена');
+  assert.deepEqual(writes.at(-1).body,{type:{name:'Проект'},inwardIssue:{key:source},outwardIssue:{key:theme}});
+}
+
 (async()=>{
   const answerMarkup = loadFormatter('answerMarkup');
   const structuredAnswer = loadFormatter('structuredAnswer');
@@ -157,23 +249,7 @@ function loadFormatter(name) {
 
   modelReplies.push('<result_errors>Карточка недоступна.</result_errors>');
   await assert.rejects(call('analyze'),/Карточка недоступна/);
-  modelReplies.push('<result_summary>Связь с FTD-456 проверена.</result_summary>');
-  assert.match(await call('apply_links',JSON.stringify([draft.links[1]])),/FTD-456 проверена/);
-  assert.deepEqual(completionRequest.tool_ids,['server:mcp:jit']);
-  assert.equal(completionRequest.messages[1].content,'Задача Jira FCRM-2970.\n\nСогласованные связи:\n[{"kind":"development","key":"FTD-456"}]');
-  const linkPrompt = completionRequest.messages[0].content;
-  assert.doesNotMatch(linkPrompt,/FTD-456|FCRM-123|\/ozon\/pl\/test/);
-  assert.match(linkPrompt,/на FCRM — «В проекте: задача разработки»/i);
-  assert.doesNotMatch(linkPrompt,/существующих родителей в Jira по точным ключам/);
-
-  modelReplies.push('<result_errors>Метка тематики больше не действует.</result_errors>');
-  await call('apply_links',JSON.stringify([draft.links[0]]));
-  const themePrompt = completionRequest.messages[0].content;
-  assert.match(themePrompt,/перечитай согласованную тематику по ключу/);
-  assert.match(themePrompt,/Если Epic Link неизвестен, пропусти установку/);
-  assert.match(themePrompt,/пропусти запись и укажи причину/);
-  assert.doesNotMatch(themePrompt,/project = FCRM AND labels/);
-  await assert.rejects(call('apply_links',JSON.stringify([suggestions[0]])),/неподдерживаемая связь/);
+  await assert.rejects(call('apply_links',JSON.stringify(draft.links)),/Неизвестный режим запроса/);
 
   const corrections = [
     {kind:'development',key:'OB-42',action:'repair'},
@@ -186,14 +262,7 @@ function loadFormatter(name) {
   assert.equal(repairs.length,2);
   assert.equal(repairs[0].action,'repair');
   assert.equal(repairs[1].replaceKey,'FCRM-125');
-  modelReplies.push('<result_summary>Исправления проверены.</result_summary>');
-  await call('apply_links',JSON.stringify(repairs));
-  const [repairSystem,repairUser] = completionRequest.messages;
-  assert.match(repairSystem.content,/Сначала установи правильную связь.*Проверь обе стороны\. Только после этого убери неверную связь/);
-  assert.match(repairSystem.content,/старая прямая связь с указанным ключом всё ещё существует и устарела/);
-  assert.match(repairUser.content,/"action":"repair","replaceKey":"FCRM-125"/);
-  assert.doesNotMatch(repairSystem.content,/FCRM-125/);
-  await assert.rejects(call('apply_links',JSON.stringify([corrections[2]])),/некорректно указана прежняя тематика/);
+  await checkDraftLinkWrites();
 
   const original = jira.description;
   assert.equal((await saveJiraDraft('FCRM-2970',draft)).changed,true);
