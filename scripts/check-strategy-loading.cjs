@@ -8,6 +8,11 @@ const requests = [];
 const renders = [];
 const measures = [];
 const issues = Array.from({length:8}, (_,i)=>({key:'FCRM-' + (i+1),fields:{summary:'Задача ' + (i+1)}}));
+issues[0].fields.components = [{name:'Платформа'}];
+issues[0].fields.labels = ['fcrm_umb_epic'];
+issues[6].fields.components = [{name:'Группа A'},{name:'Группа B'}];
+issues[6].fields.issuelinks = [{type:{inward:'Задача проекта'},inwardIssue:{key:'FCRM-1'}}];
+const preferences = new Map();
 let releasePages;
 const pagesMayFinish = new Promise(resolve=>{releasePages=resolve;});
 const response = value => ({ok:true,json:async()=>value});
@@ -22,7 +27,9 @@ const fetch = async path => {
 };
 const source = fs.readFileSync('src/services/strategicDashboard.ts','utf8');
 vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{
-  exports:exportsObj,fetch,URLSearchParams,AbortController,document:{getElementById:()=>null},
+  exports:exportsObj,fetch,URLSearchParams,AbortController,
+  document:{getElementById:()=>null,addEventListener(){}},
+  localStorage:{getItem:key=>preferences.get(key),setItem:(key,value)=>preferences.set(key,value)},
   performance:{now:()=>Date.now(),measure:name=>measures.push(name)}
 });
 
@@ -43,5 +50,47 @@ vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleK
   assert.match(dashboard.html(),/FCRM-7/);
   assert.match(dashboard.html(),/1 задача по фильтрам/);
   assert.equal(measures.length,3);
-  console.log('Strategy load checks passed: partial results, exact search during loading, concurrent pages and final hierarchy.');
+
+  const groupPath = name => 'component:' + encodeURIComponent(name);
+  const firstGroup = groupPath('Группа A');
+  const secondGroup = groupPath('Группа B');
+  const events = {};
+  const grouping = {checked:true, focus(){}, addEventListener:(event,handler)=>{events[event]=handler;}};
+  const groupToggle = {
+    dataset:{strategyAction:'toggle',path:firstGroup},
+    getAttribute:()=>String(dashboard.html().includes('data-path="'+firstGroup+'" aria-expanded="true"')),
+    addEventListener:(event,handler)=>{events[event]=handler;}
+  };
+  dashboard.bind({
+    querySelector:selector=>selector==='[data-strategy-group-components]' ? grouping : null,
+    querySelectorAll:selector=>selector==='[data-strategy-action]' ? [groupToggle] : []
+  });
+  const clickGroup = () => events.click({stopPropagation(){}});
+  const state = dashboard.getState();
+  state.search = '';
+  events.change();
+  assert.equal(JSON.parse(preferences.get('ozon-strategy-columns-v1')).byComponent,true);
+  assert.equal(dashboard.html().match(/class="ozon-strategy-group ozon-strategy-component-group"/g).length,4);
+  assert.match(dashboard.html(),/Без компонента <span class="ozon-ext-group-total">6<\/span>/);
+  assert.doesNotMatch(dashboard.html(),/data-strategy-path="[^"]+\|FCRM-/);
+  await clickGroup();
+  assert.match(dashboard.html(),new RegExp('ozon-strategy-context" data-strategy-path="'+firstGroup+'\\|FCRM-1"'));
+  assert.ok(dashboard.html().includes('data-strategy-path="'+firstGroup+'|FCRM-1|FCRM-7"'));
+  assert.ok(!dashboard.html().includes('data-strategy-path="'+secondGroup+'|FCRM-1|FCRM-7"'));
+  await clickGroup();
+  assert.doesNotMatch(dashboard.html(),/data-strategy-path="[^"]+\|FCRM-/);
+
+  state.search = 'FCRM-7';
+  state.filterCollapsed.clear();
+  assert.ok(dashboard.html().includes('data-strategy-path="'+firstGroup+'|FCRM-1|FCRM-7"'));
+  assert.ok(dashboard.html().includes('data-strategy-path="'+secondGroup+'|FCRM-1|FCRM-7"'));
+  assert.match(dashboard.html(),/1 задача по фильтрам/);
+  state.component = 'Группа B';
+  assert.equal(dashboard.html().match(/class="ozon-strategy-group ozon-strategy-component-group"/g).length,1);
+  assert.ok(dashboard.html().includes('data-strategy-path="'+secondGroup+'|FCRM-1|FCRM-7"'));
+  grouping.checked = false;
+  events.change();
+  assert.doesNotMatch(dashboard.html(),/ozon-strategy-component-group/);
+  assert.match(dashboard.html(),/data-strategy-path="FCRM-1\|FCRM-7"/);
+  console.log('Strategy checks passed: progressive loading, exact search and component grouping with hierarchy and filters.');
 })().catch(error=>{console.error(error);process.exitCode=1;});
