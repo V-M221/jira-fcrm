@@ -433,11 +433,19 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     const canSplit=!state.project && report.byProject.size>1;
     const split=canSplit && state.chartMode==='projects';
     const series=split ? [...report.byProject].map(([key,detail])=>({key,report:{...report,...detail}})) : [{key:state.project,report}];
-    const views=series.map(view=>({...view,burnByDay:view.report.days.map(day=>dayBurn(day.changes))}));
+    const views=series.map(view=>{
+      let cumulativeCompleted=0;
+      const burnByDay=view.report.days.map(day=>{
+        const burn=dayBurn(day.changes);
+        cumulativeCompleted+=burn.completed;
+        return {...burn,cumulativeCompleted};
+      });
+      return {...view,burnByDay};
+    });
     let peak=1;
     for (const view of views) {
-      peak=Math.max(peak,view.report.metrics.planned,view.report.metrics.initialRemaining);
-      view.report.days.forEach((day,index)=>{ peak=Math.max(peak,day.scope,day.remaining,view.burnByDay[index].completed); });
+      peak=Math.max(peak,view.report.metrics.planned,view.report.metrics.initialRemaining,view.burnByDay.at(-1)?.cumulativeCompleted ?? 0);
+      for (const day of view.report.days) peak=Math.max(peak,day.scope,day.remaining);
     }
     const roughStep=peak/5;
     const magnitude=10 ** Math.floor(Math.log10(roughStep));
@@ -477,10 +485,10 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     }).join('');
     const selected = report.days.findIndex(day=>day.date===state.day)+1;
     const barWidth=Math.min(22,daySpacing*.65);
-    const bars=burnByDay.map(({completed},index)=>{
-      if (!completed) return '';
+    const bars=burnByDay.map(({cumulativeCompleted},index)=>{
+      if (!cumulativeCompleted) return '';
       const day=index+1;
-      const barTop=y(completed);
+      const barTop=y(cumulativeCompleted);
       return '<rect class="ozon-report-burn-bar' + (day===selected ? ' is-selected' : '') + '" data-report-burn-day="' + escape(report.days[index].date) + '" x="' + (x(day)-barWidth/2) + '" y="' + barTop + '" width="' + barWidth + '" height="' + (axisY-barTop) + '" rx="1"/>';
     }).join('');
     const labels=new Set([0,end]);
@@ -501,7 +509,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
       return '<circle class="ozon-report-scope-dot" cx="' + x(index) + '" cy="' + y(scope) + '" r="' + radius + '"/>' +
         '<circle class="ozon-report-remaining-dot" cx="' + x(index) + '" cy="' + y(remaining) + '" r="' + radius + '"/>';
     }).join('');
-    return '<div class="ozon-report-graph" data-report-chart><svg viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="' + escape((key ? key + '. ' : '') + 'Объём, остаток и переходы в «Готово» по дням. Наведите курсор для просмотра значений или выберите дату над графиком.') + '"><g class="ozon-report-grid">' + gridY + gridX + '</g>' + bars +
+    return '<div class="ozon-report-graph" data-report-chart><svg viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="' + escape((key ? key + '. ' : '') + 'Объём, остаток и накопительный итог переходов в «Готово». Наведите курсор для просмотра значений или выберите дату над графиком.') + '"><g class="ozon-report-grid">' + gridY + gridX + '</g>' + bars +
       '<path class="ozon-report-axis" d="M' + left + ',' + top + ' V' + axisY + ' H' + (width-right) + '"/><text class="ozon-report-axis-title" x="' + left + '" y="16">' + escape(report.pointsName) + '</text><text class="ozon-report-axis-title" x="' + ((left+width-right)/2) + '" y="' + (height-4) + '" text-anchor="middle">День спринта · МСК</text>' +
       (selected ? '<line class="ozon-report-line-selected" x1="' + x(selected) + '" x2="' + x(selected) + '" y1="' + top + '" y2="' + axisY + '"/>' : '') +
       '<polyline class="ozon-report-line-scope" points="' + path('scope') + '"/><polyline class="ozon-report-line-remaining" points="' + path('remaining') + '"/>' + dots + pointLabels +
@@ -514,7 +522,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     const scale=chartViews(report);
     const mode=scale.canSplit ? '<div class="ozon-report-chart-modes" role="group" aria-label="Графики">' +
       [['total','Общий график'],['projects','По проектам']].map(([id,label])=>'<button type="button" class="ozon-ext-btn ' + (id===state.chartMode ? '' : 'ozon-ext-btn-surface') + '" data-report-chart-mode="' + id + '" aria-pressed="' + (id===state.chartMode) + '">' + label + '</button>').join('') + '</div>' : '';
-    return '<div class="ozon-report-chart-toolbar">' + mode + '<div class="ozon-report-legend"><span>Незавершённые задачи</span><span>Все задачи в спринте</span><span class="ozon-report-burn-legend">Перешло в «Готово» за день</span>' +
+    return '<div class="ozon-report-chart-toolbar">' + mode + '<div class="ozon-report-legend"><span>Незавершённые задачи</span><span>Все задачи в спринте</span><span class="ozon-report-burn-legend">В «Готово» с начала спринта</span>' +
       (scale.split ? '<small>Одинаковая шкала для всех проектов</small>' : '') + '</div></div>' +
       scale.views.map(view=>'<div class="ozon-report-chart">' + (scale.split ? '<h3>' + escape(view.key) + '</h3>' : '') + chart(view,scale) + '</div>').join('');
   }
@@ -554,7 +562,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
         values[0].textContent=day ? dayLabel(day.date) + ' · ' + dayCutoff(report,day.date) : 'Старт · ' + shortDate(report.start) + ' ' + timeFormat.format(report.start) + ' МСК';
         values[1].textContent='Незавершённые задачи: ' + metric(report,rest);
         values[2].textContent='Все задачи в спринте: ' + metric(report,volume);
-        values[3].textContent=burn ? 'Перешло в «Готово»: ' + metric(report,burn.completed) : '';
+        values[3].textContent=burn ? 'В «Готово» с начала: ' + metric(report,burn.cumulativeCompleted) + ' (за день: ' + metric(report,burn.completed,true) + ')' : '';
         values[4].textContent=burn?.reopened ? 'Вернули при переоткрытии: ' + metric(report,burn.reopened) : '';
       }
       tip.hidden=false; hover.setAttribute('visibility','visible');
@@ -714,7 +722,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
       (selected && report.pointsField ? '<span>Перешло в «Готово» <strong>' + escape(metric(report,completed)) + '</strong>' + (reopened ? ' · Вернули при переоткрытии <strong>' + escape(metric(report,reopened)) + '</strong>' : '') + ' · Не завершено ' + dayCutoff(report,selected.date) + ' <strong>' + escape(metric(report,selected.remaining)) + '</strong></span>' : '') + '</div>' + charts(report) +
       dayBreakdown(report,dayIndex) +
       (changes.length ? '<div class="ozon-report-tools"><strong>Изменения за день</strong>' + depthControl('details') + '</div>' + treeTable(grouped.html,'Что изменилось',report.pointsField ? 'Работа по статусам' : '',true) + more(grouped.visibleCount) : '<p class="ozon-report-empty">В этот день изменений не было.</p>') +
-      (report.pointsField ? '<details class="ozon-report-method"><summary>Как читать график</summary><p>Точки показывают состояние на конец дня по МСК. Последняя точка показывает состояние ' + (report.closed ? 'на момент закрытия' : 'на момент обновления') + '. Столбцы показывают, сколько баллов перешло в «Готово» за день. «Готово» означает последнюю колонку доски. При переоткрытии баллы возвращаются в незавершённые задачи.</p></details>' : '') + '</section>';
+      (report.pointsField ? '<details class="ozon-report-method"><summary>Как читать график</summary><p>Точки показывают состояние на конец дня по МСК. Последняя точка показывает состояние ' + (report.closed ? 'на момент закрытия' : 'на момент обновления') + '. Столбцы показывают накопительную сумму баллов, перешедших в «Готово» с начала спринта. «Готово» означает последнюю колонку доски. Возвраты при переоткрытии показаны отдельно в подсказке.</p></details>' : '') + '</section>';
   }
 
   const more = (total:number) => total > state.limit ? '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-report-more>Показать ещё ' + Math.min(60,total-state.limit) + '</button>' : '';
