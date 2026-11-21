@@ -11,7 +11,7 @@ import { bindJiraLabelSuggestions } from '../services/jiraLabelSuggestions';
 import { createJiraGroupingUi } from '../services/jiraGroupingUi';
 import { createJiraPeopleUi } from '../services/jiraPeopleUi';
 
-export const EXTENSION_VERSION = '3.5.171';
+export const EXTENSION_VERSION = '3.5.172';
 
 export function generateManifestJson(config: ExtensionConfig): string {
   const manifest = {
@@ -597,7 +597,9 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-report-plot-label.scope {fill:#614396}.ozon-report-plot-label.remaining {fill:#0048cb}.ozon-report-plot-label.shared {fill:#334155}
 .ozon-report-line-scope,.ozon-report-line-remaining,.ozon-report-line-selected {fill:none;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}
 .ozon-report-line-scope {stroke:#7b5ab8;stroke-width:1.25;stroke-dasharray:5 4}.ozon-report-line-remaining {stroke:#005bff;stroke-width:1.5}.ozon-report-line-selected {stroke:#a9c3e9;stroke-width:1}
+.ozon-report-burn-bar {fill:#6cb99b}.ozon-report-burn-bar.is-selected {fill:#368563}
 .ozon-report-legend {color:#40536e;font-size:12px}.ozon-report-legend>span::before {content:'';display:inline-block;width:18px;border-top:1.5px solid #005bff;vertical-align:middle;margin-right:6px}.ozon-report-legend>span:nth-child(2)::before {border-top:1.25px dashed #7b5ab8}.ozon-report-legend>small {color:#64748b}
+.ozon-report-legend>.ozon-report-burn-legend::before {width:12px;height:8px;border:0;border-radius:2px;background:#6cb99b}
 .ozon-report-daybar,.ozon-report-tools {margin:8px 0 12px}.ozon-report-tools input {width:min(280px,100%)}.ozon-report-filter {display:flex;align-items:center;gap:6px}
 .ozon-report-projectbar {display:flex;align-items:center;gap:8px;margin:0 0 7px;font-size:12px;color:#334155;font-weight:600}
 .ozon-report-view-options {display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:0 0 8px}
