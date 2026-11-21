@@ -11,7 +11,7 @@ import { bindJiraLabelSuggestions } from '../services/jiraLabelSuggestions';
 import { createJiraGroupingUi } from '../services/jiraGroupingUi';
 import { createJiraPeopleUi } from '../services/jiraPeopleUi';
 
-export const EXTENSION_VERSION = '3.5.174';
+export const EXTENSION_VERSION = '3.5.175';
 
 export function generateManifestJson(config: ExtensionConfig): string {
   const manifest = {
@@ -478,6 +478,9 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-strategy-unlink:hover {background:#ffded9;}
 .ozon-strategy-sprint-edit {cursor:pointer;padding:4px 2px;border-radius:5px}.ozon-strategy-sprint-edit:hover {background:#eaf3ff}.ozon-strategy-sprint-edit:focus-visible {outline:2px solid #005bff;outline-offset:-2px}.ozon-strategy-sprint-locked {color:#94a3b8}
 .ozon-strategy-toggle,.ozon-strategy-toggle-spacer { display:inline-flex;align-items:center;justify-content:center;flex:0 0 18px;width:18px;height:20px;border:0;background:transparent;color:#005bff;cursor:pointer; }
+.ozon-strategy-component-group td {padding:0 8px}
+.ozon-strategy-component-group .ozon-strategy-toggle {margin-right:4px}
+.ozon-strategy-component-group .ozon-ext-group-total {margin-left:4px}
 .ozon-strategy-descendant-count {flex:none;display:inline-flex;align-items:center;justify-content:center;min-width:18px;padding:1px 5px;border-radius:9px;background:#e8f0fc;color:#526b8c;font-size:10px;line-height:16px;font-weight:600;}
 .ozon-strategy-warning { color:#b45309;font-size:10px;margin-left:6px; }
 .ozon-strategy-type img {width:14px;height:14px;object-fit:contain;flex:none}.ozon-strategy-type .ozon-ext-type-pill {min-width:0}.ozon-strategy-sprint {display:flex;align-items:center;gap:4px;min-width:0}.ozon-strategy-sprint > span:first-child {overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ozon-strategy-sprint .ozon-ext-badge {margin-left:auto;flex:none}.ozon-strategy-linked-themes {flex:none;padding:12px 0;color:#071026}.ozon-strategy-linked-themes strong {font-size:12px}.ozon-strategy-linked-themes p {margin:8px 0;color:#71839b}.ozon-strategy-linked-list {max-height:180px;overflow:auto;margin-top:8px}.ozon-strategy-linked-item {padding:7px 8px;border-bottom:1px solid #e3eaf2}.ozon-strategy-linked-title {margin-top:4px;line-height:1.4;overflow-wrap:anywhere}.ozon-strategy-component-edit {display:flex;align-items:center;gap:6px;width:100%;min-width:0;border:0;background:transparent;color:#071026;font:inherit;text-align:left;cursor:pointer;padding:4px 2px}.ozon-strategy-component-edit span:first-child {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}.ozon-strategy-component-edit span:last-child {color:#90a2b8}.ozon-strategy-component-edit:hover {background:#eaf3ff;border-radius:5px}.ozon-strategy-component-edit:focus-visible {outline:2px solid #005bff;outline-offset:-2px;border-radius:5px}.ozon-strategy-epic-value {min-width:0;overflow:hidden;flex:1}.ozon-strategy-editor-options {overflow:auto;min-height:0}.ozon-strategy-editor-options button {display:flex;gap:8px;align-items:center;width:100%;text-align:left}.ozon-strategy-notice {display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 12px;padding:7px 10px;border:1px solid #dbe4ef;border-radius:8px;color:#334155;background:#f7faff}.ozon-strategy-message { padding:20px;color:#64748b; }
