@@ -459,7 +459,8 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
           const link = hasDesign ? '' : '<jira_links>' + JSON.stringify([{kind:'development',key:designKey,reason:'Демонстрационный макет для этого сценария.'}]) + '</jira_links>';
           const draft = message.clarification?.reply?.trim() || message.additionalContext?.trim();
           const base = issue.fields.description?.split('\n\nh2. Прежнее описание\n\n')[0] || issue.fields.summary;
-          callback({ok:true,text:'<jira_description>h2. Что делаем\n\n' + base + '\n\nh2. Как проверить\n\n' + (draft || 'Сверить результат с критериями приёмки в задаче.') + '</jira_description>' + link + '<jira_notes>Критерии приёмки можно дополнить перед сохранением.</jira_notes>'});
+          const description = 'h2. Цель\n\n' + base + (draft ? '\n\nh2. Что меняется\n\n' + draft : '');
+          callback({ok:true,text:'<jira_description>' + description + '</jira_description>' + link + '<jira_notes>1. Какие условия приёмки нужно зафиксировать?</jira_notes>'});
           return;
         }
         if (issue && message.type === 'o3ds:chat' && message.mode === 'apply_links') {
