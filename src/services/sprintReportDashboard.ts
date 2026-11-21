@@ -6,7 +6,7 @@ import type {createJiraGroupingUi} from './jiraGroupingUi';
 export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<typeof createSprintReportModel>, boards:{id:string;name:string}[], configuredSprintField:string, configuredEpicField:string, renderBadge:(label:string, state:string)=>string, isEpicIssueType:(type:string)=>boolean, people:ReturnType<typeof createJiraPeopleUi>, developmentGrouping:()=>string[] = ()=>['project','epic'], groupingUi?:ReturnType<typeof createJiraGroupingUi>) {
   type Report = ReturnType<typeof model.build>;
   type Leader = NonNullable<ReturnType<Report['byProject']['get']>>['leaders'][number];
-  const state = {board:boards[0].id,sprint:'',sprints:[] as any[],report:null as Report | null, section:'days',day:'',query:'',limit:60,
+  const state = {board:boards[0].id,sprint:'',sprints:[] as any[],report:null as Report | null, section:'days',day:'',query:'',limit:60,rollupOpen:false,
     scopeFilter:'all',project:'',picker:'',chartMode:'total' as 'total'|'projects',chartDay:'',chartProject:'',loading:'',error:'',sprintFailed:false,epicField:configuredEpicField};
   const groupOverrides = new Map<string,boolean>();
   let groupDepth=Infinity;
@@ -372,10 +372,10 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
       }).join('');
     };
     const route=levels.map(key=>groupNames[key]).join(' → ');
-    return '<section class="ozon-report-streams"><h2>План и факт по группам</h2><p>План на старте и завершённые SP ' + (report.closed ? 'к закрытию' : 'к текущему моменту') + '. Проценты от плана и факта всего спринта.' +
+    return '<details class="ozon-report-streams" data-report-rollup' + (state.rollupOpen ? ' open' : '') + '><summary>План и факт по группам</summary><p>План на старте и завершённые SP ' + (report.closed ? 'к закрытию' : 'к текущему моменту') + '. Проценты от плана и факта всего спринта.' +
       (levels.includes('component') ? ' Задача с несколькими компонентами видна в каждом из них. В итоге она учитывается один раз.' : '') + '</p>' +
       '<div class="ozon-report-table-wrap ozon-report-rollup-wrap"><table aria-label="План и факт по группам"><thead><tr><th>' + escape(route || 'Группы') + '</th><th>План</th><th>Факт</th></tr></thead><tbody>' +
-      rows(scope.rows.filter(task=>task.started || task.doneAtEnd),0,['rollup']) + '</tbody><tfoot><tr><th scope="row">' + escape(state.project ? 'Всего по ' + state.project : 'Весь спринт') + '</th>' + values(scope.metrics.planned,scope.metrics.completedPoints) + '</tr></tfoot></table></div></section>';
+      rows(scope.rows.filter(task=>task.started || task.doneAtEnd),0,['rollup']) + '</tbody><tfoot><tr><th scope="row">' + escape(state.project ? 'Всего по ' + state.project : 'Весь спринт') + '</th>' + values(scope.metrics.planned,scope.metrics.completedPoints) + '</tr></tfoot></table></div></details>';
   }
 
   const plot={width:960,height:232,left:58,right:40,top:35,bottom:57};
@@ -709,13 +709,15 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
       (state.error ? '<div class="ozon-report-banner ozon-report-warning" role="alert">' + escape(state.error) + '</div>' : '') +
       (report && visible ? '<div class="ozon-report-period"><strong>' + escape(selected?.name || '') + '</strong>' + sprintBadge(report.closed ? 'closed' : 'active') + '<span>Отчёт за ' + shortDate(report.start) + ' — ' + shortDate(report.end) + ' · МСК</span></div>' +
         (report.warnings.length ? '<ul class="ozon-report-warning">' + report.warnings.map(warning=>'<li>' + escape(warning) + '</li>').join('') + '</ul>' : '') +
-        '<div class="ozon-report-view-options">' + projectFilter(report) + depthControl() + '</div>' + overview(visible) + projectBreakdown(report) + groupBreakdown(report) + definitions(visible) + '<div class="ozon-report-sections" role="group" aria-label="Разделы отчёта">' + choices.map(choice=>'<button type="button" class="ozon-ext-btn ' + (state.section === choice.id ? '' : 'ozon-ext-btn-surface') + '" data-report-section="' + choice.id + '" aria-pressed="' + (state.section === choice.id) + '">' + choice.title + '</button>').join('') + '</div>' +
+        '<div class="ozon-report-view-options">' + projectFilter(report) + depthControl() + '</div>' + overview(visible) + '<div class="ozon-report-sections" role="group" aria-label="Разделы отчёта">' + choices.map(choice=>'<button type="button" class="ozon-ext-btn ' + (state.section === choice.id ? '' : 'ozon-ext-btn-surface') + '" data-report-section="' + choice.id + '" aria-pressed="' + (state.section === choice.id) + '">' + choice.title + '</button>').join('') + '</div>' + projectBreakdown(report) + groupBreakdown(report) + definitions(visible) +
         (state.section==='days' ? daily(visible) : taskList(visible)) : state.loading || state.error ? '' : '<p class="ozon-report-empty">На доске нет активных или закрытых спринтов.</p>') + '</div></div></section>';
   }
 
   function bind(root:HTMLElement) {
     const section = root.querySelector('.ozon-report');
     if (!section) return;
+    const rollup=section.querySelector<HTMLDetailsElement>('[data-report-rollup]');
+    rollup?.addEventListener('toggle',()=>{if (rollup.isConnected) state.rollupOpen=rollup.open;});
     groupingUi?.bindDepth(root,value=>{
       groupDepth=value==='all' ? Infinity : Number(value);
       groupOverrides.clear();state.limit=60;onRender();
@@ -791,10 +793,12 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     section.querySelector('[data-report-refresh]')?.addEventListener('click',() => { if (state.sprintFailed || !state.sprint) void chooseBoard(state.board,state.sprint,true); else void loadReport(); });
     section.querySelectorAll<HTMLButtonElement>('[data-report-section]').forEach(button => button.addEventListener('click',() => {
       const target=button.dataset.reportSection!;
-      if (state.section===target && !button.classList.contains('ozon-report-card')) return;
-      state.section=target; state.query=''; state.limit=60; state.scopeFilter=button.dataset.reportTargetFilter || 'all'; state.chartDay='';
-      onRender();
+      if (state.section!==target || button.classList.contains('ozon-report-card')) {
+        state.section=target; state.query=''; state.limit=60; state.scopeFilter=button.dataset.reportTargetFilter || 'all'; state.chartDay='';
+        onRender();
+      }
       root.querySelector<HTMLButtonElement>('.ozon-report-sections [data-report-section="' + target + '"]')?.focus({preventScroll:true});
+      root.querySelector('.ozon-report-panel')?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
     }));
     const graphs=section.querySelectorAll<HTMLElement>('[data-report-chart]');
     if (state.report && graphs.length) {

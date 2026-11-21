@@ -11,7 +11,7 @@ import { bindJiraLabelSuggestions } from '../services/jiraLabelSuggestions';
 import { createJiraGroupingUi } from '../services/jiraGroupingUi';
 import { createJiraPeopleUi } from '../services/jiraPeopleUi';
 
-export const EXTENSION_VERSION = '3.5.168';
+export const EXTENSION_VERSION = '3.5.169';
 
 export function generateManifestJson(config: ExtensionConfig): string {
   const manifest = {
@@ -374,6 +374,13 @@ export function generateStylesCss(config: ExtensionConfig): string {
   text-overflow: ellipsis !important;
 }
 
+#ozon-ext-main-table {border-collapse:separate!important;border-spacing:0}
+#ozon-ext-main-table th[data-col="task"] {left:0;z-index:24!important;box-shadow:3px 0 6px #07102610}
+#ozon-ext-main-table .ozon-ext-task-cell {position:sticky;left:0;z-index:2;background:#fff;box-shadow:3px 0 6px #07102610}
+#ozon-ext-main-table .ozon-ext-subrow .ozon-ext-task-cell {background:#fafbfd}
+#ozon-ext-main-table tr.ozon-tree-depth-1:not(.selected) .ozon-ext-task-cell {background:#edf4ff}
+#ozon-ext-main-table tr:hover .ozon-ext-task-cell {background:#f2f4f8}
+#ozon-ext-main-table tr.selected .ozon-ext-task-cell {background:#ebf3ff}
 .ozon-ext-col-resizer {
   position: absolute !important;
   top: 0 !important;
@@ -545,6 +552,8 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-report-scroll {flex:1;overflow:auto;min-height:0;scrollbar-gutter:stable}
 .ozon-report-inner {max-width:1320px;padding:20px 24px 32px;margin:0 auto}
 .ozon-report-toolbar,.ozon-report-tools,.ozon-report-daybar,.ozon-report-sections,.ozon-report-legend {display:flex;align-items:center;flex-wrap:wrap;gap:10px}
+.ozon-report-sections {position:sticky;top:0;z-index:5;padding:8px 0;margin:0 0 10px;background:#f4f7fb;border-bottom:1px solid #dbe5f1}
+.ozon-report-panel {scroll-margin-top:58px}
 .ozon-report-toolbar {align-items:end;margin-bottom:18px}
 .ozon-report-field {display:grid;gap:5px;font-weight:600;color:#334155;font-size:12px}
 .ozon-report input {max-width:100%;border:1px solid #ccd8e7;border-radius:8px;padding:7px 10px;min-height:30px;background:#fff;color:#071026;font:inherit}
@@ -604,7 +613,8 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-report-leader-avatar img[hidden] {display:none}
 .ozon-report-single-leader {display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px;color:#40536e;font-size:12px}
 .ozon-report-streams {margin:14px 0;padding:12px 14px;border:1px solid #dae4f1;border-radius:10px;background:#fff}
-.ozon-report-streams h2 {font-size:14px;margin:0 0 4px}
+.ozon-report-streams>summary {font-weight:650;font-size:13px;cursor:pointer}
+.ozon-report-streams[open]>summary {margin-bottom:8px}
 .ozon-report-streams p {font-size:12px;color:#52647d;margin:0 0 10px}
 .ozon-report-streams table {min-width:360px}
 .ozon-report-rollup-wrap {max-height:270px;scrollbar-gutter:stable}
@@ -657,6 +667,12 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-grouping-level.is-dragging {z-index:2;background:white;border-color:#9dc1ff;box-shadow:0 4px 12px #1d427c32}
 .ozon-grouping-level label,.ozon-grouping-title {display:flex;align-items:center;gap:8px;flex:1;min-width:0}
 .ozon-grouping-level label {cursor:pointer}
+.ozon-sb-label-form,#ozon-strategy-label-form {position:relative}
+.ozon-label-suggestions {position:absolute;top:calc(100% + 4px);left:0;z-index:12;width:min(290px,100%);padding:4px;box-sizing:border-box;border:1px solid #d6e2f0;border-radius:9px;background:#fff;box-shadow:0 8px 24px #07102626;color:#10213d;line-height:1.35}
+.ozon-label-suggestions [role="status"]:not(:empty) {padding:6px 8px;color:#526782;font-size:11px}
+.ozon-label-suggestions [role="listbox"] {max-height:166px;overflow:auto}
+.ozon-label-suggestions [role="option"] {padding:6px 8px;border-radius:6px;overflow-wrap:anywhere;cursor:pointer}
+.ozon-label-suggestions [role="option"]:hover,.ozon-label-suggestions [aria-selected="true"] {background:#e5f0ff;color:#005bff}
 .ozon-depth-control {display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:0 7px;border:1px solid #d2deee;border-radius:9px;background:white;color:#526782;font-size:11px;white-space:nowrap}
 #ozon-structure-root .ozon-depth-control select {min-height:26px;padding:2px 14px 2px 2px;border:0;background:transparent;color:#071026;cursor:pointer;font:inherit;font-weight:600;max-width:170px}
 .ozon-depth-control:focus-within {border-color:#005bff;box-shadow:inset 0 0 0 1px #005bff}
@@ -669,7 +685,7 @@ export function generateStylesCss(config: ExtensionConfig): string {
 #ozon-structure-root button:is(.ozon-grouping-grip,.ozon-grouping-step):not(:disabled):hover {background:#e5f0ff;color:#005bff}
 @media (prefers-reduced-motion: no-preference) {
   #ozon-structure-root :is(button,a,input,select,summary,.ozon-depth-control,.ozon-ext-combo-item,.ozon-ext-user-option,.ozon-ext-cell-combo-trigger,.ozon-ext-sb-combo-trigger,.ozon-ext-section-head,.ozon-ext-view-tabs button,.ozon-ext-table tbody tr,.ozon-ext-table tbody td,.ozon-dev-table tbody td,.ozon-strategy-table tbody td,.ozon-report-tree tbody :is(th,td)),
-  .ozon-component-editor :is(button,input,label) {transition:background-color 150ms ease,border-color 150ms ease,color 150ms ease,box-shadow 150ms ease;}
+  .ozon-component-editor :is(button,input,label),#ozon-structure-root .ozon-label-suggestions [role="option"] {transition:background-color 150ms ease,border-color 150ms ease,color 150ms ease,box-shadow 150ms ease,filter 150ms ease;}
   #ozon-structure-root :is(.ozon-ext-toolbar-chevron,.ozon-ext-search-select-caret) {transition:transform 150ms ease,opacity 150ms ease;}
   #ozon-structure-root .ozon-grouping-level:not(.is-dragging) {transition:transform 160ms cubic-bezier(.2,.7,.3,1),background-color 150ms ease,border-color 150ms ease;}
   body>.ozon-component-editor {animation:ozon-editor-enter 160ms ease-out;}
@@ -1859,6 +1875,18 @@ export function generateStylesCss(config: ExtensionConfig): string {
 #ozon-structure-root .ozon-dev-team-option input[type="checkbox"]:checked::after,#ozon-structure-root .ozon-dev-sprint-option input[type="checkbox"]:checked::after,#ozon-structure-root .ozon-dev-settings input[type="checkbox"]:checked::after { content:"";width:7px;height:4px;border-left:2px solid #fff;border-bottom:2px solid #fff;transform:rotate(-45deg) translate(1px,-1px); }
 #ozon-structure-root .ozon-dev-team-option>.ozon-dev-team-name { display:block!important;position:static!important;inset:auto!important;flex:1 1 auto!important;min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;line-height:20px!important;text-align:left!important; }
 #ozon-structure-root .ozon-dev-team-popover>.ozon-ext-btn { display:flex!important;width:100%!important;justify-content:center!important;margin-top:6px!important; }
+#ozon-structure-root {--ozon-sidebar-compact-limit:clamp(340px,61vw,680px)}
+#ozon-structure-root :is(.ozon-ext-filter-bar,.ozon-strategy-filters,.ozon-report-toolbar,.ozon-report-view-options) {align-items:center}
+#ozon-structure-root :is(.ozon-ext-filter-bar,.ozon-strategy-filters,.ozon-report-toolbar,.ozon-report-view-options) :is(.ozon-ext-toolbar-trigger,.ozon-depth-control),
+#ozon-structure-root :is(.ozon-ext-filter-bar,.ozon-strategy-filters,.ozon-report-toolbar) > :is(button,a.ozon-ext-btn,input[type="search"]) {
+  box-sizing:border-box;height:30px!important;min-height:30px!important;border-radius:9px!important;align-items:center;
+}
+#ozon-structure-root :is(.ozon-ext-filter-bar,.ozon-strategy-filters,.ozon-report-toolbar,.ozon-report-view-options) :is(button,input,select,a):focus-visible {outline:2px solid #005bff!important;outline-offset:2px}
+#ozon-structure-root #ozon-ext-sidebar-expand {width:28px;padding:0;justify-content:center}
+@media (max-width:680px) {
+  #ozon-structure-root {--ozon-sidebar-compact-limit:calc(100vw - 12px)}
+  #ozon-structure-root #ozon-ext-sidebar-expand,#ozon-structure-root #ozon-ext-sidebar-resizer {display:none!important}
+}
 #ozon-structure-root .ozon-dev-sprint-option { display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:9px!important;width:100%;box-sizing:border-box; }
 #ozon-structure-root .ozon-dev-settings label { display:flex;align-items:center;gap:8px; }
 #ozon-structure-root .ozon-dev-settings input[type="checkbox"] { flex:0 0 16px!important; }
@@ -2562,7 +2590,12 @@ export function generateContentScriptJs(
   let loadingSidebarTaskKey = null;
   let sidebarBlockLoading = { taskKey: null, desc: false, params: false, links: false, ipMeta: false };
   let frontDesignLinksByKey = {};
-  let sidebarWidth = Number(localStorage.getItem(STORAGE_KEY_SIDEBAR_W)) || 540;
+  const rememberedSidebarWidth=Number(localStorage.getItem(STORAGE_KEY_SIDEBAR_W));
+  let sidebarWidth=rememberedSidebarWidth>=340 && rememberedSidebarWidth<=680 ? rememberedSidebarWidth : 540;
+  let sidebarExpanded=false;
+  function sidebarWidthCss() {
+    return sidebarExpanded ? 'min(1100px,calc(100vw - 12px))' : 'min(' + sidebarWidth + 'px,var(--ozon-sidebar-compact-limit),calc(100vw - 12px))';
+  }
 
   // ПО УМОЛЧАНИЮ ВСЕ СПРИНТЫ И ВСЕ КОМПОНЕНТЫ СВЕРНУТЫ!
   // Храним явно развернутые пользователем спринты и компоненты:
@@ -5821,6 +5854,7 @@ export function generateContentScriptJs(
 
       return {
         key: iss.key,
+        jiraId: iss.id || '',
         summary: f.summary || iss.key,
         description: rawDesc,
         labels: Array.isArray(f.labels) ? f.labels : [],
@@ -5954,6 +5988,7 @@ export function generateContentScriptJs(
             const refreshedTaskList = tasks.map((t) => {
                 if (t.key !== taskKey) return t;
                 return Object.assign({}, t, {
+                  jiraId: rawIssue.id || t.jiraId,
                   summary: Object.prototype.hasOwnProperty.call(f, 'summary') ? String(f.summary || '') : t.summary,
                   description: Object.prototype.hasOwnProperty.call(f, 'description') ? (typeof f.description === 'string' ? f.description : '') : t.description || '',
                   status: readStatusName(f.status, t.status),
@@ -6758,7 +6793,7 @@ export function generateContentScriptJs(
 
     const cellMap = {
       task: \`
-        <td style="padding-left:\${taskIndentPx}px !important;border-left:3px solid #E2E8F0 !important;">
+        <td class="ozon-ext-task-cell" style="padding-left:\${taskIndentPx}px !important;border-left:3px solid #E2E8F0 !important;">
           <div class="ozon-ext-cell-singleline">
             \${
               totalLinks > 0
@@ -6831,7 +6866,7 @@ export function generateContentScriptJs(
 
         const subCellMap = {
           task: \`
-            <td style="padding-left:\${subRowIndentPx}px !important;border-left:3px solid #CBD5E1 !important;">
+            <td class="ozon-ext-task-cell" style="padding-left:\${subRowIndentPx}px !important;border-left:3px solid #CBD5E1 !important;">
               <div class="ozon-ext-cell-singleline">
                 <span class="ozon-mono" style="color:#94A3B8;font-weight:700;">↳</span>
                 \${getLinkTypeTagHtml(isPt)}
@@ -7109,7 +7144,7 @@ export function generateContentScriptJs(
     if (isTaskLoading) {
       return \`
         <div class="ozon-ext-resizer-bar" id="ozon-ext-sidebar-resizer" title="Потяните для изменения ширины сайдбара"></div>
-        <aside class="ozon-ext-sidebar" id="ozon-ext-sidebar-panel" style="width:\${sidebarWidth}px;">
+        <aside class="ozon-ext-sidebar" id="ozon-ext-sidebar-panel" style="width:\${sidebarWidthCss()};">
           <div class="ozon-ext-sidebar-header">
             <div style="display:flex;align-items:center;gap:8px;">
               <span class="ozon-ext-spinner"></span>
@@ -7174,7 +7209,6 @@ export function generateContentScriptJs(
       return { value: st, label: st, transitionId: matchedTr && matchedTr.id ? String(matchedTr.id) : '' };
     });
     const issueTypeSearchOptions = issueTypeList.map((name) => ({ value: name, label: name }));
-    const prioritySearchOptions = priorityList.map((name) => ({ value: name, label: name }));
     const sidebarSprintSearchOptions = Array.from(new Set([...editableSprints, task.sprint].filter(Boolean))).map((name) => ({ value: name, label: formatSprintWithStateText(name) }));
 
     const transitionsChipsHtml =
@@ -7326,7 +7360,7 @@ export function generateContentScriptJs(
 
     return \`
       <div class="ozon-ext-resizer-bar" id="ozon-ext-sidebar-resizer" title="Потяните для изменения ширины сайдбара"></div>
-      <aside class="ozon-ext-sidebar" id="ozon-ext-sidebar-panel" style="width:\${sidebarWidth}px;">
+      <aside class="ozon-ext-sidebar" id="ozon-ext-sidebar-panel" style="width:\${sidebarWidthCss()};">
         <div class="ozon-ext-sidebar-header">
           <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;flex-wrap:wrap;">
             <a href="/browse/\${escapeHtml(task.key)}" target="_blank" class="ozon-mono" style="color:#005BFF;font-weight:700;font-size:13px;text-decoration:none;flex-shrink:0;">
@@ -7338,6 +7372,7 @@ export function generateContentScriptJs(
             \${getIssueTypeBadgeHtml(currentIssueType, true)}
           </div>
           <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
+            <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-ext-sidebar-expand" title="\${sidebarExpanded ? 'Вернуть компактный сайдбар' : 'Развернуть сайдбар'}" aria-label="\${sidebarExpanded ? 'Вернуть компактный сайдбар' : 'Развернуть сайдбар'}" aria-pressed="\${sidebarExpanded}"><span aria-hidden="true">\${sidebarExpanded ? '⤡' : '⤢'}</span></button>
             <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-ext-sidebar-refresh" title="Обновить все" aria-label="Обновить все">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.9-3L4 10"/><path d="M4 4v6h6"/><path d="M4 13a8 8 0 0 0 14.9 3L20 14"/><path d="M20 20v-6h-6"/></svg>
             </button>
@@ -7377,7 +7412,7 @@ export function generateContentScriptJs(
                     <!-- Приоритет со стандартной SVG-иконкой Jira -->
                     <div class="ozon-ext-field-label">Приоритет</div>
                     <div style="display:flex;align-items:center;gap:7px;">
-                      \${renderSearchSelect('sidebar-priority', task.priority, prioritySearchOptions, 'Поиск приоритета...')}
+                      <button type="button" class="ozon-ext-sb-combo-trigger ozon-sb-priority-trigger" data-priority-key="\${escapeHtml(task.key)}" aria-haspopup="dialog" aria-label="Изменить приоритет \${escapeHtml(task.key)}">\${getJiraPriorityIconSvg(task.priority)}<span>\${escapeHtml(task.priority || 'Не указан')}</span><span class="ozon-ext-toolbar-chevron" aria-hidden="true"></span></button>
                     </div>
 
                     <!-- Спринт + быстрые чипсы спринтов доски FCRM и кнопка «Удалить из спринта» -->
@@ -7879,7 +7914,6 @@ export function generateContentScriptJs(
       let badge = '';
       let text = label;
       if (id === 'sidebar-issuetype') icon = getJiraIssueTypeIconSvg(option.value);
-      if (id === 'sidebar-priority') icon = getJiraPriorityIconSvg(option.value);
       if (id === 'sidebar-sprint' || id.startsWith('table-sprint-')) {
         text = escapeHtml(option.value);
         badge = getSprintStateBadgeHtml(option.value);
@@ -8191,6 +8225,9 @@ export function generateContentScriptJs(
     }
 
     if (activeDashboardView === 'strategy') {
+      const oldSearch=root.querySelector('#ozon-strategy-search');
+      const focusedSearch=document.activeElement===oldSearch;
+      const caret=focusedSearch ? [oldSearch.selectionStart,oldSearch.selectionEnd] : null;
       const sidebarScroll = captureAllScrollPositions();
       const scroll = root.querySelector('.ozon-strategy-scroll');
       const scrollTop = scroll ? scroll.scrollTop : 0;
@@ -8205,6 +8242,11 @@ export function generateContentScriptJs(
       positionSidebarPickers(root);
       const nextScroll = root.querySelector('.ozon-strategy-scroll');
       if (nextScroll) { nextScroll.scrollTop = scrollTop; nextScroll.scrollLeft = scrollLeft; }
+      if (focusedSearch) {
+        const nextSearch=root.querySelector('#ozon-strategy-search');
+        nextSearch?.focus({preventScroll:true});
+        if (caret[0]!==null && caret[1]!==null) nextSearch?.setSelectionRange(...caret);
+      }
       animateDashboardSurfaces(root);
       return;
     }
@@ -8399,7 +8441,7 @@ export function generateContentScriptJs(
         tmp.innerHTML = sidebarHtml;
         const parsedAside = tmp.querySelector('#ozon-ext-sidebar-panel');
         if (parsedAside) {
-          existingSbPanel.style.width = sidebarWidth + 'px';
+          existingSbPanel.style.width = sidebarWidthCss();
           existingSbPanel.innerHTML = parsedAside.innerHTML;
           const refreshedSummaryInput = existingSbPanel.querySelector('#ozon-sb-summary');
           if (keepImproveButton && refreshedSummaryInput) {
@@ -8771,14 +8813,6 @@ export function generateContentScriptJs(
             tasks = tasks.map(task => task.key === key ? Object.assign({}, task, { issueTypeName: value, issueTypeId: typeId }) : task);
             saveTaskOverride(key, { issueTypeName: value, issueTypeId: typeId });
             updateIssueTypeInJira(key, value);
-          } else if (id === 'sidebar-priority') {
-            tasks = tasks.map(task => task.key === key ? Object.assign({}, task, { priority: value }) : task);
-            saveTaskOverride(key, { priority: value });
-            fetch('/rest/api/2/issue/' + encodeURIComponent(key), {
-              method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ fields: { priority: { name: value } } })
-            }).catch(() => {});
-            showSaveToast('✓ Приоритет ' + key + ' → ' + value);
           } else if (id === 'sidebar-sprint') {
             tasks = tasks.map(task => task.key === key ? Object.assign({}, task, { sprint: value }) : task);
             saveTaskOverride(key, { sprint: value });
@@ -9473,16 +9507,16 @@ export function generateContentScriptJs(
     const sbResizer = document.getElementById('ozon-ext-sidebar-resizer');
     const sbPanel = document.getElementById('ozon-ext-sidebar-panel');
     if (sbResizer && sbPanel) {
-      sbResizer.style.right = sidebarWidth + 'px';
+      sbResizer.style.right = sidebarWidthCss();
       sbResizer.addEventListener('mousedown', (e) => {
         e.preventDefault();
         sbResizer.classList.add('active');
 
         function onMove(moveEv) {
-          const nextW = Math.max(340, window.innerWidth - moveEv.clientX);
-          sidebarWidth = nextW;
-          sbPanel.style.width = nextW + 'px';
-          sbResizer.style.right = nextW + 'px';
+          sidebarExpanded=false;
+          sidebarWidth=Math.max(340,Math.min(680,window.innerWidth-moveEv.clientX));
+          sbPanel.style.width=sidebarWidthCss();
+          sbResizer.style.right=sidebarWidthCss();
         }
 
         function onUp() {
@@ -9490,6 +9524,7 @@ export function generateContentScriptJs(
           try {
             localStorage.setItem(STORAGE_KEY_SIDEBAR_W, String(sidebarWidth));
           } catch (err) {}
+          renderStructure();
           window.removeEventListener('mousemove', onMove);
           window.removeEventListener('mouseup', onUp);
         }
@@ -9599,9 +9634,14 @@ export function generateContentScriptJs(
     const expandBtn = document.getElementById('ozon-ext-sidebar-expand');
     if (expandBtn) {
       expandBtn.addEventListener('click', () => {
-        sidebarWidth = sidebarWidth < 620 ? 740 : 480;
-        localStorage.setItem(STORAGE_KEY_SIDEBAR_W, String(sidebarWidth));
-        renderStructure();
+        sidebarExpanded=!sidebarExpanded;
+        if (sbPanel) sbPanel.style.width=sidebarWidthCss();
+        if (sbResizer) sbResizer.style.right=sidebarWidthCss();
+        const caption=sidebarExpanded ? 'Вернуть компактный сайдбар' : 'Развернуть сайдбар';
+        expandBtn.setAttribute('aria-label',caption);
+        expandBtn.setAttribute('title',caption);
+        expandBtn.setAttribute('aria-pressed',String(sidebarExpanded));
+        expandBtn.firstElementChild.textContent=sidebarExpanded ? '⤡' : '⤢';
       });
     }
 
@@ -9684,7 +9724,10 @@ export function generateContentScriptJs(
 
     const labelForm = document.getElementById('ozon-sb-label-form');
     const labelInput = document.getElementById('ozon-sb-label-input');
-    bindLabelSuggestions(labelInput);
+    bindLabelSuggestions(labelInput,{issueId:task.jiraId,existing:task.labels,known:()=>[
+      ...tasks.flatMap(item=>item.labels || []),
+      ...strategicDashboard.getState().issues.flatMap(issue=>issue.fields?.labels || [])
+    ]});
     async function changeSidebarLabel(label, operation) {
       const key = selectedTaskKey;
       const container = document.getElementById('ozon-sb-labels');
@@ -10481,48 +10524,77 @@ export function generateContentScriptJs(
       if (summary) panel.querySelector('.component-editor-head')?.insertAdjacentHTML('afterend', '<div class="component-editor-context" title="' + escapeHtml(summary) + '">' + escapeHtml(summary) + '</div>');
     }
     let priorityEditor = null;
-    async function openPriorityEditor(key) {
+    async function openPriorityEditor(key,trigger) {
       if (!key) return;
-      priorityEditor?.remove();
+      if (priorityEditor?.dataset.busy==='true') return;
+      priorityEditor?.closePriority(false);
       const panel = document.createElement('aside'); priorityEditor = panel;
       panel.className = 'ozon-component-editor ozon-priority-editor'; panel.setAttribute('role', 'dialog');
       panel.setAttribute('aria-label', 'Приоритет задачи ' + key);
       panel.style.cssText = 'position:fixed;z-index:2147483646;right:0;top:0;bottom:0;height:100vh;width:min(500px,100vw);background:#fff;box-shadow:-8px 0 24px #0f172a22;padding:20px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;font:13px Arial,sans-serif;color:#071026';
       panel.innerHTML = '<div class="component-editor-head"><strong>Приоритет задачи · ' + escapeHtml(key) + '</strong><button type="button" class="component-editor-close" data-close aria-label="Закрыть">✕</button></div><div role="status">Загружаем приоритеты…</div>';
       document.body.appendChild(panel);
-      panel.querySelector('[data-close]').onclick = () => panel.remove();
+      const controller=new AbortController();
+      const close = (restore=true) => {
+        if (panel.dataset.busy==='true') return;
+        controller.abort();
+        panel.remove();
+        if (priorityEditor===panel) priorityEditor=null;
+        if (restore && trigger?.isConnected) trigger.focus({preventScroll:true});
+      };
+      panel.closePriority=close;
+      panel.querySelector('[data-close]').onclick = () => close();
+      panel.querySelector('[data-close]').focus({preventScroll:true});
       panel.addEventListener('pointerdown', event => event.stopPropagation());
       panel.addEventListener('click', event => event.stopPropagation());
       try {
-        const [response, options] = await Promise.all([fetch('/rest/api/2/issue/' + encodeURIComponent(key) + '?fields=priority', {credentials:'same-origin',headers:{Accept:'application/json'},cache:'no-store'}), jiraPriorityService.options(key)]);
+        const [response, options] = await Promise.all([fetch('/rest/api/2/issue/' + encodeURIComponent(key) + '?fields=priority', {credentials:'same-origin',headers:{Accept:'application/json'},cache:'no-store',signal:controller.signal}), jiraPriorityService.options(key)]);
         if (!response.ok) throw new Error('Не удалось загрузить приоритет: HTTP ' + response.status);
         const issue = await response.json(); if (!panel.isConnected) return;
         const current = issue.fields?.priority || {};
         const isCurrent = option => option.value?.id && current.id ? String(option.value.id) === String(current.id) : option.label === current.name;
-        panel.innerHTML = '<div class="component-editor-head"><strong>Приоритет задачи · ' + escapeHtml(key) + '</strong><button type="button" class="component-editor-close" data-close aria-label="Закрыть">✕</button></div><div class="ozon-sprint-current"><span>Текущий приоритет</span><strong>' + jiraPriorityService.icon(current.name || '') + ' ' + escapeHtml(current.name || 'Не указан') + '</strong></div><div class="component-editor-caption">Выберите приоритет</div><div class="component-editor-list">' + options.map((option,index) => '<button type="button" class="component-editor-option ' + (isCurrent(option) ? 'is-selected' : '') + '" data-index="' + index + '" aria-pressed="' + Boolean(isCurrent(option)) + '">' + jiraPriorityService.icon(option.label) + '<span>' + escapeHtml(option.label) + '</span></button>').join('') + '</div><div data-error role="alert" style="color:#d92d20"></div>';
+        panel.innerHTML = '<div class="component-editor-head"><strong>Приоритет задачи · ' + escapeHtml(key) + '</strong><button type="button" class="component-editor-close" data-close aria-label="Закрыть">✕</button></div><div class="ozon-sprint-current"><span>Текущий приоритет</span><strong>' + jiraPriorityService.icon(current.name || '') + ' ' + escapeHtml(current.name || 'Не указан') + '</strong></div><div class="component-editor-caption">Выберите приоритет</div><div class="component-editor-list">' + options.map((option,index) => '<button type="button" class="component-editor-option ' + (isCurrent(option) ? 'is-selected' : '') + '" data-index="' + index + '" aria-pressed="' + Boolean(isCurrent(option)) + '">' + jiraPriorityService.icon(option.label) + '<span>' + escapeHtml(option.label) + '</span></button>').join('') + '</div><div data-error role="alert" style="color:#d92d20"></div><div class="component-editor-footer"><button type="button" data-cancel class="component-editor-button">Отмена</button><button type="button" data-save class="component-editor-button primary" disabled>Сохранить</button></div>';
         addEditorTaskContext(panel, key);
-        panel.querySelector('[data-close]').onclick = () => panel.remove();
-        panel.querySelectorAll('[data-index]').forEach(button => button.addEventListener('click', async () => {
-          const option = options[Number(button.getAttribute('data-index'))]; if (!option) return;
-          panel.querySelectorAll('[data-index]').forEach(item => { item.disabled = true; });
+        const closeButton=panel.querySelector('[data-close]');
+        const cancelButton=panel.querySelector('[data-cancel]');
+        const saveButton=panel.querySelector('[data-save]');
+        const choices=Array.from(panel.querySelectorAll('[data-index]'));
+        closeButton.onclick=cancelButton.onclick=()=>close();
+        (choices.find(button=>button.getAttribute('aria-pressed')==='true') || closeButton).focus({preventScroll:true});
+        let selected=null;
+        choices.forEach(button=>button.addEventListener('click',()=>{
+          selected=options[Number(button.dataset.index)];
+          choices.forEach(item=>{item.classList.toggle('is-selected',item===button);item.setAttribute('aria-pressed',String(item===button));});
+          saveButton.disabled=!selected || isCurrent(selected);
+        }));
+        saveButton.addEventListener('click', async () => {
+          if (!selected || isCurrent(selected) || panel.dataset.busy==='true') return;
+          panel.dataset.busy='true';
+          [saveButton,cancelButton,closeButton,...choices].forEach(item=>{item.disabled=true;});
           try {
-            const priority = await jiraPriorityService.save(key, option.value);
+            const priority = await jiraPriorityService.save(key, selected.value);
             tasks = tasks.map(task => { const updated = task.key === key ? Object.assign({}, task, {priority:priority.name}) : task; const next = Object.assign({}, updated); ['projectTaskLinks','inProjectLinks','otherLinks'].forEach(field => { if (Array.isArray(updated[field])) next[field] = updated[field].map(link => link.key === key ? Object.assign({}, link, {priority:priority.name}) : link); }); return next; });
             if (tasks.some(task => task.key === key)) saveTaskOverride(key, {priority:priority.name});
             const strategicIssue = strategicDashboard.getState().issues.find(item => item.key === key); if (strategicIssue?.fields) { strategicIssue.fields.priority = priority; strategicDashboard.invalidateGraph(); }
             developmentDashboard.getState().groups.forEach(group => group.issues.forEach(item => { if (item.key === key) item.priority = priority.name; if (item.epicKey === key) item.epicPriority = priority.name; (item.links || []).forEach(link => { if (link.key === key) link.priority = priority.name; }); }));
-            panel.remove(); renderStructure(); showSaveToast('Приоритет ' + key + ' сохранён');
-          } catch (error) { if (panel.isConnected) { panel.querySelector('[data-error]').textContent = error.message || 'Не удалось изменить приоритет'; panel.querySelectorAll('[data-index]').forEach(item => { item.disabled = false; }); } }
-        }));
+            delete panel.dataset.busy;
+            close(false);
+            renderStructure(); showSaveToast('Приоритет ' + key + ' сохранён');
+          } catch (error) {
+            delete panel.dataset.busy;
+            if (panel.isConnected) {panel.querySelector('[data-error]').textContent=error.message || 'Не удалось изменить приоритет';[saveButton,cancelButton,closeButton,...choices].forEach(item=>{item.disabled=false;});}
+          }
+        });
       } catch (error) { if (panel.isConnected) panel.querySelector('[role="status"]').textContent = error.message || 'Не удалось загрузить приоритет'; }
     }
     document.addEventListener('click', event => {
       const button = event.target instanceof Element ? event.target.closest('[data-priority-key], [data-dev-action="edit-priority"], [data-strategy-action="priority"]') : null;
       if (!button || !button.closest('#ozon-structure-root')) return;
       event.preventDefault(); event.stopImmediatePropagation();
-      openPriorityEditor(button.getAttribute('data-priority-key') || button.getAttribute('data-key'));
+      openPriorityEditor(button.getAttribute('data-priority-key') || button.getAttribute('data-key'),button);
     }, true);
-    document.addEventListener('pointerdown', event => { if (priorityEditor?.isConnected && event.target instanceof Element && !priorityEditor.contains(event.target)) { priorityEditor.remove(); priorityEditor = null; } }, true);
+    document.addEventListener('pointerdown', event => { if (priorityEditor?.isConnected && event.target instanceof Element && !priorityEditor.contains(event.target)) priorityEditor.closePriority(false); }, true);
+    document.addEventListener('keydown', event => { if (event.key==='Escape' && priorityEditor?.isConnected) {event.stopImmediatePropagation();priorityEditor.closePriority();} },true);
     // Общий редактор компонентов для таблиц и связей во всех представлениях.
     let componentEditor = null;
     async function openComponentEditor(key) {
@@ -10573,7 +10645,7 @@ export function generateContentScriptJs(
         const selected = new Set(currentComponents.map((c) => { const option = matchOption(c); return String(option?.id || option?.name || c.id || c.name); }));
         const unavailable = currentComponents.filter((c) => !matchOption(c)).map((c) => Object.assign({}, c, {unavailable:true}));
         const allOptions = [...unavailable, ...options];
-        panel.innerHTML = '<div class="component-editor-head"><strong>Компоненты задачи · ' + escapeHtml(key) + '</strong><button type="button" class="component-editor-close" data-close aria-label="Закрыть">✕</button></div><div class="component-editor-search"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.7"/><path d="m13 13 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><input type="search" data-search placeholder="Поиск компонента…" aria-label="Поиск компонента"></div><div class="component-editor-caption"><span>Выберите компоненты</span><span data-count></span></div><div data-list class="component-editor-list"></div><div data-error role="alert" style="color:#d92d20"></div><div class="component-editor-footer"><button type="button" data-cancel class="component-editor-button">Отмена</button><button type="button" data-save class="component-editor-button primary">Сохранить</button></div>';
+        panel.innerHTML = '<div class="component-editor-head"><strong>Компоненты задачи · ' + escapeHtml(key) + '</strong><button type="button" class="component-editor-close" data-close aria-label="Закрыть">✕</button></div><div class="ozon-sprint-current"><span>Текущие компоненты</span><strong>' + escapeHtml(currentComponents.map(component=>component.name).filter(Boolean).join(', ') || 'Без компонента') + '</strong></div><div class="component-editor-search"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.7"/><path d="m13 13 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><input type="search" data-search placeholder="Поиск компонента…" aria-label="Поиск компонента"></div><div class="component-editor-caption"><span>Выберите компоненты</span><span data-count></span></div><div data-list class="component-editor-list"></div><div data-error role="alert" style="color:#d92d20"></div><div class="component-editor-footer"><button type="button" data-cancel class="component-editor-button">Отмена</button><button type="button" data-save class="component-editor-button primary">Сохранить</button></div>';
         addEditorTaskContext(panel, key);
         const list = panel.querySelector('[data-list]');
         const search = panel.querySelector('[data-search]');
@@ -10832,7 +10904,7 @@ export function generateContentScriptJs(
       panel.setAttribute('role','dialog');
       panel.setAttribute('aria-label',title + ' · ' + key);
       panel.style.cssText = 'position:fixed;z-index:2147483646;right:0;top:0;bottom:0;width:min(500px,100vw);background:#fff;box-shadow:-8px 0 24px #0f172a22;padding:20px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box';
-      panel.innerHTML = '<div class="component-editor-head"><strong>' + title + ' · ' + escapeHtml(key) + '</strong><button type="button" class="component-editor-close" data-close aria-label="Закрыть">✕</button></div><div data-context class="component-editor-context" hidden></div><div class="ozon-sprint-current"><span>' + currentLabel + '</span><strong data-current>Загрузка…</strong></div><div class="component-editor-search"><input type="search" data-search placeholder="' + placeholder + '" aria-label="' + searchLabel + '" style="padding-left:10px" disabled></div><div data-message role="status"></div><div data-list class="component-editor-list"></div>';
+      panel.innerHTML = '<div class="component-editor-head"><strong>' + title + ' · ' + escapeHtml(key) + '</strong><button type="button" class="component-editor-close" data-close aria-label="Закрыть">✕</button></div><div data-context class="component-editor-context" hidden></div><div class="ozon-sprint-current"><span>' + currentLabel + '</span><strong data-current>Загрузка…</strong></div><div class="component-editor-search"><input type="search" data-search placeholder="' + placeholder + '" aria-label="' + searchLabel + '" style="padding-left:10px" disabled></div><div data-message role="status"></div><div data-list class="component-editor-list"></div><div class="component-editor-footer"><button type="button" data-cancel class="component-editor-button">Отмена</button></div>';
       document.body.appendChild(panel);
       const closeButton = panel.querySelector('[data-close]');
       const search = panel.querySelector('[data-search]');
@@ -10855,6 +10927,7 @@ export function generateContentScriptJs(
       };
       panel.closePlanningEditor = close;
       closeButton.onclick = () => close();
+      panel.querySelector('[data-cancel]').onclick=()=>close();
       closeButton.focus({preventScroll:true});
 
       function renderOptions() {
