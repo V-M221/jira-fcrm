@@ -65,6 +65,7 @@ const sprintReportModel = loadTranspiledModule(await readFile('src/services/spri
 const sprintReportDashboard = loadTranspiledModule(await readFile('src/services/sprintReportDashboard.ts', 'utf8'));
 const jiraGroupingUi = loadTranspiledModule(await readFile('src/services/jiraGroupingUi.ts','utf8'));
 const jiraPeopleUi = loadTranspiledModule(await readFile('src/services/jiraPeopleUi.ts','utf8'));
+const extensionUpdate = loadTranspiledModule(await readFile('src/services/extensionUpdate.ts', 'utf8'));
 new Function('exports', 'require', 'module', compiled)(module.exports, (specifier) => {
   if (specifier === './structuredAnswer') return structuredAnswer;
   if (specifier === './answerMarkup') return answerMarkup;
@@ -77,6 +78,7 @@ new Function('exports', 'require', 'module', compiled)(module.exports, (specifie
   if (specifier === '../services/sprintReportDashboard') return sprintReportDashboard;
   if (specifier === '../services/jiraGroupingUi') return jiraGroupingUi;
   if (specifier === '../services/jiraPeopleUi') return jiraPeopleUi;
+  if (specifier === '../services/extensionUpdate') return extensionUpdate;
   return createRequire(import.meta.url)(specifier);
 }, module);
 const generator = module.exports;
@@ -94,6 +96,7 @@ const deepseek = loadTranspiledModule(await readFile('src/services/deepseek.ts',
 const deepseekExtensionSource = await readFile('src/services/deepseekExtension.ts', 'utf8');
 const deepseekExtension = loadTranspiledModule(deepseekExtensionSource, (specifier) => {
   if (specifier === './deepseek') return deepseek;
+  if (specifier === './extensionUpdate') return extensionUpdate;
   if (specifier === '../utils/answerMarkup') return answerMarkup;
   if (specifier === '../utils/structuredAnswer') return structuredAnswer;
   throw new Error(`Unexpected extension build dependency: ${specifier}`);
@@ -118,4 +121,6 @@ for (const [name, contents] of Object.entries(files)) {
   zip.file(name, contents);
 }
 await writeFile(archivePath, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
-console.log(`Собрано расширение ${generator.EXTENSION_VERSION} в ${outputDir}`);
+const { version } = JSON.parse(files['manifest.json']);
+await writeFile('extension-version.json', JSON.stringify({ version }, null, 2) + '\n');
+console.log(`Собрано расширение ${version} в ${outputDir}`);
