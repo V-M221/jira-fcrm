@@ -12,7 +12,7 @@ import { createJiraGroupingUi } from '../services/jiraGroupingUi';
 import { createJiraPeopleUi } from '../services/jiraPeopleUi';
 import { createExtensionUpdateNotice, EXTENSION_UPDATE_INTERVAL, EXTENSION_UPDATE_MESSAGES, EXTENSION_UPDATE_ZIP_URL } from '../services/extensionUpdate';
 
-export const EXTENSION_VERSION = '3.5.184';
+export const EXTENSION_VERSION = '3.5.185';
 
 export function generateManifestJson(config: ExtensionConfig): string {
   const manifest = {
@@ -1892,6 +1892,9 @@ export function generateStylesCss(config: ExtensionConfig): string {
 #ozon-structure-root #ozon-ext-sidebar-panel .ozon-ext-ip-table-row .ozon-ext-search-select-trigger:focus-visible {outline:2px solid #005bff;outline-offset:-2px}
 #ozon-structure-root .ozon-ip-field {display:flex;align-items:center;flex-wrap:wrap;gap:2px 6px;min-width:0;flex:1 1 auto}
 #ozon-structure-root .ozon-ip-field-value {white-space:normal;overflow-wrap:anywhere;min-width:0}
+#ozon-structure-root [data-action="open-ip-comp-combo"] .ozon-ip-field-value {
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;
+}
 #ozon-structure-root #ozon-ext-sidebar-panel :is(input[type="text"],input[type="search"]) {
   min-height:30px!important;border-radius:9px!important;border-color:#dce3eb!important;background-color:white!important;
 }
