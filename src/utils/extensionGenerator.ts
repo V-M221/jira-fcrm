@@ -11,7 +11,7 @@ import { bindJiraLabelSuggestions } from '../services/jiraLabelSuggestions';
 import { createJiraGroupingUi } from '../services/jiraGroupingUi';
 import { createJiraPeopleUi } from '../services/jiraPeopleUi';
 
-export const EXTENSION_VERSION = '3.5.179';
+export const EXTENSION_VERSION = '3.5.180';
 
 export function generateManifestJson(config: ExtensionConfig): string {
   const manifest = {
@@ -2731,6 +2731,7 @@ export function generateContentScriptJs(
     customer: null
   };
   let discoveredCustomerFieldIds = [];
+  let issueFieldDiscoveryPromise = null;
   let discoveredIssueLinkTypes = [];
   let discoveredIssueLinkTypesPromise = null;
   async function loadIssueLinkTypes() {
@@ -3091,6 +3092,7 @@ export function generateContentScriptJs(
     refreshingSidebarSections.add(requestKey);
     renderStructure();
     try {
+      await discoverJiraIssueFields();
       const fields = section === 'params' ? getBoardFieldsParam() : 'issuelinks';
       const response = await fetch('/rest/api/2/issue/' + encodeURIComponent(taskKey) + '?fields=' + fields, {
         credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' }
@@ -3099,10 +3101,10 @@ export function generateContentScriptJs(
       const raw = await response.json();
       await syncStrategyLinks(raw);
       syncStrategyIssue(raw);
-      const updated = (await normalizeAndEnrichJiraIssues([raw]))[0];
+      const updated = (await normalizeAndEnrichJiraIssues([raw], true))[0];
       if (!updated) throw new Error('Jira не вернула данные задачи');
       if (section === 'params') {
-        const keys = ['issueTypeName', 'issueTypeId', 'priority', 'sprint', 'component', 'epicKey', 'epicName', 'assignee', 'customer', 'labels', 'status'];
+        const keys = ['issueTypeName', 'issueTypeId', 'priority', 'sprint', 'component', 'components', 'epicKey', 'epicName', 'assignee', 'customer', 'labels', 'status', 'createdAt', 'createdTimestamp'];
         const patch = {};
         keys.forEach((key) => { patch[key] = updated[key]; });
         clearTaskOverride(taskKey, requestRevision);
@@ -3872,6 +3874,16 @@ export function generateContentScriptJs(
     }
 
     return 'Бэклог FCRM';
+  }
+
+  function readJiraEpicKey(fields) {
+    const epicField = discoveredFields.epicLink;
+    if (epicField && Object.hasOwn(fields, epicField)) {
+      const value = fields[epicField];
+      return String(typeof value === 'string' ? value : value?.key || value?.value || '').trim();
+    }
+    if (Object.hasOwn(fields, 'epic')) return fields.epic?.key || '';
+    return undefined;
   }
 
   function extractAnyRealSprintName(rawVal) {
@@ -5144,47 +5156,33 @@ export function generateContentScriptJs(
     }
   }
 
-  // Шаг 1. Авто-обнаружение ID кастомных полей, типов связей, компонентов, статусов из схемы, приоритетов и исполнителей FCRM
-  async function discoverJiraFieldsAndComponents() {
-    try {
-      const res = await fetch('/rest/api/2/field', {
+  function discoverJiraIssueFields() {
+    if (!issueFieldDiscoveryPromise) {
+      issueFieldDiscoveryPromise = fetch('/rest/api/2/field', {
         credentials: 'same-origin',
         headers: { Accept: 'application/json' }
-      });
-      if (res.ok) {
-        const fields = await res.json();
-        if (Array.isArray(fields)) {
-          const exactOwnerIds = [];
-          const secondaryOwnerIds = [];
-          fields.forEach((fld) => {
-            const customType = (fld.schema && fld.schema.custom) || '';
-            const nameLow = String(fld.name || '').toLowerCase().trim();
-            const nameCompact = nameLow.replace(/\\s+/g, '');
-            if (nameLow === 'story points' || nameLow === 'story point' || nameLow === 'стори поинты') discoveredFields.storyPoints = fld.id;
+      }).then(async response => {
+        if (!response.ok) throw new Error('Jira: HTTP ' + response.status);
+        const fields = await response.json();
+        if (!Array.isArray(fields)) throw new Error('Jira не вернула список полей');
+        const nameOf = field => String(field.name || '').toLowerCase().trim();
+        const fieldId = (schema, names) => fields.find(field => (field.schema?.custom || '').includes(schema))?.id ||
+          fields.find(field => names.test(nameOf(field)))?.id;
+        discoveredFields.sprint = fieldId('gh-sprint', /^(sprint|спринт)$/) || discoveredFields.sprint;
+        discoveredFields.epicLink = fieldId('gh-epic-link', /^(epic link|epic связь|ссылка на эпик)$/) || discoveredFields.epicLink;
+        discoveredFields.epicName = fieldId('gh-epic-label', /^(epic name|название эпика|имя эпика)$/) || discoveredFields.epicName;
+        discoveredFields.storyPoints = fields.find(field => /^(story points?|стори поинты)$/.test(nameOf(field)))?.id || discoveredFields.storyPoints;
+        const owners = fields.filter(field => /заказчик|^owner$|^customer$/.test(nameOf(field)));
+        const exact = owners.filter(field => nameOf(field).includes('заказчик') && nameOf(field).includes('owner'));
+        discoveredCustomerFieldIds = [...new Set([...exact, ...owners].map(field => field.id).filter(Boolean))];
+        discoveredFields.customer = discoveredCustomerFieldIds[0] || discoveredFields.customer;
+      }).catch(() => { issueFieldDiscoveryPromise = null; });
+    }
+    return issueFieldDiscoveryPromise;
+  }
 
-            if (customType.includes('gh-sprint') || nameLow === 'sprint' || nameLow === 'спринт') {
-              discoveredFields.sprint = fld.id;
-            }
-            if (customType.includes('gh-epic-link') || nameLow === 'epic link' || nameLow === 'ссылка на эпик') {
-              discoveredFields.epicLink = fld.id;
-            }
-            if (customType.includes('gh-epic-label') || nameLow === 'epic name' || nameLow === 'название эпика' || nameLow === 'имя эпика') {
-              discoveredFields.epicName = fld.id;
-            }
-            // Везде где отображаем заказчика, ищем поле "Заказчик/Owner" с наивысшим приоритетом
-            if (nameCompact === 'заказчик/owner' || nameLow.includes('заказчик/owner') || (nameLow.includes('заказчик') && nameLow.includes('owner'))) {
-              exactOwnerIds.push(fld.id);
-            } else if (nameLow === 'заказчик' || nameLow === 'owner' || nameLow === 'бизнес-заказчик' || nameLow === 'customer' || nameLow.includes('заказчик')) {
-              secondaryOwnerIds.push(fld.id);
-            }
-          });
-          discoveredCustomerFieldIds = Array.from(new Set([...exactOwnerIds, ...secondaryOwnerIds]));
-          if (discoveredCustomerFieldIds.length > 0) {
-            discoveredFields.customer = discoveredCustomerFieldIds[0];
-          }
-        }
-      }
-    } catch (e) {}
+  async function discoverJiraFieldsAndComponents() {
+    await discoverJiraIssueFields();
 
     try { await loadIssueLinkTypes(); } catch (e) {}
 
@@ -5586,7 +5584,7 @@ export function generateContentScriptJs(
     return { name: 'Не указан', login: '' };
   }
 
-  async function normalizeAndEnrichJiraIssues(rawIssues) {
+  async function normalizeAndEnrichJiraIssues(rawIssues, includeCanceled = false) {
     const allEpicKeysToResolve = new Set();
     const linkedIssueKeys = new Set();
     const umbKeysSet = new Set(umbCatalog.map((u) => u.key));
@@ -5682,11 +5680,7 @@ export function generateContentScriptJs(
             epicNameByKey[lEpObj.key] = String(lEpObj.name).trim();
           }
         }
-        const lEpicKey =
-          (lEpObj && lEpObj.key) ||
-          (discoveredFields.epicLink && typeof lf[discoveredFields.epicLink] === 'string' ? lf[discoveredFields.epicLink].trim() : '') ||
-          (lf.parent && lf.parent.key) ||
-          '';
+        const lEpicKey = readJiraEpicKey(lf) || lf.parent?.key || '';
         if (lEpicKey) {
           allEpicKeysToResolve.add(lEpicKey);
         }
@@ -5817,13 +5811,10 @@ export function generateContentScriptJs(
       }
 
       const epObj = f.epic;
-      let epicKey =
-        (epObj && epObj.key) ||
-        (discoveredFields.epicLink && typeof f[discoveredFields.epicLink] === 'string' ? f[discoveredFields.epicLink].trim() : '') ||
-        '';
+      const epicKey = readJiraEpicKey(f) || '';
 
       let resolvedEpicTitle = epicKey && epicNameByKey[epicKey] ? epicNameByKey[epicKey] : '';
-      if (!resolvedEpicTitle && epObj) {
+      if (!resolvedEpicTitle && epicKey && epObj?.key === epicKey) {
         if (!isBogusEpicTitle(epObj.summary, epicKey)) resolvedEpicTitle = String(epObj.summary).trim();
         else if (!isBogusEpicTitle(epObj.name, epicKey)) resolvedEpicTitle = String(epObj.name).trim();
       }
@@ -5927,7 +5918,7 @@ export function generateContentScriptJs(
         inProjectLinks: ipLinks,
         otherLinks: otherLinks
       };
-    }).filter((t) => !isCanceledStatus(t.status));
+    }).filter((t) => includeCanceled || !isCanceledStatus(t.status));
   }
 
   /**
@@ -5999,10 +5990,10 @@ export function generateContentScriptJs(
     };
     assigneeSearchQuery = '';
     customerSearchQuery = '';
-    const taskRequest = fetch('/rest/api/2/issue/' + encodeURIComponent(taskKey) + '?fields=' + getBoardFieldsParam(), {
+    const taskRequest = discoverJiraIssueFields().then(() => fetch('/rest/api/2/issue/' + encodeURIComponent(taskKey) + '?fields=' + getBoardFieldsParam(), {
       credentials:'same-origin', cache:'no-store',
       headers:{Accept:'application/json', ...(forceFromJira ? {'Cache-Control':'no-cache'} : {})}
-    });
+    }));
     const transitionsRequest = fetch('/rest/api/2/issue/' + encodeURIComponent(taskKey) + '/transitions', {credentials:'same-origin',headers:{Accept:'application/json'}}).catch(() => null);
     const remoteLinksRequest = loadRemoteIssueLinks(taskKey).catch(() => []);
     const componentsRequest = ensureProjectComponentsLoaded(getIssueProjectKey(taskKey)).catch(() => {});
@@ -6031,13 +6022,18 @@ export function generateContentScriptJs(
                 ? f.components.map((c) => c && c.name).filter(Boolean).join(', ')
                 : 'Без компонента';
             const quickSprint = resolveIssueSprint(rawIssue);
+            const jiraEpicKey = readJiraEpicKey(f);
 
             const refreshedTaskList = tasks.map((t) => {
                 if (t.key !== taskKey) return t;
+                const epicKey = jiraEpicKey ?? t.epicKey ?? '';
+                const epicName = epicKey ? epicNameByKey[epicKey] || (t.epicKey === epicKey ? t.epicName : '') || epicKey : '';
                 return Object.assign({}, t, {
                   jiraId: rawIssue.id || t.jiraId,
                   summary: Object.prototype.hasOwnProperty.call(f, 'summary') ? String(f.summary || '') : t.summary,
                   description: Object.prototype.hasOwnProperty.call(f, 'description') ? (typeof f.description === 'string' ? f.description : '') : t.description || '',
+                  createdAt: Object.hasOwn(f, 'created') ? formatDate(f.created) : t.createdAt,
+                  createdTimestamp: Object.hasOwn(f, 'created') ? (f.created ? new Date(f.created).getTime() : 0) : t.createdTimestamp,
                   status: readStatusName(f.status, t.status),
                   issueTypeName: (f.issuetype && f.issuetype.name) || t.issueTypeName || 'Задача',
                   issueTypeId: (f.issuetype && f.issuetype.id) || t.issueTypeId || '',
@@ -6046,6 +6042,8 @@ export function generateContentScriptJs(
                   component: compName,
                   components: Array.isArray(f.components) ? f.components.map((c) => c && c.name).filter(Boolean) : [],
                   sprint: quickSprint || (forceFromJira ? 'Бэклог FCRM' : t.sprint),
+                  epicKey,
+                  epicName,
                   assignee: Object.hasOwn(f,'assignee') ? jiraPeople.fromJira(f.assignee,'Не назначен') : t.assignee,
                   author: Object.hasOwn(f,'reporter') || Object.hasOwn(f,'creator') ? jiraPeople.fromJira(f.reporter || f.creator,'Неизвестен') : t.author,
                   customer:
@@ -6054,7 +6052,7 @@ export function generateContentScriptJs(
                       : { name: 'Не указан', login: '', department: 'FCRM' }
                 });
               });
-            tasks = applyLocalOverridesToTasks(refreshedTaskList, requestRevision, taskKey).filter((t) => !isCanceledStatus(t.status));
+            tasks = applyLocalOverridesToTasks(refreshedTaskList, requestRevision, taskKey);
           }
         } else {
           refreshErrorText = 'Не удалось обновить ' + taskKey + ' из Jira (HTTP ' + issRes.status + ')';
@@ -6069,7 +6067,7 @@ export function generateContentScriptJs(
       renderStructure();
 
       // Связи и сведения об эпике не зависят от загрузки переходов статуса.
-      const enrichedRequest = rawIssue?.key ? normalizeAndEnrichJiraIssues([rawIssue]).catch(() => []) : Promise.resolve([]);
+      const enrichedRequest = rawIssue?.key ? normalizeAndEnrichJiraIssues([rawIssue], true).catch(() => []) : Promise.resolve([]);
       const epicDetailsRequest = rawIssue?.key ? refreshTaskEpicDetails(taskKey, rawIssue).catch(() => {}) : Promise.resolve();
 
       // ЭТАП 2: Загружаем переходы воркфлоу (transitions) и компоненты проекта для блока «Параметры задачи»
@@ -8593,7 +8591,7 @@ export function generateContentScriptJs(
     const raw = await response.json();
     await syncStrategyLinks(raw);
     syncStrategyIssue(raw);
-    const [enriched, remoteLinks] = await Promise.all([normalizeAndEnrichJiraIssues([raw]), loadRemoteIssueLinks(sourceKey)]);
+    const [enriched, remoteLinks] = await Promise.all([normalizeAndEnrichJiraIssues([raw], true), loadRemoteIssueLinks(sourceKey)]);
     if (!enriched[0]) throw new Error('Связь сохранена, но не удалось обновить список.');
     const updated = enriched[0];
     tasks = tasks.map((item) => item.key === sourceKey ? Object.assign({}, item, {projectTaskLinks:updated.projectTaskLinks, inProjectLinks:updated.inProjectLinks, otherLinks:[...(updated.otherLinks || []), ...remoteLinks]}) : item);
