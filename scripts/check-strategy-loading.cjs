@@ -10,19 +10,33 @@ const measures = [];
 const issues = Array.from({length:8}, (_,i)=>({key:'FCRM-' + (i+1),fields:{summary:'Задача ' + (i+1)}}));
 issues[0].fields.components = [{name:'Платформа'}];
 issues[0].fields.labels = ['fcrm_umb_epic'];
+issues[0].fields.issuetype = {name:'Epic'};
+issues[0].fields.customfield_20100 = 'OBPROJECT-1';
 issues[6].fields.components = [{name:'Группа A'},{name:'Группа B'}];
 issues[6].fields.issuelinks = [{type:{inward:'Задача проекта'},inwardIssue:{key:'FCRM-1'}}];
 const preferences = new Map();
-let releasePages;
-const pagesMayFinish = new Promise(resolve=>{releasePages=resolve;});
+const gate = () => {
+  let release;
+  const pending = new Promise(resolve => { release=resolve; });
+  return {pending,release};
+};
+let pages = gate();
+const metadata = gate();
+let directReads=0;
+let failedOffset=-1;
 const response = value => ({ok:true,json:async()=>value});
 const fetch = async path => {
   const url=new URL(path,'https://jira.example');
   if (url.pathname.endsWith('/field')) return response([]);
-  if (url.pathname.endsWith('/issue/FCRM-7')) return response(issues[6]);
+  if (url.pathname.endsWith('/issue/FCRM-7')) { directReads++; return response(issues[6]); }
+  if (url.searchParams.get('jql')?.startsWith('key in (OBPROJECT-1)')) {
+    await metadata.pending;
+    return response({issues:[{key:'OBPROJECT-1',fields:{summary:'Эпик разработки',status:{name:'В работе'}}}]});
+  }
   const offset=Number(url.searchParams.get('startAt'));
   requests.push(offset);
-  if (offset) await pagesMayFinish;
+  if (offset) await pages.pending;
+  if (offset===failedOffset) return {ok:false,status:503};
   return response({startAt:offset,total:issues.length,issues:issues.slice(offset,offset+2)});
 };
 const source = fs.readFileSync('src/services/strategicDashboard.ts','utf8');
@@ -37,19 +51,46 @@ vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleK
   const dashboard=exportsObj.createStrategicDashboard(()=>renders.push(dashboard.html()),()=>'', 'test');
   dashboard.getState().search='FCRM-7';
   const loading=dashboard.load();
+  const assertSkeleton=html=>{
+    assert.match(html,/ozon-strategy-scroll" aria-busy="true"/);
+    assert.match(html,/ozon-ext-skeleton/);
+    assert.doesNotMatch(html,/data-strategy-path=|\/browse\/FCRM-7|Продолжаем поиск/);
+  };
+  assertSkeleton(dashboard.html());
   await new Promise(setImmediate);
   assert.deepEqual(requests,[0,2,4,6]);
-  assert.ok(renders.some(html=>html.includes('ozon-strategy-preview') && html.includes('Продолжаем поиск')));
-  assert.ok(renders.some(html=>html.includes('ozon-strategy-preview') && html.includes('/browse/FCRM-7')));
+  assert.equal(renders.length,1);
+  assertSkeleton(dashboard.html());
+  assert.match(dashboard.getState().progress,/2 из 8/);
   assert.equal(dashboard.getState().loaded,false);
-  releasePages();
+  assert.equal(directReads,0);
+  pages.release();
+  await new Promise(setImmediate);
+  assertSkeleton(dashboard.html());
+  assert.match(dashboard.getState().progress,/эпиках OBPROJECT/);
+  metadata.release();
   await loading;
   assert.equal(dashboard.getState().issues.length,8);
   assert.equal(dashboard.getState().loaded,true);
-  assert.doesNotMatch(dashboard.html(),/ozon-strategy-preview/);
+  assert.doesNotMatch(dashboard.html(),/aria-busy="true"|ozon-ext-skeleton/);
   assert.match(dashboard.html(),/FCRM-7/);
+  assert.match(dashboard.html(),/Эпик разработки/);
   assert.match(dashboard.html(),/1 задача по фильтрам/);
   assert.equal(measures.length,3);
+  assert.equal(renders.length,2);
+
+  pages=gate();
+  failedOffset=4;
+  const refresh=dashboard.load();
+  await new Promise(setImmediate);
+  assertSkeleton(dashboard.html());
+  pages.release();
+  await refresh;
+  assert.match(dashboard.html(),/Показан последний загруженный список/);
+  assert.match(dashboard.html(),/FCRM-7/);
+  assert.doesNotMatch(dashboard.html(),/ozon-ext-skeleton/);
+  assert.equal(dashboard.getState().issues.length,8);
+  failedOffset=-1;
 
   const groupPath = name => 'component:' + encodeURIComponent(name);
   const firstGroup = groupPath('Группа A');
@@ -92,5 +133,5 @@ vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleK
   events.change();
   assert.doesNotMatch(dashboard.html(),/ozon-strategy-component-group/);
   assert.match(dashboard.html(),/data-strategy-path="FCRM-1\|FCRM-7"/);
-  console.log('Strategy checks passed: progressive loading, exact search and component grouping with hierarchy and filters.');
+  console.log('Strategy checks passed: skeleton through initial load and refresh, retry fallback, exact search and component grouping.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

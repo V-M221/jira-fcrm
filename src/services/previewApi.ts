@@ -125,6 +125,10 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
   ];
   sample.fields.issuelinks=examples.map((example,index) => { const target=toIssue(example); const name=index<3?'В проекте':'Связанная задача'; return {id:String(nextLinkId++),type:{name,outward:name,inward:'Задача проекта'},outwardIssue:{key:target.key,fields:target.fields}}; });
   const mainKeys = new Set(tasks.map(task => task.key));
+  const sampleComments = [
+    {id:'1',author:user,created:'2026-11-19T13:30:00+0300',body:'Уточнили сценарий с командой поддержки. Обновлённое описание можно проверить в задаче.'},
+    {id:'2',author:demoUsers.find(member => member !== user) || user,created:'2026-11-18T11:00:00+0300',body:'Зафиксировали *основной сценарий* и договорились обсудить исключения отдельно.'},
+  ];
   const json = (body: any, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
   const page = (values: any[], url: URL, property = 'issues') => {
     const startAt = Number(url.searchParams.get('startAt') || 0);
@@ -407,6 +411,7 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
       if (!issue) return json({ errorMessages: ['В демонстрационных данных этой задачи нет'] }, 404);
       if (match[2] === 'transitions') return json({ transitions: statuses.map(status => ({ id: status.id, name: status.name, to: status })) });
       if (match[2] === 'remotelink') return json(remoteLinks.get(match[1]) || []);
+      if (match[2] === 'comment') return page(match[1] === sample.key || match[1] === tasks[0]?.key ? sampleComments : [],url,'comments');
       return json(issue);
     }
     if (/\/board\/\d+\/sprint$/.test(path)) {
