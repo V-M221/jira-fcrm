@@ -11,7 +11,7 @@ import { bindJiraLabelSuggestions } from '../services/jiraLabelSuggestions';
 import { createJiraGroupingUi } from '../services/jiraGroupingUi';
 import { createJiraPeopleUi } from '../services/jiraPeopleUi';
 
-export const EXTENSION_VERSION = '3.5.180';
+export const EXTENSION_VERSION = '3.5.181';
 
 export function generateManifestJson(config: ExtensionConfig): string {
   const manifest = {
@@ -1463,6 +1463,26 @@ export function generateStylesCss(config: ExtensionConfig): string {
 #ozon-structure-root .ozon-sb-description-preview.is-compact::after {content:'';position:absolute;left:0;right:0;bottom:0;height:24px;background:linear-gradient(transparent,#fff);pointer-events:none}
 #ozon-structure-root .ozon-sb-description-more {margin:0 12px 10px}
 #ozon-structure-root .ozon-sb-link-add {height:24px;padding:2px 8px;font-size:10px;white-space:nowrap}
+.ozon-sb-comments:not([open]) > summary {border-bottom:0;border-radius:10px}
+.ozon-sb-comments > summary {list-style:none}
+.ozon-sb-comments > summary::-webkit-details-marker {display:none}
+.ozon-sb-comments > summary:focus-visible {outline:2px solid #005BFF;outline-offset:-2px}
+.ozon-sb-comments-heading,.ozon-sb-comments-loading {display:flex;align-items:center;gap:6px}
+.ozon-sb-comments:not([open]) .ozon-ext-toolbar-chevron {transform:rotate(-90deg)}
+.ozon-sb-comments-heading [data-comments-count] {color:#576a82}
+.ozon-sb-comments-heading [data-comments-count]:empty {display:none}
+.ozon-sb-comments-content {display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:10px 12px;font-size:12px;color:#576a82}
+.ozon-sb-comments-content > p {margin:0}
+.ozon-sb-comment-list {list-style:none;width:100%;padding:0;margin:0}
+.ozon-sb-comment-list > li {padding:10px 0;border-bottom:1px solid #E2E8F0}
+.ozon-sb-comment-list > li:first-child {padding-top:0}
+.ozon-sb-comment-list > li:last-child {padding-bottom:0;border-bottom:0}
+.ozon-sb-comment-meta {display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px}
+.ozon-sb-comment-meta > .ozon-person-line {min-width:0;color:#071026;font-weight:600}
+.ozon-sb-comment-meta time {font-size:11px}
+.ozon-sb-comment-body {margin-top:5px;color:#071026;line-height:1.5;overflow-wrap:anywhere}
+.ozon-sb-comment-body :is(p,ul,ol,h3) {margin:0 0 4px}
+.ozon-sb-comment-body > :last-child {margin-bottom:0}
 
 /* Форматированное описание задачи (Jira Wiki / Markdown) */
 .ozon-ext-desc-rendered {
@@ -2897,8 +2917,7 @@ export function generateContentScriptJs(
     return 'ACTIVE';
   }
 
-  function getSprintStateLabelRu(sprintName) {
-    const code = getSprintStateCode(sprintName);
+  function getSprintStateLabelRu(code) {
     if (code === 'CLOSED') return 'Прошедший';
     if (code === 'ACTIVE') return 'Активный';
     if (code === 'FUTURE') return 'Будущий';
@@ -2908,15 +2927,15 @@ export function generateContentScriptJs(
   function formatSprintWithStateText(sprintName) {
     if (!sprintName) return 'Не в спринте';
     const clean = String(sprintName).trim();
-    const label = getSprintStateLabelRu(clean);
+    const label = getSprintStateLabelRu(getSprintStateCode(clean));
     if (!label) return clean;
     if (clean.includes('(' + label + ')')) return clean;
     return clean + ' (' + label + ')';
   }
 
-  function getSprintStateBadgeHtml(sprintName) {
-    const label = getSprintStateLabelRu(sprintName);
-    return label ? renderBadge(escapeHtml(label), getSprintStateCode(sprintName).toLowerCase()) : '';
+  function getSprintStateBadgeHtml(sprintName, code = getSprintStateCode(sprintName)) {
+    const label = getSprintStateLabelRu(code);
+    return label ? renderBadge(escapeHtml(label), code.toLowerCase()) : '';
   }
 
   const DEFAULT_COLUMNS_META = [
@@ -7617,6 +7636,8 @@ export function generateContentScriptJs(
 
           </div>
 
+          \${taskDetailsSidebar.commentsHtml(task.key)}
+
           <!-- АККОРДЕОН 3: СВЯЗИ «ЗАДАЧА ПРОЕКТА» -->
           <div class="ozon-ext-section-card">
             <div class="ozon-ext-section-head \${isPtCollapsed ? 'collapsed' : ''}" data-action="toggle-sb-section" data-sec="pt">
@@ -8214,7 +8235,14 @@ export function generateContentScriptJs(
     bindSearch: bindTicketSearchEvents,
     afterBind: positionSidebarPickers,
     bindControls: bindSharedTaskControls,
-    enhance: root => { layoutTaskAttributes(root); compactInProjectLinkRows(root); }
+    enhance: root => { layoutTaskAttributes(root); compactInProjectLinkRows(root); },
+    escape: escapeHtml,
+    commentAuthor: author => {
+      const person = jiraPeople.fromJira(author, 'Автор неизвестен');
+      return jiraPeople.badge(person) + jiraPeople.copyButton(person);
+    },
+    commentBody: renderAnswerMarkup,
+    formatDate
   });
 
   function renderDashboardNavigation() {
@@ -8244,6 +8272,7 @@ export function generateContentScriptJs(
   }
 
   let visibleMotionSurfaces = new Set();
+  let strategyScrollBeforeLoad = null;
   function animateDashboardSurfaces(root) {
     const next = new Set();
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -8295,8 +8324,10 @@ export function generateContentScriptJs(
       const caret=focusedSearch ? [oldSearch.selectionStart,oldSearch.selectionEnd] : null;
       const sidebarScroll = captureAllScrollPositions();
       const scroll = root.querySelector('.ozon-strategy-scroll');
-      const scrollTop = scroll ? scroll.scrollTop : 0;
-      const scrollLeft = scroll ? scroll.scrollLeft : 0;
+      const loading = strategicDashboard.getState().loading;
+      const scrollPosition = {top:scroll?.scrollTop || 0,left:scroll?.scrollLeft || 0};
+      if (loading && scroll && scroll.getAttribute('aria-busy') !== 'true') strategyScrollBeforeLoad = scrollPosition;
+      const targetScroll = strategyScrollBeforeLoad || scrollPosition;
       root.innerHTML = renderDashboardNavigation() + strategicDashboard.html();
       root.querySelector('.ozon-strategy-dashboard')?.insertAdjacentHTML('beforeend',taskDetailsSidebar.html());
       bindDashboardNavigation(root);
@@ -8306,7 +8337,8 @@ export function generateContentScriptJs(
       restoreAllScrollPositions(sidebarScroll);
       positionSidebarPickers(root);
       const nextScroll = root.querySelector('.ozon-strategy-scroll');
-      if (nextScroll) { nextScroll.scrollTop = scrollTop; nextScroll.scrollLeft = scrollLeft; }
+      if (nextScroll) { nextScroll.scrollTop = targetScroll.top; nextScroll.scrollLeft = targetScroll.left; }
+      if (!loading) strategyScrollBeforeLoad = null;
       if (focusedSearch) {
         const nextSearch=root.querySelector('#ozon-strategy-search');
         nextSearch?.focus({preventScroll:true});
@@ -9613,6 +9645,7 @@ export function generateContentScriptJs(
     const refreshBtn = document.getElementById('ozon-ext-sidebar-refresh');
     if (refreshBtn) {
       refreshBtn.addEventListener('click', () => {
+        taskDetailsSidebar.refreshComments();
         reloadSingleTaskFromJira(selectedTaskKey, true, true);
       });
     }
@@ -10799,7 +10832,7 @@ export function generateContentScriptJs(
         const id = String(rawId || sprintIdByName[name] || '');
         const known = developmentDashboard.getState().sprints.find(sprint => String(sprint.id) === id);
         const rawState = typeof value === 'object' && value.state ? value.state : sprintStateByName[name] || known?.state || '';
-        return {id, name:name || known?.name || '', state:String(rawState).toLowerCase()};
+        return {id, name:name || known?.name || '', state:String(rawState).trim().toLowerCase()};
       }).filter(sprint => sprint.id);
       return sprints.find(sprint => sprint.state === 'active' || sprint.state === 'future') || sprints[0] || null;
     }
@@ -11014,7 +11047,7 @@ export function generateContentScriptJs(
         displayed = isSprint ? options.filter(option => !query || option.name.toLowerCase().includes(query)) : options;
         list.innerHTML = displayed.length ? displayed.map((option,index) => {
           const selected = option.id === current?.id;
-          const details = isSprint ? (option.state ? ' ' + getSprintStateBadgeHtml(option.name) : '') : (option.fields?.status?.name ? getStatusBadgeHtml(option.fields.status.name) : '');
+          const details = isSprint ? getSprintStateBadgeHtml(option.name, (option.state || '').toUpperCase()) : (option.fields?.status?.name ? getStatusBadgeHtml(option.fields.status.name) : '');
           const secondaryText = !isSprint && option.id && (!isAssignee || option.id !== option.name) ? '<small class="ozon-planning-option-key">' + escapeHtml([option.id,...(option.fields?.components || []).map(component => component.name)].filter(Boolean).join(' · ')) + '</small>' : '';
           const row = '<button type="button" class="component-editor-option' + (selected ? ' is-selected' : '') + '" aria-pressed="' + selected + '" data-option="' + index + '"' + (busy ? ' disabled' : '') + '>' + (isAssignee ? jiraPeople.avatar(option.person) : '') + '<span class="ozon-planning-option-text">' + secondaryText + '<span>' + escapeHtml(option.name) + '</span></span>' + details + '</button>';
           return isAssignee && option.person?.login ? '<div class="ozon-person-line">' + row + jiraPeople.copyButton(option.person) + '</div>' : row;
@@ -11102,13 +11135,14 @@ export function generateContentScriptJs(
           }
           if (isSprint) {
             const sprint = planningSprint(issue.fields || {},fields.sprint);
-            current = sprint && /^(active|future)$/.test(sprint.state) ? sprint : empty;
-            currentCell.textContent = current.name;
-            if (sprint?.state === 'closed' && sprint.name) currentCell.textContent += ' · Последний: ' + sprint.name;
+            current = sprint ? {...sprint,name:sprint.name || 'Спринт #' + sprint.id} : empty;
+            const stateBadge = getSprintStateBadgeHtml(current.name, (current.state || '').toUpperCase());
+            currentCell.innerHTML = escapeHtml(current.name) + (stateBadge ? ' ' + stateBadge : '');
             setMessage('Загружаем спринты…');
             const found = await planningSprintOptions(key,issue,sprint);
             if (!panel.isConnected) return;
-            options = [...(current.id ? [current] : []),empty,...found.filter(option => option.id !== current.id)];
+            const editableCurrent = current.id && /^(active|future)$/.test(current.state);
+            options = [...(editableCurrent ? [current] : []),empty,...found.filter(option => option.id !== current.id)];
             setMessage('');
             renderOptions();
           } else if (isAssignee) {

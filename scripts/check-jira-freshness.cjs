@@ -25,4 +25,51 @@ vm.runInContext(edits + sprint + linkedSprint + `
   assert.equal(resolveRealLinkedIssueSprint(issue),'New Sprint');
   assert.equal(resolveIssueSprint({key:'FCRM-1',fields:{}}),'Бэклог FCRM');
 `, context);
-console.log('Fresh Jira values, concurrent edits, and historical sprint selection: OK');
+
+async function renderSprintEditor(fields) {
+  const controls = new Map();
+  const panel = {
+    dataset:{}, style:{}, isConnected:true, setAttribute(){},
+    querySelector(selector) {
+      if (!controls.has(selector)) controls.set(selector,{
+        textContent:'',innerHTML:'',value:'',disabled:true,focus(){},setAttribute(){},addEventListener(){},
+      });
+      return controls.get(selector);
+    },
+  };
+  const globals = {
+    AbortController, planningEditor:null, document:{body:{appendChild(){}},createElement:()=>panel},
+    planningFields:()=>({sprint:'customfield_sprint'}), escapeHtml:String, isEpicIssueType:()=>false,
+    readPlanningIssue:async()=>({fields}), extractAnyRealSprintName:value=>value.name,
+    sprintIdByName:{}, sprintStateByName:{}, developmentDashboard:{getState:()=>({sprints:[]})},
+    planningSprintOptions:async()=>[{id:'75',name:'CS #75',state:'active'}],
+    renderBadge:(label, state)=>'<span class="' + state + '">' + label + '</span>',
+  };
+  vm.runInNewContext(
+    section('  function getSprintStateCode(', '  const DEFAULT_COLUMNS_META') +
+    section('    function planningSprint(', '    function planningEpicKey(') +
+    section('    function openPlanningEditor(', "    document.addEventListener('click', event => {") +
+    "openPlanningEditor('OB-1','sprint');", globals
+  );
+  await new Promise(setImmediate);
+  return {current:controls.get('[data-current]').innerHTML, options:controls.get('[data-list]').innerHTML};
+}
+
+(async()=>{
+  const closed = {id:71,name:'CS #71',state:'closed'};
+  const past = await renderSprintEditor({customfield_sprint:[closed]});
+  assert.match(past.current,/^CS #71 .*Прошедший/);
+  assert.doesNotMatch(past.current,/Бэклог/);
+  assert.doesNotMatch(past.options,/aria-pressed="true"|CS #71/);
+  assert.match(past.options,/Бэклог/);
+
+  const active = await renderSprintEditor({sprint:{id:75,name:'CS #75',state:'active'},closedSprints:[closed]});
+  assert.match(active.current,/^CS #75 .*Активный/);
+  assert.match(active.options,/aria-pressed="true"[^>]*>(?:.|\n)*CS #75/);
+  assert.doesNotMatch(active.options,/CS #71/);
+
+  const backlog = await renderSprintEditor({});
+  assert.equal(backlog.current,'Бэклог');
+  assert.match(backlog.options,/aria-pressed="true"[^>]*>.*Бэклог/);
+  console.log('Fresh Jira values and sprint editor states checked: active, closed and backlog.');
+})().catch(error=>{console.error(error);process.exitCode=1;});
