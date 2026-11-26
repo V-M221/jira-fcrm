@@ -19,14 +19,15 @@ export function createTaskDetailsSidebar(parts: {
     offset:number;
     items:Map<string,Comment>;
     error:boolean;
-    request?:AbortController;
+    countFailed:boolean;
+    request?:{controller:AbortController; countOnly:boolean};
     element?:HTMLDetailsElement;
   };
   let comments:CommentState | undefined;
 
   function resetComments(key?:string, open = false) {
-    comments?.request?.abort();
-    comments = key ? {key,open,total:null,offset:0,items:new Map(),error:false} : undefined;
+    comments?.request?.controller.abort();
+    comments = key ? {key,open,total:null,offset:0,items:new Map(),error:false,countFailed:false} : undefined;
   }
 
   function commentsHtml(key:string) {
@@ -52,21 +53,25 @@ export function createTaskDetailsSidebar(parts: {
     ).join('');
     const message = state.error ? '<p role="alert">Не удалось загрузить комментарии из Jira.</p>' :
       state.total === 0 ? '<p>Комментариев пока нет.</p>' : '';
-    const loading = state.request ? '<span role="status" class="ozon-sb-comments-loading"><span class="ozon-ext-spinner" aria-hidden="true"></span>Загрузка комментариев…</span>' : '';
-    const showAction = state.error || (state.total !== null && state.offset < state.total);
+    const loading = state.request && !state.request.countOnly ? '<span role="status" class="ozon-sb-comments-loading"><span class="ozon-ext-spinner" aria-hidden="true"></span>Загрузка комментариев…</span>' : '';
+    const showAction = state.error || (state.total !== null && state.offset > 0 && state.offset < state.total);
     const action = showAction ? '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-comments-next' +
       (state.request ? ' aria-disabled="true"' : '') + '>' + (state.error ? 'Повторить' : 'Показать ещё') + '</button>' : '';
     content.innerHTML = (rows ? '<ul class="ozon-sb-comment-list">' + rows + '</ul>' : '') + message + loading + action;
     if (focused) (content.querySelector<HTMLElement>('[data-comments-next]') || element.querySelector('summary'))?.focus({preventScroll:true});
   }
 
-  async function loadComments(state:CommentState) {
-    if (state.request) return;
+  async function loadComments(state:CommentState, countOnly = false) {
+    if (state.request) {
+      if (countOnly || !state.request.countOnly) return;
+      state.request.controller.abort();
+    }
     const controller = new AbortController();
-    state.request = controller;
+    const request = {controller,countOnly};
+    state.request = request;
     renderComments(state);
     try {
-      const params = new URLSearchParams({startAt:String(state.offset),maxResults:'20',orderBy:'-created'});
+      const params = new URLSearchParams({startAt:String(state.offset),maxResults:countOnly ? '1' : '20',orderBy:'-created'});
       const response = await fetch('/rest/api/2/issue/' + encodeURIComponent(state.key) + '/comment?' + params, {
         credentials:'same-origin', cache:'no-store', headers:{Accept:'application/json'}, signal:controller.signal,
       });
@@ -77,15 +82,22 @@ export function createTaskDetailsSidebar(parts: {
           (data.startAt != null && data.startAt !== state.offset) || (!data.comments.length && state.offset < data.total)) {
         throw new Error('Unexpected Jira comment page');
       }
-      for (const comment of data.comments) state.items.set(String(comment.id),comment);
-      state.offset += data.comments.length;
       state.total = data.total;
-      state.error = false;
+      if (!countOnly) {
+        for (const comment of data.comments) state.items.set(String(comment.id),comment);
+        state.offset += data.comments.length;
+        state.error = false;
+      }
     } catch {
-      if (!controller.signal.aborted) state.error = true;
+      if (!controller.signal.aborted) {
+        if (countOnly) state.countFailed = true;
+        else state.error = true;
+      }
     } finally {
-      state.request = undefined;
-      renderComments(state);
+      if (state.request === request) {
+        state.request = undefined;
+        renderComments(state);
+      }
     }
   }
 
@@ -97,7 +109,11 @@ export function createTaskDetailsSidebar(parts: {
     function onToggle() {
       if (state.element !== section || comments !== state || !section?.isConnected) return;
       state.open = section.open;
-      if (state.open && state.total === null && !state.error) void loadComments(state);
+      if (state.open) {
+        if (state.offset === 0 && state.total !== 0 && !state.error) void loadComments(state);
+      } else if (state.total === null && !state.countFailed && !state.error) {
+        void loadComments(state,true);
+      }
     }
     section.addEventListener('toggle',onToggle);
     section.addEventListener('click',event => {
