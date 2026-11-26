@@ -107,8 +107,7 @@ function bind(name, context) {
     escapeHtml: filterContext.escapeHtml,
     isCanceledStatus: name => name === 'Отменено',
     isDoneTask: bind('isDoneTask', statusContext),
-    getLinkedProjectGroupMeta: () => ({ iconSvg: '<svg></svg>' }),
-    generatingLinkKeys: new Set(), generationIconHtml: () => '<svg></svg>'
+    getLinkedProjectGroupMeta: () => ({ iconSvg: '<svg></svg>' })
   };
   const indicators = bind('renderDeliveryIndicators', indicatorsContext);
   const mixed = indicators({ inProjectLinks: [
@@ -119,17 +118,14 @@ function bind(name, context) {
   assert.ok(mixed.includes('Бэкенд: все задачи закрыты'));
   assert.ok(mixed.includes('Дизайн: нет задач'));
   assert.equal((indicators({}).match(/indicator absent/g) || []).length, 3);
-  const generation = bind('renderTaskProjectGeneration', indicatorsContext);
   const missingCustomer = bind('renderMissingCustomerIndicator', {});
   assert.equal(missingCustomer({ issueTypeName:'Ошибка' }), '');
   assert.equal(missingCustomer({ issueTypeName:'Bug', customer:{ name:'Не указан' } }), '');
   assert.ok(missingCustomer({ issueTypeName:'Задача', customer:{ name:'Не указан' } }).includes('Нет заказчика'));
   assert.equal(missingCustomer({ issueTypeName:'Задача', customer:{ name:'Анна' } }), '');
-  assert.ok(generation({ key: 'FCRM-1' }).includes('missing'));
-  assert.ok(generation({ key: 'FCRM-1', projectTaskLinks: [{ status: 'Открыто' }] }).includes('linked'));
-  assert.ok(generation({ key: 'FCRM-1', projectTaskLinks: [{ status: 'Отменено' }] }).includes('missing'));
-  indicatorsContext.generatingLinkKeys.add('FCRM-1');
-  assert.ok(generation({ key: 'FCRM-1' }).includes('disabled aria-busy="true"'));
+  assert.ok(!declarations.has('renderTaskProjectGeneration'));
+  assert.ok(!declarations.get('renderSingleTaskRowAndSubrows').includes('data-action="generate-links"'));
+  assert.ok(declarations.get('buildSidebarHtml').includes('data-action="generate-links"'));
   const treeContext = { tasks: [{ key: 'FCRM-1', sprint: 'Sprint 1', component: 'CS' }, { key: 'FCRM-2', component: 'Core' }], getAllSprintOptions: () => ['Sprint 1'], groupByComponentInsideSprint: true };
   const applyLevel = bind('applyTableTreeLevel', treeContext);
   applyLevel('links');

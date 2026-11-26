@@ -20,7 +20,7 @@ export function createDevelopmentPointColumns() {
   return {definitions,matches};
 }
 
-export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (task:any) => void, onBeforeEditor?:()=>void, renderBadge = renderJiraBadge, inferCategory?: (name: string) => string, widgetVersion = '', priorityService?: any, groupingUi?:ReturnType<typeof createJiraGroupingUi>, pointColumns = createDevelopmentPointColumns()) {
+export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (task:any, trigger:HTMLElement) => void, onBeforeEditor?:()=>void, renderBadge = renderJiraBadge, inferCategory?: (name: string) => string, widgetVersion = '', priorityService?: any, groupingUi?:ReturnType<typeof createJiraGroupingUi>, pointColumns = createDevelopmentPointColumns()) {
   const teams = [{ id:'cs', name:'CS', boardId:6197,pointsField:'' },{id:'crm_core',name:'CRM_CORE',boardId:7180,pointsField:''},{id:'crm_bo',name:'CRM_BO',boardId:12696,pointsField:''}];
   const groupNames: Record<string, string> = { sprint:'Спринт', project:'Проект', epic:'Epic', stream:'Стрим', component:'Компонент' };
   const groupingStorage = 'ozon-dev-grouping-v1';
@@ -487,7 +487,7 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
     if (/low|низк/i.test(name)) return 3;
     return 4;
   }
-  function taskRows(items: any[], level: number) {
+  function taskRows(items: any[], level: number, groupPath: string) {
     return [...items].sort((a,b) => priorityRank(a.priority || '') - priorityRank(b.priority || '') || a.key.localeCompare(b.key,'ru',{numeric:true})).map(issue => {
       const expanded = state.expandedLinks.has(issue.key) !== (state.depth > state.grouping.length);
       const key = escape(issue.key);
@@ -500,9 +500,9 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
       let html = '<tr data-dev-row="links" class="ozon-dev-task ozon-tree-depth-' + (level % 2) + ' ' + (!issue.epicKey ? 'ozon-dev-no-epic' : issue.category === 'done' ? 'ozon-dev-completed' : '') + '">' + rowCells(values) + '</tr>';
       if (expanded) {
         const links = issue.links.filter((link:any) => link.projectTask);
-        html += links.length ? links.map((link:any) => '<tr class="ozon-dev-related ozon-tree-depth-' + ((level + 1) % 2) + ' ' + (link.category === 'done' ? 'ozon-dev-completed' : '') + '">' + rowCells({
+        html += links.length ? links.map((link:any) => '<tr class="ozon-dev-related ozon-tree-depth-' + ((level + 1) % 2) + ' ' + (link.category === 'done' ? 'ozon-dev-completed' : '') + '" data-details-row="' + escape(JSON.stringify([groupPath, issue.key, link.key])) + '">' + rowCells({
           key:'<div class="ozon-dev-task-key" style="padding-left:' + (level+1)*18 + 'px;"><span style="color:#94A3B8;">↳</span><span class="ozon-ext-link-type-tag" role="img" aria-label="Задача проекта" title="Тип связи: Задача проекта"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg></span>' + issueLink(link.key) + '<span class="ozon-ext-type-pill"><span style="color:#005BFF;">●</span> ' + escape(link.issueType || 'Задача') + '</span><button type="button" class="ozon-dev-priority-edit" data-priority-key="' + escape(link.key) + '" title="Изменить приоритет: ' + escape(link.priority || 'Не указан') + '" aria-label="Изменить приоритет ' + escape(link.key) + '">' + priorityHtml(link.priority || 'Не указан') + '</button></div>',
-          title:'<div class="ozon-dev-task-title"><span class="ozon-dev-ellipsis" title="' + escape(link.summary) + '">' + escape(link.summary) + '</span>' + (/^FCRM-/i.test(link.key) ? '<button class="ozon-ext-btn ozon-ext-btn-surface" data-dev-action="open-fcrm" data-key="' + escape(link.key) + '">Детали</button>' : '') + '</div>',
+          title:'<div class="ozon-dev-task-title"><span class="ozon-dev-ellipsis" title="' + escape(link.summary) + '">' + escape(link.summary) + '</span>' + (/^FCRM-/i.test(link.key) ? '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-dev-action="open-fcrm" data-details-trigger aria-expanded="false" data-key="' + escape(link.key) + '">Детали</button>' : '') + '</div>',
           epic:link.epicKey ? '<div class="ozon-dev-epic-inline" title="' + escape([link.epicKey,link.epicStatus,link.epicTitle].filter(Boolean).join(' · ')) + '">' + issueLink(link.epicKey) + (layout.epicDisplay !== 'key' && link.epicStatus ? badge(link.epicStatus,link.epicCategory) : '') + (layout.epicDisplay === 'full' ? '<span class="ozon-dev-ellipsis">' + escape(link.epicTitle) + '</span>' : '') + '</div>' : '', status:badge(link.status,link.category), sprint:sprintHtml(link.sprint), component:'<span class="ozon-dev-ellipsis" title="' + escape(link.component || 'Без компонента') + '">' + escape(link.component || 'Без компонента') + '</span>',
         }) + '</tr>').join('') : '<tr class="ozon-dev-related"><td colspan="' + flatColumns().length + '" style="padding-left:' + ((level+1)*18+12) + 'px;color:#D92D20;">Нет связей «Задача проекта» <button class="ozon-ext-btn" data-dev-action="edit-link" data-key="' + key + '">Связать с FCRM</button></td></tr>';
       }
@@ -510,7 +510,7 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
     }).join('');
   }
   function renderGroups(items: any[], level = 0, path = ''): string {
-    if (level >= state.grouping.length) return taskRows(items, level);
+    if (level >= state.grouping.length) return taskRows(items, level, path);
     const dimension = state.grouping[level];
     const groups = new Map<string, any[]>();
     items.forEach(issue => {
@@ -897,7 +897,7 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
       if (action === 'toggle-sp') { layout.detailsOpen = button.getAttribute('aria-expanded') !== 'true'; saveLayout(); onRender(); return; }
       if (action === 'column-move') { moveColumn(button.dataset.column!,Number(button.dataset.direction),button.dataset.child === 'true'); return; }
       if (action === 'reset-columns') { layout.order=[...defaultColumnOrder]; layout.children=[...defaultMetricOrder]; layout.hidden=[]; layout.widths={}; layout.detailsOpen=true; saveLayout(); onRender(); return; }
-      if (action === 'open-fcrm') { const link = state.groups.flatMap(group => group.issues).flatMap(issue => issue.links).find(link => link.key === button.dataset.key); if (link) onOpenTask?.(link); return; }
+      if (action === 'open-fcrm') { const link = state.groups.flatMap(group => group.issues).flatMap(issue => issue.links).find(link => link.key === button.dataset.key); if (link) onOpenTask?.(link, button); return; }
       if (action === 'team') { selectTeam(button.dataset.team || ''); return; }
       if (action === 'load') { loadTasks(); return; }
       if (action === 'closed') { loadClosedSprints(); return; }
