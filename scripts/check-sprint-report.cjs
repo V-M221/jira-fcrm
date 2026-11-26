@@ -357,6 +357,57 @@ assert.doesNotMatch(completedHtml,/TEST-6/);
 Object.assign(dashboard.getState(),{section:'scope',scopeFilter:'estimate'});
 assert.match(dashboard.html(),/Переоценили 21 окт<\/td><td>\+3/);
 assert.doesNotMatch(dashboard.html(),/TEST-6/);
+const journalTable = html => html.match(/<table class="ozon-report-tree">.*?<\/table>/)?.[0] || '';
+Object.assign(dashboard.getState(),{report,section:'days',day:'2026-10-19',eventFilter:'all'});
+const eventChoice = new ChartElement();
+eventChoice.closest = () => ({dataset:{reportPickerWidget:'event'}});
+eventChoice.dataset = {reportChoice:'added'};
+const dayChoice = new ChartElement();
+dayChoice.closest = () => ({dataset:{reportPickerWidget:'day'}});
+dayChoice.dataset = {reportChoice:'2026-10-20'};
+section.childLists.set('[data-report-choice]',[eventChoice,dayChoice]);
+dashboard.bind(root);
+eventChoice.listeners.get('click')();
+assert.match(journalTable(dashboard.html()),/TEST-2.*Добавили в спринт/);
+assert.doesNotMatch(journalTable(dashboard.html()),/TEST-1|TEST-3|TEST-4/);
+dayChoice.listeners.get('click')();
+assert.match(dashboard.html(),/В этот день нет событий выбранного типа/);
+assert.equal(dashboard.getState().eventFilter,'added','Changing date keeps the event filter');
+const originalBars = burnBars(dashboard.html());
+eventChoice.dataset.reportChoice = 'estimate-up';
+eventChoice.listeners.get('click')();
+const increases = dashboard.html();
+assert.match(journalTable(increases),/TEST-4.*Оценка: 2 → 5/);
+assert.doesNotMatch(journalTable(increases),/TEST-1|TEST-2|TEST-3/);
+assert.deepEqual(burnBars(increases),originalBars,'Event filtering leaves the sprint chart unchanged');
+assert.match(increases,/Перешло в «Готово» <strong>5 SP/);
+eventChoice.dataset.reportChoice = 'estimate-down';
+eventChoice.listeners.get('click')();
+assert.match(dashboard.html(),/В этот день нет событий выбранного типа/);
+section.childLists.delete('[data-report-choice]');
+
+const reportState = dashboard.getState();
+reportState.sprints = [
+  {id:75,name:'CS #75',state:'active',startDate:'2026-11-17T09:00:00+03:00',endDate:'2026-11-30T19:00:00+03:00'},
+  {id:74,name:'CS #74 (03.11–16.11)',state:'closed',startDate:'2026-11-03T09:00:00+03:00',endDate:'2026-11-16T19:00:00+03:00'},
+  {id:175,name:'CS #175',state:'closed',startDate:'2025-11-03T09:00:00+03:00',endDate:'2025-11-16T19:00:00+03:00'}
+];
+reportState.sprint = '75';
+reportState.picker = 'sprint';
+function sprintMatches(query) {
+  reportState.sprintQuery=query;
+  return [...dashboard.html().matchAll(/data-report-choice="(\d+)" aria-selected=/g)].map(match=>match[1]);
+}
+assert.deepEqual(sprintMatches(''),['75','74','175']);
+assert.deepEqual(sprintMatches('#75'),['75']);
+assert.deepEqual(sprintMatches('17.11–30.11'),['75']);
+assert.deepEqual(sprintMatches('3.11.2026'),['74']);
+assert.deepEqual(sprintMatches('2026-11-03'),['74']);
+assert.deepEqual(sprintMatches('CS 03/11'),['74','175']);
+assert.deepEqual(sprintMatches('24.12'),[]);
+assert.match(dashboard.html(),/role="status">Спринты не найдены/);
+Object.assign(reportState,{picker:'',sprintQuery:''});
+
 Object.assign(dashboard.getState(),{report:model.build({...input,pointsField:''}),section:'days',scopeFilter:'all'});
 assert.doesNotMatch(dashboard.html(),/data-report-chart/);
 assert.equal(groupTable(dashboard.html()),undefined);

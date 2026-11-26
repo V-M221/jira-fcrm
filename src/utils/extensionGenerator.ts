@@ -11,7 +11,7 @@ import { bindJiraLabelSuggestions } from '../services/jiraLabelSuggestions';
 import { createJiraGroupingUi } from '../services/jiraGroupingUi';
 import { createJiraPeopleUi } from '../services/jiraPeopleUi';
 
-export const EXTENSION_VERSION = '3.5.181';
+export const EXTENSION_VERSION = '3.5.182';
 
 export function generateManifestJson(config: ExtensionConfig): string {
   const manifest = {
@@ -574,6 +574,10 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-report-sprint-field .ozon-ext-toolbar-label {min-width:0;text-align:left}
 .ozon-report-sprint-field .ozon-ext-toolbar-chevron {margin-left:auto}
 .ozon-report-options {max-height:min(280px,50vh);overflow:auto;overscroll-behavior:contain}
+.ozon-report-options.ozon-report-sprint-options {display:flex;flex-direction:column;overflow:hidden}
+.ozon-report-sprint-options .ozon-report-sprint-search {flex:none;box-sizing:border-box;margin-bottom:4px}
+.ozon-report-sprint-options .ozon-report-option-list {min-height:0;overflow-y:auto;overscroll-behavior:contain}
+.ozon-report-picker-empty {margin:4px 0;padding:6px 8px;color:#52647d;font-weight:400}
 #ozon-structure-root .ozon-report-options .ozon-ext-combo-item {display:flex!important;align-items:center;gap:6px;justify-content:flex-start}
 .ozon-report-options .ozon-ext-combo-item>span:first-child {min-width:0;white-space:normal;overflow-wrap:anywhere}
 .ozon-report-field .ozon-ext-badge,.ozon-report-options .ozon-ext-badge {flex:none}
@@ -614,6 +618,12 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-report-legend {color:#40536e;font-size:12px}.ozon-report-legend>span::before {content:'';display:inline-block;width:18px;border-top:1.5px solid #005bff;vertical-align:middle;margin-right:6px}.ozon-report-legend>span:nth-child(2)::before {border-top:1.25px dashed #7b5ab8}.ozon-report-legend>small {color:#64748b}
 .ozon-report-legend>.ozon-report-burn-legend::before {width:12px;height:8px;border:0;border-radius:2px;background:#6cb99b}
 .ozon-report-daybar,.ozon-report-tools {margin:8px 0 12px}.ozon-report-tools input {width:min(280px,100%)}.ozon-report-filter {display:flex;align-items:center;gap:6px}
+.ozon-report-journal {margin-top:16px}
+.ozon-report-journal h3 {margin:0;font-size:13px}
+.ozon-report-journal .ozon-report-daybar {align-items:flex-end;gap:8px 12px}
+.ozon-report-date-controls {display:flex;align-items:center;gap:4px}
+.ozon-report-date-controls > button {width:28px;height:30px;padding:0;justify-content:center;font-size:15px}
+.ozon-report-journal [data-report-picker="event"] {min-width:148px}
 .ozon-report-projectbar {display:flex;align-items:center;gap:8px;margin:0 0 7px;font-size:12px;color:#334155;font-weight:600}
 .ozon-report-view-options {display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:0 0 8px}
 .ozon-report-view-options .ozon-report-projectbar {margin:0}
@@ -1370,8 +1380,9 @@ export function generateStylesCss(config: ExtensionConfig): string {
   flex-shrink: 0 !important;
   box-shadow: -4px 0 16px rgba(7, 16, 38, 0.05) !important;
 }
-#ozon-structure-root #ozon-ext-sidebar-panel { position:fixed!important;right:0!important;top:0!important;bottom:0!important;height:100vh!important;max-height:100vh!important;z-index:100000!important; }
-#ozon-structure-root #ozon-ext-sidebar-resizer { position:fixed!important;top:0;bottom:0;height:100vh;z-index:100001; }
+#ozon-structure-root #ozon-ext-sidebar-panel { position:fixed!important;right:0!important;top:0!important;bottom:0!important;height:100vh!important;max-height:100vh!important;z-index:100000!important;box-sizing:border-box; }
+#ozon-structure-root #ozon-ext-sidebar-resizer { position:fixed!important;top:0;bottom:0;height:100vh;z-index:100001;touch-action:none; }
+#ozon-structure-root #ozon-ext-sidebar-resizer[hidden] {display:none!important}
 
 .ozon-ext-sidebar-header {
   position: sticky;
@@ -1657,7 +1668,6 @@ export function generateStylesCss(config: ExtensionConfig): string {
 
 #ozon-structure-root .ozon-ext-ip-table-row { min-height:36px!important; }
 #ozon-structure-root .ozon-ext-ip-table-row>div { height:36px;justify-content:flex-start; }
-#ozon-structure-root .ozon-ext-ip-table-row .ozon-ext-search-select-trigger { height:28px!important;min-height:28px!important;max-height:28px!important;padding:2px 8px!important;line-height:20px!important;box-sizing:border-box; }
 #ozon-structure-root .ozon-ext-ip-task-cell { justify-content:flex-start!important;gap:5px!important;flex-wrap:nowrap!important; }
 #ozon-structure-root .ozon-ext-ip-task-cell>.ozon-ext-type-pill,#ozon-structure-root .ozon-ext-ip-task-cell>span[title^="Приоритет"] { flex:0 0 auto!important; }
 #ozon-structure-root .ozon-ext-ip-task-cell>.ozon-ip-summary { flex:1 1 auto;min-width:0; }
@@ -1679,10 +1689,10 @@ export function generateStylesCss(config: ExtensionConfig): string {
 #ozon-structure-root .ozon-ext-ip-table-head>span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0; }
 #ozon-structure-root .ozon-ext-ip-table-row>div { padding-left:4px;padding-right:4px;overflow:hidden; }
 #ozon-structure-root .ozon-ext-ip-table-row>.ozon-ext-sb-combo { overflow:visible; }
-#ozon-structure-root .ozon-ext-ip-table-row .ozon-ext-search-select-trigger { width:100%;min-width:0!important;gap:3px;padding-left:5px!important;padding-right:5px!important; }
-#ozon-structure-root .ozon-ext-ip-table-row .ozon-ext-search-select-trigger > .ozon-ext-badge { margin-left:auto;flex-shrink:0; }
-#ozon-structure-root .ozon-ext-ip-task-cell { flex-wrap:nowrap!important;height:36px!important;min-height:36px;padding-top:0;padding-bottom:0; }
-#ozon-structure-root .ozon-ext-ip-task-cell>.ozon-ip-summary { flex:1 1 auto;min-width:0;white-space:nowrap!important;display:block;overflow:hidden;text-overflow:ellipsis;line-height:20px; }
+#ozon-structure-root .ozon-ext-ip-table-row>:is(.ozon-ext-ip-component-cell,.ozon-ext-ip-sprint-cell) {height:auto;min-height:36px;padding-block:3px;box-sizing:border-box}
+#ozon-structure-root .ozon-ext-ip-status-cell .ozon-ext-badge {white-space:normal;overflow-wrap:anywhere}
+#ozon-structure-root .ozon-ext-ip-task-cell {flex-wrap:wrap!important;height:auto!important;min-height:36px;gap:3px 5px!important;padding-block:4px}
+#ozon-structure-root .ozon-ext-ip-task-cell>.ozon-ip-summary {flex:1 1 100%;min-width:0;white-space:normal!important;overflow-wrap:anywhere;line-height:1.35;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 #ozon-structure-root #ozon-ext-sidebar-panel .ozon-ext-ip-table-row { min-height:36px!important; }
 #ozon-structure-root .ozon-ext-ip-action-cell { flex-wrap:wrap;gap:2px!important; }
 #ozon-structure-root .ozon-link-actions { position:relative;display:inline-flex;flex-shrink:0; }
@@ -1715,8 +1725,7 @@ export function generateStylesCss(config: ExtensionConfig): string {
 #ozon-structure-root .ozon-ext-ip-table-row { padding:0!important;border:0!important;border-bottom:1px solid #E2E8F0!important;border-radius:0!important;background:#fff;min-height:28px; }
 .ozon-ext-ip-table-row:hover { background:#F2F4F8; }
 .ozon-ext-ip-table-row.completed { background:#EFFBF3!important; }
-.ozon-ext-ip-table-row>div { min-width:0;padding:0 6px;height:28px;display:flex;align-items:center;border-right:1px solid #EEF2F6; }
-.ozon-ext-ip-table-row .ozon-ext-search-select-trigger { height:24px!important;min-height:24px!important;font-size:11px!important;border-radius:6px!important; }
+.ozon-ext-ip-table-row>div { min-width:0;padding:0 6px;min-height:28px;display:flex;align-items:center;border-right:1px solid #EEF2F6; }
 .ozon-ext-ip-task-cell>.ozon-ip-summary { min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap!important; }
 .ozon-ext-ip-table-row>.ozon-ext-ip-table-secondary { grid-column:1/-1;height:auto;min-height:20px;border-top:1px solid #EEF2F6;padding-left:28px!important; }
 #ozon-structure-root button.ozon-ext-copy-ref { display:inline-flex;align-items:center;justify-content:center;flex:0 0 18px;width:18px;height:20px;border:0;background:transparent;color:#64748B;padding:2px;cursor:pointer;vertical-align:middle;border-radius:4px; }
@@ -1783,7 +1792,7 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-ext-header-bar > div:first-child { flex:1;flex-wrap:wrap; }
 .ozon-ext-header-bar strong { margin-right:auto; }
 .ozon-ext-header-bar #ozon-ext-show-all-sprints { margin-left:auto; }
-#ozon-structure-root .ozon-ext-sidebar { max-width:calc(100vw - 12px)!important; }
+#ozon-structure-root .ozon-ext-sidebar { max-width:100vw!important; }
 .ozon-ext-sidebar-header { flex-wrap:wrap; }
 .ozon-ext-title-line { flex:0 0 100%;display:flex;align-items:center;gap:6px; }
 .ozon-ext-title-line #ozon-sb-summary:not(:focus) { background:transparent!important;border-color:transparent!important; }
@@ -1796,29 +1805,30 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-sidebar-draft-dialog strong {font-size:15px}.ozon-sidebar-draft-dialog p {color:#526b8c}.ozon-sidebar-draft-dialog div {display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .ozon-sidebar-draft-dialog button {padding:8px 12px;border:1px solid #dbe4ef;border-radius:8px;color:#005bff;background:#fff;cursor:pointer}.ozon-sidebar-draft-dialog button.primary {background:#005bff;color:#fff;border-color:#005bff}
 .ozon-sidebar-more {position:relative}.ozon-sidebar-more summary {list-style:none;cursor:pointer;padding:4px 9px;border-radius:6px;background:#f0f3f8;color:#005bff;font-weight:700}.ozon-sidebar-more summary::-webkit-details-marker {display:none}.ozon-sidebar-more-menu {position:absolute;right:0;top:100%;z-index:20;min-width:180px;display:flex;flex-direction:column;gap:4px;padding:8px;background:#fff;border:1px solid #dbe4ef;border-radius:8px;box-shadow:0 8px 24px #07102626}.ozon-sidebar-more-menu button,.ozon-sidebar-more-menu a {width:auto!important;text-align:left!important}
-#ozon-ext-sidebar-panel {container-type:inline-size}
-@container (max-width: 780px) {
+#ozon-ext-sidebar-panel {container:ozon-sidebar / inline-size}
+@container ozon-sidebar (max-width: 780px) {
   #ozon-structure-root #ozon-ext-sidebar-panel .ozon-ext-attributes-columns {grid-template-columns:minmax(0,1fr)!important}
 }
-@container (max-width: 740px) {
-  #ozon-ext-sidebar-panel .ozon-ext-ip-table-body {min-width:0}
+@container ozon-sidebar (max-width: 820px) {
   #ozon-ext-sidebar-panel .ozon-ext-ip-table-head {display:none!important}
-  #ozon-structure-root #ozon-ext-sidebar-panel .ozon-ext-ip-table-row {grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto!important;grid-auto-rows:auto;gap:3px 6px!important;padding:6px 8px!important;height:auto!important}
-  #ozon-ext-sidebar-panel .ozon-ext-ip-table-row>div {height:auto!important;min-height:26px;border:0;min-width:0}
-  #ozon-ext-sidebar-panel .ozon-ext-ip-table-row>.ozon-ext-ip-task-cell {grid-column:1/3;grid-row:1}
-  #ozon-ext-sidebar-panel .ozon-ext-ip-table-row>.ozon-ext-ip-action-cell {grid-column:3;grid-row:1}
-  #ozon-ext-sidebar-panel .ozon-ext-ip-epic-cell {grid-column:1;grid-row:2}
-  #ozon-ext-sidebar-panel .ozon-ext-ip-status-cell {grid-column:2/-1;grid-row:2;justify-content:flex-end}
-  #ozon-ext-sidebar-panel .ozon-ext-ip-component-cell {grid-column:1;grid-row:3}
-  #ozon-ext-sidebar-panel .ozon-ext-ip-sprint-cell {grid-column:2/-1;grid-row:3}
-  #ozon-ext-sidebar-panel .ozon-ext-ip-table-row>.ozon-ext-sb-combo {display:grid;gap:2px}
-  #ozon-ext-sidebar-panel .ozon-ext-ip-table-row>[data-field-label]::before {content:attr(data-field-label);color:#52647d;font-size:10px}
-  #ozon-ext-sidebar-panel .ozon-ext-ip-table-row>.ozon-ext-ip-table-secondary {grid-column:1/-1}
+  #ozon-structure-root #ozon-ext-sidebar-panel .ozon-ext-ip-table-row {grid-template-columns:minmax(0,1fr) minmax(0,1fr) 82px 24px!important;gap:3px 6px!important;padding:5px 8px!important}
+  #ozon-structure-root #ozon-ext-sidebar-panel .ozon-ext-ip-table-row>div {height:auto!important;min-height:0;border:0;padding-inline:0}
+  .ozon-ext-ip-table-row>.ozon-ext-ip-task-cell {grid-column:1/3;grid-row:1}
+  #ozon-structure-root .ozon-ext-ip-table-row>.ozon-ext-ip-status-cell {grid-column:3;grid-row:1;justify-content:flex-end}
+  #ozon-structure-root .ozon-ext-ip-table-row>.ozon-ext-ip-action-cell {grid-column:4;grid-row:1;justify-content:flex-end}
+  .ozon-ext-ip-table-row>.ozon-ext-ip-component-cell {grid-column:1;grid-row:2}
+  .ozon-ext-ip-table-row>.ozon-ext-ip-sprint-cell {grid-column:2/-1;grid-row:2}
+  .ozon-ext-ip-table-row>.ozon-ext-sb-combo {display:grid;grid-template-columns:auto minmax(0,1fr);gap:5px;align-self:start}
+  .ozon-ext-ip-table-row>[data-field-label]::before {content:attr(data-field-label);color:#52647d;font-size:10.5px}
+  .ozon-ext-ip-table-row>.ozon-ext-ip-epic-cell {grid-column:1/-1;grid-row:3;gap:6px;font-size:11px}
+  .ozon-ext-ip-table-row>.ozon-ext-ip-epic-cell.is-empty {display:none}
+  .ozon-ext-ip-table-row>.ozon-ext-ip-epic-cell::before {content:'Эпик';color:#52647d}
 }
-@container (max-width: 440px) {
+@container ozon-sidebar (max-width: 440px) {
   #ozon-structure-root #ozon-ext-sidebar-panel .ozon-ext-attribute-field {grid-template-columns:minmax(0,1fr);gap:4px}
   #ozon-ext-sidebar-panel .ozon-ext-ip-component-cell,#ozon-ext-sidebar-panel .ozon-ext-ip-sprint-cell {grid-column:1/-1}
-  #ozon-ext-sidebar-panel .ozon-ext-ip-sprint-cell {grid-row:4}
+  #ozon-ext-sidebar-panel .ozon-ext-ip-sprint-cell {grid-row:3}
+  #ozon-ext-sidebar-panel .ozon-ext-ip-epic-cell {grid-row:4}
 }
 .ozon-ext-workflow > div { margin:0!important; }
 #ozon-sb-params-card { border-radius:12px; }
@@ -1863,13 +1873,15 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-ext-create-menu button:hover { background:#eaf2ff!important;border-color:#a8c7ff!important; }
 
 
-#ozon-structure-root #ozon-ext-sidebar-panel .ozon-ext-link-compact-row :is(.ozon-ext-search-select-trigger,.ozon-ext-sb-combo-trigger) {
-  height:30px!important;min-height:30px!important;padding:5px 10px!important;
+#ozon-structure-root #ozon-ext-sidebar-panel .ozon-ext-ip-table-row .ozon-ext-search-select-trigger {
+  box-sizing:border-box;width:100%;min-width:0!important;height:auto!important;min-height:30px!important;max-height:none!important;padding:5px 7px!important;gap:5px;
   border:1px solid #dce3eb!important;border-radius:9px!important;background:#fff!important;
-  box-shadow:none!important;font:500 11.5px var(--ozon-font-sans)!important;
+  box-shadow:none!important;font:500 11.5px/1.35 var(--ozon-font-sans)!important;text-align:left;
 }
-#ozon-structure-root #ozon-ext-sidebar-panel .ozon-ext-link-compact-row [aria-expanded="true"] {border-color:#005bff!important;box-shadow:inset 0 0 0 1px #005bff!important;}
-#ozon-structure-root #ozon-ext-sidebar-panel .ozon-ext-link-compact-row .ozon-ext-search-select-trigger > span:first-child {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
+#ozon-structure-root #ozon-ext-sidebar-panel .ozon-ext-ip-table-row .ozon-ext-search-select-trigger:hover {border-color:#a8c7ff!important;background:#f8fbff!important}
+#ozon-structure-root #ozon-ext-sidebar-panel .ozon-ext-ip-table-row .ozon-ext-search-select-trigger:focus-visible {outline:2px solid #005bff;outline-offset:-2px}
+#ozon-structure-root .ozon-ip-field {display:flex;align-items:center;flex-wrap:wrap;gap:2px 6px;min-width:0;flex:1 1 auto}
+#ozon-structure-root .ozon-ip-field-value {white-space:normal;overflow-wrap:anywhere;min-width:0}
 #ozon-structure-root #ozon-ext-sidebar-panel :is(input[type="text"],input[type="search"]) {
   min-height:30px!important;border-radius:9px!important;border-color:#dce3eb!important;background-color:white!important;
 }
@@ -1948,8 +1960,12 @@ export function generateStylesCss(config: ExtensionConfig): string {
 }
 #ozon-structure-root :is(.ozon-ext-filter-bar,.ozon-strategy-filters,.ozon-report-toolbar,.ozon-report-view-options) :is(button,input,select,a):focus-visible {outline:2px solid #005bff!important;outline-offset:2px}
 #ozon-structure-root #ozon-ext-sidebar-expand {width:28px;padding:0;justify-content:center}
+#ozon-structure-root #ozon-ext-sidebar-expand:focus-visible {outline:2px solid #005bff;outline-offset:2px}
 @media (max-width:820px) {
-  #ozon-structure-root {--ozon-sidebar-standard-limit:calc(100vw - 12px)}
+  #ozon-structure-root {--ozon-sidebar-standard-limit:calc(100vw - 64px)}
+}
+@media (max-width:540px) {
+  #ozon-structure-root #ozon-ext-sidebar-panel {width:100vw!important}
   #ozon-structure-root #ozon-ext-sidebar-expand,#ozon-structure-root #ozon-ext-sidebar-resizer {display:none!important}
 }
 #ozon-structure-root .ozon-dev-sprint-option { display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:9px!important;width:100%;box-sizing:border-box; }
@@ -2661,7 +2677,14 @@ export function generateContentScriptJs(
   let sidebarWidth=rememberedSidebarWidth>=340 && rememberedSidebarWidth<=1040 ? rememberedSidebarWidth : legacySidebarWidth>=800 && legacySidebarWidth<=1040 ? legacySidebarWidth : 900;
   let sidebarExpanded=false;
   function sidebarWidthCss() {
-    return sidebarExpanded ? 'min(1100px,calc(100vw - 12px))' : 'min(' + sidebarWidth + 'px,var(--ozon-sidebar-standard-limit))';
+    return sidebarExpanded ? '100vw' : 'min(' + sidebarWidth + 'px,var(--ozon-sidebar-standard-limit))';
+  }
+  function sidebarExpandIcon(expanded) {
+    const corners = expanded ? 'M3 8h5V3m13 5h-5V3M3 16h5v5m13-5h-5v5' : 'M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5';
+    return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + corners + '"/></svg>';
+  }
+  function sidebarExpandTitle() {
+    return sidebarExpanded ? 'Вернуть обычную ширину' : 'Развернуть сайдбар';
   }
 
   // ПО УМОЛЧАНИЮ ВСЕ СПРИНТЫ И ВСЕ КОМПОНЕНТЫ СВЕРНУТЫ!
@@ -7436,7 +7459,7 @@ export function generateContentScriptJs(
             \${getIssueTypeBadgeHtml(currentIssueType, true)}
           </div>
           <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
-            <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-ext-sidebar-expand" title="\${sidebarExpanded ? 'Вернуть обычную ширину сайдбара' : 'Развернуть сайдбар'}" aria-label="\${sidebarExpanded ? 'Вернуть обычную ширину сайдбара' : 'Развернуть сайдбар'}" aria-pressed="\${sidebarExpanded}"><span aria-hidden="true">\${sidebarExpanded ? '⤡' : '⤢'}</span></button>
+            <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-ext-sidebar-expand" title="\${sidebarExpandTitle()}" aria-label="Развёрнутый сайдбар" aria-pressed="\${sidebarExpanded}">\${sidebarExpandIcon(sidebarExpanded)}</button>
             <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-ext-sidebar-refresh" title="Обновить все" aria-label="Обновить все">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.9-3L4 10"/><path d="M4 4v6h6"/><path d="M4 13a8 8 0 0 0 14.9 3L20 14"/><path d="M20 20v-6h-6"/></svg>
             </button>
@@ -7810,8 +7833,8 @@ export function generateContentScriptJs(
                                                   \${getIssueTypeBadgeHtml(lnk.issueTypeName || 'Задача', true)}
                                                   <button type="button" class="ozon-dev-priority-edit ozon-ext-inner-ctrl" data-priority-key="\${escapeHtml(lnk.key)}" title="Изменить приоритет: \${escapeHtml(lnk.priority || 'Не указан')}" aria-label="Изменить приоритет \${escapeHtml(lnk.key)}">\${getJiraPriorityIconSvg(lnk.priority || 'Medium')}</button>
                                                   \${lnk.storyPoints != null ? '<span class="ozon-ext-badge ozon-ext-badge-todo" title="Story Points">' + escapeHtml(String(lnk.storyPoints)) + ' SP</span>' : ''}
-                                                  <span style="font-weight:600;color:#071026;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="\${escapeHtml(lnk.summary)}">\${escapeHtml(lnk.summary)}</span>
                                                   \${designIcon}
+                                                  <span class="ozon-ip-summary" style="font-weight:600;color:#071026;font-size:11px;" title="\${escapeHtml(lnk.summary)}">\${escapeHtml(lnk.summary)}</span>
                                                   \${
                                                     lnk.epicKey
                                                       ? \`<span class="ozon-mono" style="font-size:9.5px;color:#005BFF;background:#E5F0FF;padding:0 4px;border-radius:4px;flex-shrink:0;" title="Эпик: \${escapeHtml(lnk.epicKey + (lnkEpicClean ? ' — ' + lnkEpicClean : ''))}">\${escapeHtml(lnk.epicKey)}</span>\`
@@ -7828,9 +7851,9 @@ export function generateContentScriptJs(
                                               <!-- Уровень 4: Компактная строка Компонента и Спринта (с дополнительным отступом вправо под заголовком задачи) -->
                                               <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;align-items:center;padding-left:22px;">
                                                 <div class="ozon-ext-sb-combo">
-                                                  <button type="button" class="ozon-ext-search-select-trigger" aria-expanded="\${isThisIpCompOpen}" data-action="open-ip-comp-combo" data-link-idx="\${lIdx}" data-proj="\${escapeHtml(lnkProjKey)}" style="min-height:22px;padding:1px 7px;font-size:10.5px;" title="Компонент проекта \${escapeHtml(lnkProjKey)}">
-                                                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#071026;font-weight:600;">Комп. (\${escapeHtml(lnkProjKey)}): \${escapeHtml(realCompVal)}</span>
-                                                    <span style="color:#64748B;font-size:9px;flex-shrink:0;">⌕▾</span>
+                                                  <button type="button" class="ozon-ext-search-select-trigger" aria-haspopup="dialog" aria-label="Изменить компонент \${escapeHtml(lnk.key)}. Сейчас: \${escapeHtml(realCompVal)}" data-action="open-ip-comp-combo" data-link-idx="\${lIdx}" data-proj="\${escapeHtml(lnkProjKey)}" title="Компонент: \${escapeHtml(realCompVal)}">
+                                                    <span class="ozon-ip-field"><span class="ozon-ip-field-value">\${escapeHtml(realCompVal)}</span></span>
+                                                    <span class="ozon-ext-search-select-caret" aria-hidden="true"></span>
                                                   </button>
                                                   \${
                                                     isThisIpCompOpen
@@ -7856,7 +7879,10 @@ export function generateContentScriptJs(
                                                   }
                                                 </div>
                                                 <div class="ozon-ext-sb-combo" style="position:relative;min-width:0;">
-                                                  <button type="button" class="ozon-ext-search-select-trigger" aria-expanded="\${sbIpSprintOpenIdx === lIdx}" data-action="open-ip-sprint-combo" data-link-idx="\${lIdx}" title="Спринт: \${escapeHtml(realSprintVal)}"><span class="ozon-ext-search-select-value">\${escapeHtml(realSprintVal.replace(/\\s*\\((Активный|Будущий|Прошедший)\\)$/, ""))}</span>\${getSprintStateBadgeHtml(realSprintVal)}<span class="ozon-ext-search-select-caret" aria-hidden="true"></span></button>
+                                                  <button type="button" class="ozon-ext-search-select-trigger" aria-haspopup="dialog" aria-label="Изменить спринт \${escapeHtml(lnk.key)}. Сейчас: \${escapeHtml(formatSprintWithStateText(realSprintVal))}" data-action="open-ip-sprint-combo" data-link-idx="\${lIdx}" title="Спринт: \${escapeHtml(realSprintVal)}">
+                                                    <span class="ozon-ip-field"><span class="ozon-ip-field-value">\${escapeHtml(realSprintVal.replace(/\\s*\\((Активный|Будущий|Прошедший)\\)$/, ""))}</span>\${getSprintStateBadgeHtml(realSprintVal)}</span>
+                                                    <span class="ozon-ext-search-select-caret" aria-hidden="true"></span>
+                                                  </button>
                                                   \${sbIpSprintOpenIdx === lIdx ? '<div class="ozon-ext-combo-popover" style="width:100%;min-width:240px;max-height:280px;overflow:auto;"><input type="search" id="ozon-sb-ip-sprint-search" placeholder="Поиск спринта..." value="' + escapeHtml(sbIpSprintSearchQuery) + '" autocomplete="off" />' + (ipSprintLoadProgress[lnk.key] ? '<div class="ozon-ext-sprint-load">Загружаю...<div class="ozon-ext-sprint-load-track"><div class="ozon-ext-sprint-load-fill" style="--sprint-load:' + ipSprintLoadProgress[lnk.key] + '%"></div></div></div>' : '') + (filteredLinkSprints.length ? filteredLinkSprints.map(sp => '<div class="ozon-ext-combo-item ' + (sp === realSprintVal ? 'active' : '') + '" data-action="pick-ip-sprint" data-link-idx="' + lIdx + '" data-link-key="' + escapeHtml(lnk.key) + '" data-sprint="' + escapeHtml(sp) + '"><span>' + escapeHtml(sp.replace(/\\s*\\((Активный|Будущий|Прошедший)\\)$/, '')) + '</span>' + getSprintStateBadgeHtml(sp) + '</div>').join('') : '<div style="padding:6px 8px;color:#64748b;font-size:11px">Спринты не найдены</div>') + '</div>' : ''}
                                                 </div>
                                               </div>
@@ -8185,8 +8211,8 @@ export function generateContentScriptJs(
     inner.querySelectorAll('.ozon-ext-link-group-header').forEach(group => group.remove());
     headings.innerHTML = '<span>Задача · Приоритет</span><span>Эпик</span><span>Статус</span><span>Компонент</span><span>Спринт</span><span>Действия</span>';
     inner.prepend(headings);
-    const minWidths = [250,105,95,115,146,44];
-    let widths = [330,110,100,136,174,60];
+    const minWidths = [210,88,76,122,206,55];
+    let widths = [340,100,92,145,225,58];
     try { const saved = JSON.parse(localStorage.getItem('ozon-ip-column-widths-v3') || 'null'); if (Array.isArray(saved) && saved.length === 6 && saved.every(value => Number.isFinite(value) && value >= 60)) widths = saved; } catch (_) {}
     const applyWidths = () => {
       inner.style.setProperty('--ozon-ip-columns',widths.map((value,index) => 'minmax(' + minWidths[index] + 'px,' + value + 'fr)').join(' '));
@@ -8214,18 +8240,16 @@ export function generateContentScriptJs(
       if (!left || !actions || !component || !sprint) return;
       const epic = document.createElement('div'); epic.className='ozon-ext-ip-epic-cell';
       const epicRef = Array.from(left.children).find(child => child.tagName === 'SPAN' && String(child.getAttribute('title') || '').startsWith('Эпик:'));
-      if (epicRef) { const key=epicRef.textContent.trim(); const anchor=document.createElement('a'); anchor.href='/browse/'+encodeURIComponent(key); anchor.className='ozon-mono'; anchor.textContent=key; anchor.title=epicRef.title; epic.appendChild(anchor); epicRef.remove(); } else epic.textContent='—';
+      if (epicRef) { const key=epicRef.textContent.trim(); const anchor=document.createElement('a'); anchor.href='/browse/'+encodeURIComponent(key); anchor.target='_blank'; anchor.rel='noopener noreferrer'; anchor.className='ozon-mono'; anchor.textContent=key; anchor.title=epicRef.title; epic.appendChild(anchor); epicRef.remove(); }
+      else { epic.textContent='—'; epic.classList.add('is-empty'); }
       const secondary = Array.from(row.children).filter(child => child !== first && child !== detail);
       const status = document.createElement('div'); status.className='ozon-ext-ip-status-cell'; const badge = actions.querySelector('.ozon-ext-badge');
       if (badge) { status.appendChild(badge); if (/готово|закрыт|done|closed/i.test(badge.textContent)) row.classList.add('completed'); }
-      Array.from(left.children).filter(child => child.tagName === 'SPAN' && child.style.textOverflow === 'ellipsis').forEach(child => child.classList.add('ozon-ip-summary'));
       left.classList.add('ozon-ext-ip-task-cell'); actions.classList.add('ozon-ext-ip-action-cell');
       component.classList.add('ozon-ext-ip-component-cell'); component.dataset.fieldLabel='Компонент';
       sprint.classList.add('ozon-ext-ip-sprint-cell'); sprint.dataset.fieldLabel='Спринт';
       row.classList.add('ozon-ext-ip-table-row'); row.replaceChildren(left,epic,status,component,sprint,actions);
       secondary.forEach(child => { child.classList.add('ozon-ext-ip-table-secondary'); row.appendChild(child); });
-      const trigger = component.querySelector('button'); const label = trigger && trigger.querySelector('span');
-      if (label) { label.textContent = label.textContent.replace(/^.*?: /, ''); trigger.title = 'Компонент: ' + label.textContent; }
     });
   }
 
@@ -8305,6 +8329,8 @@ export function generateContentScriptJs(
       const top = root.querySelector('.ozon-report-scroll')?.scrollTop || 0;
       const tableLeft = root.querySelector('.ozon-report-tree-wrap')?.scrollLeft || 0;
       const rollupLeft = root.querySelector('.ozon-report-rollup-wrap')?.scrollLeft || 0;
+      const sprintSearch = root.querySelector('[data-report-sprint-search]');
+      const sprintCaret = sprintSearch && document.activeElement === sprintSearch ? [sprintSearch.selectionStart,sprintSearch.selectionEnd] : null;
       root.innerHTML = renderDashboardNavigation() + sprintReport.html();
       bindDashboardNavigation(root);
       sprintReport.bind(root);
@@ -8313,6 +8339,11 @@ export function generateContentScriptJs(
       const rollup = root.querySelector('.ozon-report-rollup-wrap');
       if (tree) tree.scrollLeft = tableLeft;
       if (rollup) rollup.scrollLeft = rollupLeft;
+      if (sprintCaret) {
+        const nextSearch = root.querySelector('[data-report-sprint-search]');
+        nextSearch?.focus({preventScroll:true});
+        if (sprintCaret[0] !== null && sprintCaret[1] !== null) nextSearch?.setSelectionRange(...sprintCaret);
+      }
       if (scroll) scroll.scrollTop = top;
       animateDashboardSurfaces(root);
       return;
@@ -9604,31 +9635,52 @@ export function generateContentScriptJs(
 
     const sbResizer = document.getElementById('ozon-ext-sidebar-resizer');
     const sbPanel = document.getElementById('ozon-ext-sidebar-panel');
+    const expandBtn = sbPanel?.querySelector('#ozon-ext-sidebar-expand');
+    function applySidebarWidth() {
+      const width = sidebarWidthCss();
+      if (sbPanel) sbPanel.style.width = width;
+      if (sbResizer) {
+        sbResizer.style.right = width;
+        sbResizer.hidden = sidebarExpanded;
+      }
+    }
+    applySidebarWidth();
     if (sbResizer && sbPanel) {
-      sbResizer.style.right = sidebarWidthCss();
-      sbResizer.addEventListener('mousedown', (e) => {
-        e.preventDefault();
+      // Product backlog keeps the resize handle when it replaces the sidebar content.
+      sbResizer.onpointerdown = (event) => {
+        if (event.button !== 0 || !event.isPrimary || sidebarExpanded) return;
+        event.preventDefault();
+        sbResizer.setPointerCapture(event.pointerId);
         sbResizer.classList.add('active');
 
-        function onMove(moveEv) {
-          sidebarExpanded=false;
-          sidebarWidth=Math.max(340,Math.min(1040,window.innerWidth-moveEv.clientX));
-          sbPanel.style.width=sidebarWidthCss();
-          sbResizer.style.right=sidebarWidthCss();
+        function onMove(move) {
+          if (move.pointerId !== event.pointerId) return;
+          sidebarWidth = Math.max(340,Math.min(1040,window.innerWidth-move.clientX));
+          applySidebarWidth();
         }
 
-        function onUp() {
+        function onRelease(release) {
+          if (release.pointerId !== event.pointerId) return;
+          sbResizer.removeEventListener('pointermove',onMove);
+          sbResizer.removeEventListener('lostpointercapture',onRelease);
           sbResizer.classList.remove('active');
           try {
             localStorage.setItem(STORAGE_KEY_SIDEBAR_W, String(sidebarWidth));
           } catch (err) {}
-          renderStructure();
-          window.removeEventListener('mousemove', onMove);
-          window.removeEventListener('mouseup', onUp);
         }
 
-        window.addEventListener('mousemove', onMove);
-        window.addEventListener('mouseup', onUp);
+        sbResizer.addEventListener('pointermove',onMove);
+        sbResizer.addEventListener('lostpointercapture',onRelease);
+      };
+    }
+    if (expandBtn) {
+      expandBtn.addEventListener('click', () => {
+        sidebarExpanded = !sidebarExpanded;
+        applySidebarWidth();
+        expandBtn.title = sidebarExpandTitle();
+        expandBtn.setAttribute('aria-pressed',String(sidebarExpanded));
+        expandBtn.innerHTML = sidebarExpandIcon(sidebarExpanded);
+        positionSidebarPickers(root);
       });
     }
 
@@ -9729,20 +9781,6 @@ export function generateContentScriptJs(
         } catch (error) { showSaveToast(error.message); button.disabled = false; }
       });
     });
-
-    const expandBtn = document.getElementById('ozon-ext-sidebar-expand');
-    if (expandBtn) {
-      expandBtn.addEventListener('click', () => {
-        sidebarExpanded=!sidebarExpanded;
-        if (sbPanel) sbPanel.style.width=sidebarWidthCss();
-        if (sbResizer) sbResizer.style.right=sidebarWidthCss();
-        const caption=sidebarExpanded ? 'Вернуть обычную ширину сайдбара' : 'Развернуть сайдбар';
-        expandBtn.setAttribute('aria-label',caption);
-        expandBtn.setAttribute('title',caption);
-        expandBtn.setAttribute('aria-pressed',String(sidebarExpanded));
-        expandBtn.firstElementChild.textContent=sidebarExpanded ? '⤡' : '⤢';
-      });
-    }
 
     // Сворачивание / разворачивание секций-аккордеонов в сайдбаре (с сохранением позиции скролла!)
     root.querySelectorAll('[data-action="toggle-description-length"]').forEach((button) => {
