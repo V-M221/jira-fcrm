@@ -11,7 +11,7 @@ import { bindJiraLabelSuggestions } from '../services/jiraLabelSuggestions';
 import { createJiraGroupingUi } from '../services/jiraGroupingUi';
 import { createJiraPeopleUi } from '../services/jiraPeopleUi';
 
-export const EXTENSION_VERSION = '3.5.182';
+export const EXTENSION_VERSION = '3.5.183';
 
 export function generateManifestJson(config: ExtensionConfig): string {
   const manifest = {
@@ -378,7 +378,7 @@ export function generateStylesCss(config: ExtensionConfig): string {
 #ozon-ext-main-table th[data-col="task"] {left:0;z-index:24!important;box-shadow:3px 0 6px #07102610}
 #ozon-ext-main-table .ozon-ext-task-cell {position:sticky;left:0;z-index:2;background:#fff;box-shadow:3px 0 6px #07102610}
 #ozon-ext-main-table .ozon-ext-subrow .ozon-ext-task-cell {background:#fafbfd}
-#ozon-ext-main-table tr.ozon-tree-depth-1:not(.selected) .ozon-ext-task-cell {background:#edf4ff}
+#ozon-ext-main-table tr.ozon-tree-depth-1 .ozon-ext-task-cell {background:#edf4ff}
 #ozon-ext-main-table tr:hover .ozon-ext-task-cell {background:#f2f4f8}
 #ozon-ext-main-table tr.selected .ozon-ext-task-cell {background:#ebf3ff}
 .ozon-ext-col-resizer {
@@ -448,9 +448,8 @@ export function generateStylesCss(config: ExtensionConfig): string {
   background: #FFFFFF !important;
   transition: background-color 100ms ease;
 }
-.ozon-ext-task-row.completed:not(.selected) > td,.ozon-ext-subrow.completed > td { background-color:#EFFBF3!important; }
-.ozon-ext-task-row.completed:not(.selected):hover > td,.ozon-ext-subrow.completed:hover > td { background-color:#E0F5E8!important; }
-.ozon-ext-task-row.completed.selected > td { background-color:#DDF4E5!important; }
+.ozon-ext-task-row.completed > td,.ozon-ext-subrow.completed > td { background-color:#EFFBF3!important; }
+.ozon-ext-task-row.completed:hover > td,.ozon-ext-subrow.completed:hover > td { background-color:#E0F5E8!important; }
 .ozon-ext-status-summary { display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap; }
 .ozon-ext-status-count { color:#64748B;font-size:10px;font-weight:400;white-space:nowrap; }
 .ozon-ext-status-count + .ozon-ext-status-count::before { content:'·';margin-right:8px;color:#CBD5E1; }
@@ -468,8 +467,8 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-strategy-table th .ozon-dev-col-resizer {position:absolute;right:0;top:0;bottom:0;width:8px;cursor:col-resize;z-index:3}.ozon-strategy-filters {flex-wrap:wrap}.ozon-strategy-table tbody tr:hover td { background:#f5f9ff; }.ozon-strategy-table .ozon-strategy-group td { background:#f1f5f9;font-weight:700; }
 .ozon-strategy-table a { color:#005bff;text-decoration:none; }.ozon-strategy-type,.ozon-strategy-key { display:flex;align-items:center;gap:5px;min-width:0; }.ozon-strategy-type span { overflow:hidden;text-overflow:ellipsis; }
 .ozon-strategy-table tbody tr.ozon-strategy-depth-1 td {background:#edf4ff;}
-#ozon-ext-tbody tr.ozon-tree-depth-1:not(.completed):not(.selected) > td,.ozon-dev-table tbody tr.ozon-tree-depth-1:not(.ozon-dev-completed):not(.ozon-dev-no-epic) > td {background-color:#edf4ff;}
-#ozon-ext-tbody tr.ozon-tree-depth-1:not(.completed):not(.selected):hover > td,.ozon-dev-table tbody tr.ozon-tree-depth-1:not(.ozon-dev-completed):not(.ozon-dev-no-epic):hover > td {background-color:#e4efff;}
+#ozon-ext-tbody tr.ozon-tree-depth-1:not(.completed) > td,.ozon-dev-table tbody tr.ozon-tree-depth-1:not(.ozon-dev-completed):not(.ozon-dev-no-epic) > td {background-color:#edf4ff;}
+#ozon-ext-tbody tr.ozon-tree-depth-1:not(.completed):hover > td,.ozon-dev-table tbody tr.ozon-tree-depth-1:not(.ozon-dev-completed):not(.ozon-dev-no-epic):hover > td {background-color:#e4efff;}
 .ozon-strategy-indent {display:inline-block;box-sizing:border-box;color:#7692b7;text-align:right;padding-right:4px;vertical-align:middle;overflow:hidden;white-space:nowrap;}
 .ozon-strategy-epic-relation {display:inline-flex;align-items:center;border-radius:4px;padding:1px 4px;background:#edf2ff;color:#526ab2;font-size:10px;line-height:16px;}
 .ozon-strategy-copy-key,.ozon-strategy-link-button {display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;min-width:19px;padding:0;border:0;border-radius:5px;background:transparent;color:#71849d;cursor:pointer;font-size:13px;line-height:1;}
@@ -863,9 +862,8 @@ export function generateStylesCss(config: ExtensionConfig): string {
   background: #F2F4F8 !important;
 }
 
-.ozon-ext-task-row.selected {
-  background: #EBF3FF !important;
-}
+#ozon-structure-root tr.ozon-details-source > td { background-color:#E3EFFF!important; }
+#ozon-structure-root tr.ozon-details-source > td:first-child { box-shadow:inset 3px 0 #005BFF; }
 
 .ozon-ext-task-row td {
   padding: 0 6px !important;
@@ -1029,7 +1027,7 @@ export function generateStylesCss(config: ExtensionConfig): string {
   border-color: #005BFF !important;
 }
 
-.ozon-ext-open-sb-btn.active {
+#ozon-structure-root [data-details-trigger][aria-expanded="true"] {
   background: #005BFF !important;
   border-color: #005BFF !important;
   color: #FFFFFF !important;
@@ -1849,12 +1847,10 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-ext-delivery-indicator.absent { color:#94A3B8;background:#F1F5F9; }
 .ozon-ext-delivery-indicator.done { color:#008A52;background:#DCFCE7; }
 .ozon-ext-delivery-indicator.active { color:#005BFF;background:#E5F0FF; }
-#ozon-structure-root .ozon-ext-btn.ozon-ext-project-generation { width:24px;height:24px;padding:4px;flex-shrink:0; }
-#ozon-structure-root .ozon-ext-btn.ozon-ext-project-generation.linked { color:#008A52!important;background:#DCFCE7!important;border-color:#B5E8CA!important; }
-#ozon-structure-root .ozon-ext-btn.ozon-ext-project-generation.missing { color:#D92D20!important;background:#FFF0EE!important;border-color:#FFCCC7!important; }
 .ozon-ext-field-grid details summary { cursor:pointer;color:#005bff;font-size:10px; }
 .ozon-ext-sidebar-header .ozon-ext-btn-surface,.ozon-ext-filter-bar .ozon-ext-btn-surface { background:white!important;color:#005bff!important;border:1px solid #dbe4ef!important; }
-.ozon-ext-open-sb-btn:not(.active) { background:white!important;color:#475569!important;border-radius:6px!important; }
+.ozon-ext-open-sb-btn[aria-expanded="false"] { background:white!important;color:#475569!important;border-radius:6px!important; }
+.ozon-strategy-task-line > .ozon-ext-open-sb-btn { margin-left:0!important; }
 .ozon-ext-create-overlay { position:fixed;inset:0;z-index:2147482000;background:rgba(15,23,42,.38);display:flex;align-items:center;justify-content:center;padding:18px; }
 .ozon-ext-create-dialog { width:min(520px,94vw);max-height:min(82vh,760px);overflow:auto;background:#fff;border:1px solid #dbe4ef;border-radius:12px;box-shadow:0 20px 55px rgba(7,16,38,.24);padding:18px;display:flex;flex-direction:column;gap:12px;color:#071026;font:13px Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
 .ozon-ext-create-dialog strong { font-size:15px; }
@@ -2058,8 +2054,14 @@ export function generateContentScriptJs(
   jiraPeople.bind(document,showSaveToast);
   const bindLabelSuggestions = (${bindJiraLabelSuggestions.toString()});
   const strategicDashboard = (${createStrategicDashboard.toString()})(() => { if (activeDashboardView === 'strategy') renderStructure(); }, renderBadge, ${JSON.stringify(EXTENSION_VERSION)}, jiraPriorityService, CONFIG.sprintFieldId, { boardId:CONFIG.rapidViewId, components:()=>loadIssueCreateComponents(CONFIG.projectKey), create:(summary,componentId)=>createIssueFromSidebar({kind:'epic',projectKey:CONFIG.projectKey,summary,componentId}), link:(source,target)=>createIssueLinkInJira(source,target,'projectTask',true,true), notify:(message)=>{ const update=showLinksSnackbar(message); update(message); }, details:openSharedFcrmDetails, bindLabelSuggestions },jiraGroupingUi);
-  async function openSharedFcrmDetails(link) {
+  async function openSharedFcrmDetails(link, button) {
     if (!/^FCRM-[0-9]+$/i.test(link.key)) return;
+    const source = getSidebarSource(button);
+    if (isSidebarOpen && selectedTaskKey === link.key) {
+      sidebarSource = source;
+      renderStructure();
+      return;
+    }
     if (isSidebarOpen && selectedTaskKey !== link.key && !await confirmSidebarExit()) return;
     if (!tasks.some(task => task.key === link.key)) tasks.push({
       key:link.key,summary:link.summary || link.key,description:'',status:link.status || 'todo',priority:link.priority || 'Средний',issueTypeName:link.issueType || 'Задача',
@@ -2067,6 +2069,7 @@ export function generateContentScriptJs(
       assignee:{name:'Не назначен'},customer:{name:'Не указан'},projectTaskLinks:[],inProjectLinks:[],otherLinks:[]
     });
     developmentDashboard.dismissEditor();
+    sidebarSource = source;
     selectedTaskKey = link.key; isSidebarOpen = true; isEditingDescription = false; collapsedSidebarSections.pt = true;
     reloadSingleTaskFromJira(link.key,true,true);
   }
@@ -2550,13 +2553,6 @@ export function generateContentScriptJs(
     return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m10 13 4-4M8 16l-1 1a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0M16 8l1-1a4 4 0 0 1 6 6l-4 4a4 4 0 0 1-6 0" transform="translate(1 1) scale(.85)"/><path d="m19 2 1 2 2 1-2 1-1 2-1-2-2-1 2-1Z"/></svg>';
   }
 
-  function renderTaskProjectGeneration(task) {
-    const linked = (task.projectTaskLinks || []).some(link => !isCanceledStatus(link.status));
-    const busy = generatingLinkKeys.has(task.key);
-    const title = (linked ? 'Задача проекта есть' : 'Нет Задачи проекта') + ' · Сгенерировать связи';
-    return '<button type="button" class="ozon-ext-btn ozon-ext-inner-ctrl ozon-ext-project-generation ' + (linked ? 'linked' : 'missing') + '" data-action="generate-links" data-task-keys="' + escapeHtml(task.key) + '" ' + (busy ? 'disabled aria-busy="true"' : '') + ' title="' + title + '" aria-label="' + title + '">' + (busy ? '<span class="ozon-ext-spinner"></span>' : generationIconHtml()) + '</button>';
-  }
-
   function renderMissingCustomerIndicator(task) {
     if (/^(ошибка|bug)$/i.test(String(task.issueTypeName || '').trim())) return '';
     const customer = task.customer || {};
@@ -2605,6 +2601,7 @@ export function generateContentScriptJs(
   let productExpandedGroups = {};
   let selectedTaskKey = null;
   let isSidebarOpen = false;
+  let sidebarSource = null;
   function syncStrategyIssue(raw) {
     const issue = raw?.key && strategicDashboard.getState().issues.find((item) => item.key === raw.key);
     if (!issue?.fields || !raw.fields) return;
@@ -6577,8 +6574,8 @@ export function generateContentScriptJs(
     return html;
   }
 
-  function renderSingleTaskRowAndSubrows(task, allComponents, allSprints, allAssignees, epicMap, epicKeys, treeDepth = 0) {
-    const isSelected = isSidebarOpen && task.key === selectedTaskKey;
+  function renderSingleTaskRowAndSubrows(task, allComponents, allSprints, allAssignees, epicMap, epicKeys, groupPath) {
+    const treeDepth = groupPath.length;
     const ptList = (task.projectTaskLinks || []).filter((l) => !isCanceledStatus(l.status));
     const ipList = (task.inProjectLinks || []).filter((l) => !isCanceledStatus(l.status));
     const totalLinks = ptList.length + ipList.length;
@@ -6892,10 +6889,9 @@ export function generateContentScriptJs(
             <button type="button" class="ozon-dev-priority-edit ozon-ext-inner-ctrl" data-priority-key="\${escapeHtml(task.key)}" title="Изменить приоритет: \${escapeHtml(task.priority || 'Не указан')}" aria-label="Изменить приоритет \${escapeHtml(task.key)}">\${getJiraPriorityIconSvg(task.priority)}</button>
             \${hasNoAssignee ? getMissingAssigneeWarnSvg() : ''}
             <span style="overflow:hidden;text-overflow:ellipsis;color:#071026;font-weight:500;font-size:11.5px;flex:1;min-width:0;">\${escapeHtml(task.summary)}</span>
-            \${renderTaskProjectGeneration(task)}
             \${renderDeliveryIndicators(task)}
             \${renderMissingCustomerIndicator(task)}
-            <button type="button" class="ozon-ext-inner-ctrl ozon-ext-open-sb-btn \${isSelected ? 'active' : ''}" data-action="open-sidebar" data-key="\${escapeHtml(task.key)}" title="Открыть детали задачи \${escapeHtml(task.key)} в боковой панели справа">
+            <button type="button" class="ozon-ext-inner-ctrl ozon-ext-open-sb-btn" data-action="open-sidebar" data-details-trigger aria-expanded="false" data-key="\${escapeHtml(task.key)}" title="Открыть детали задачи \${escapeHtml(task.key)} в боковой панели справа">
               Детали
             </button>
           </div>
@@ -6934,7 +6930,7 @@ export function generateContentScriptJs(
     };
 
     let html = \`
-      <tr class="ozon-ext-task-row ozon-tree-depth-\${treeDepth % 2} \${isDoneTask(task) ? 'completed' : ''} \${isSelected ? 'selected' : ''}" data-key="\${escapeHtml(task.key)}" title="Нажмите на строку, чтобы развернуть/свернуть связанные задачи (или нажмите «◨ Детали» для открытия боковой панели)">
+      <tr class="ozon-ext-task-row ozon-tree-depth-\${treeDepth % 2} \${isDoneTask(task) ? 'completed' : ''}" data-details-row="\${escapeHtml(JSON.stringify([...groupPath, task.key]))}" data-key="\${escapeHtml(task.key)}" title="Нажмите на строку, чтобы развернуть/свернуть связанные задачи (или нажмите «◨ Детали» для открытия боковой панели)">
         \${columnOrder.map((colId) => cellMap[colId] || '<td></td>').join('')}
       </tr>
     \`;
@@ -7055,7 +7051,7 @@ export function generateContentScriptJs(
 
     if (productGroupingOrder.join(',') !== 'sprint,component') {
       const renderGroups = (items, depth, path) => {
-        if (depth >= productGroupingOrder.length) return sortTasksList(items).map((task) => renderSingleTaskRowAndSubrows(task, allComponents, allSprints, allAssignees, epicMap, epicKeys, depth)).join('');
+        if (depth >= productGroupingOrder.length) return sortTasksList(items).map((task) => renderSingleTaskRowAndSubrows(task, allComponents, allSprints, allAssignees, epicMap, epicKeys, path)).join('');
         const field = productGroupingOrder[depth]; const buckets = {};
         items.forEach((task) => {
           const values = field === 'sprint' ? [task.sprint || 'Бэклог FCRM'] : (task.components?.length ? task.components : [task.component || 'Без компонента']);
@@ -7143,13 +7139,13 @@ export function generateContentScriptJs(
 
             if (!isCompCollapsed) {
               compItems.forEach((task) => {
-                rowsHtml += renderSingleTaskRowAndSubrows(task, allComponents, allSprints, allAssignees, epicMap, epicKeys, groupByComponentInsideSprint ? 2 : 1);
+                rowsHtml += renderSingleTaskRowAndSubrows(task, allComponents, allSprints, allAssignees, epicMap, epicKeys, [['sprint', sprintName], ['component', compName]]);
               });
             }
           });
         } else {
           sortTasksList(groupItems).forEach((task) => {
-            rowsHtml += renderSingleTaskRowAndSubrows(task, allComponents, allSprints, allAssignees, epicMap, epicKeys, groupByComponentInsideSprint ? 2 : 1);
+            rowsHtml += renderSingleTaskRowAndSubrows(task, allComponents, allSprints, allAssignees, epicMap, epicKeys, [['sprint', sprintName]]);
           });
         }
       }
@@ -8854,7 +8850,25 @@ export function generateContentScriptJs(
     });
   }
 
+  function getSidebarSource(button) {
+    const row = button?.closest('tr');
+    const id = row?.dataset.detailsRow || row?.dataset.strategyPath;
+    return id ? { view: activeDashboardView, id } : null;
+  }
+
+  function highlightSidebarSource(root) {
+    if (!isSidebarOpen || sidebarSource?.view !== activeDashboardView) return;
+    const attribute = activeDashboardView === 'strategy' ? 'data-strategy-path' : 'data-details-row';
+    const row = root.querySelector('tr[' + attribute + '="' + CSS.escape(sidebarSource.id) + '"]');
+    const button = row?.querySelector('[data-details-trigger]');
+    if (!button) return;
+    row.classList.add('ozon-details-source');
+    button.setAttribute('aria-expanded', 'true');
+    button.setAttribute('aria-controls', 'ozon-ext-sidebar-panel');
+  }
+
   function bindSharedTaskControls(root) {
+    highlightSidebarSource(root);
     root.querySelectorAll('[data-action="generate-links"]').forEach(button => {
       button.addEventListener('click', async event => {
         event.stopPropagation();
@@ -9279,12 +9293,22 @@ export function generateContentScriptJs(
         e.stopPropagation();
         const key = btn.getAttribute('data-key');
         if (!key) return;
+        const source = getSidebarSource(btn);
+        const sameTask = isSidebarOpen && selectedTaskKey === key;
+        if (sameTask && (sidebarSource?.view !== source?.view || sidebarSource?.id !== source?.id)) {
+          sidebarSource = source;
+          activeTableCombo = null;
+          renderStructure();
+          return;
+        }
         if (isSidebarOpen && !await confirmSidebarExit()) return;
         activeTableCombo = null;
-        if (selectedTaskKey === key && isSidebarOpen) {
+        if (sameTask) {
           isSidebarOpen = false;
+          sidebarSource = null;
           renderStructure();
         } else {
+          sidebarSource = source;
           selectedTaskKey = key;
           isSidebarOpen = true;
           isEditingDescription = false;
@@ -9689,6 +9713,7 @@ export function generateContentScriptJs(
       closeBtn.addEventListener('click', async () => {
         if (!await confirmSidebarExit()) return;
         isSidebarOpen = false;
+        sidebarSource = null;
         isEditingDescription = false;
         renderStructure();
       });
