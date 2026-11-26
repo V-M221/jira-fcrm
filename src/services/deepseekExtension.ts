@@ -1,4 +1,5 @@
 import { answerMarkup } from '../utils/answerMarkup';
+import { bindExtensionUpdateMessages, EXTENSION_UPDATE_CACHE_TTL, EXTENSION_UPDATE_MESSAGES, EXTENSION_UPDATE_METADATA_URL } from './extensionUpdate';
 ﻿import {
   completeDeepseekChat,
   DEEPSEEK_AUTHS_URL,
@@ -13,7 +14,9 @@ import { answerMarkup } from '../utils/answerMarkup';
 } from './deepseek';
 
 export function generateBackgroundJs(): string {
-  return `const completeDeepseekChat = ${completeDeepseekChat.toString()};
+  return `(${bindExtensionUpdateMessages.toString()})(chrome, ${JSON.stringify(EXTENSION_UPDATE_MESSAGES)}, ${JSON.stringify(EXTENSION_UPDATE_METADATA_URL)}, ${EXTENSION_UPDATE_CACHE_TTL});
+
+const completeDeepseekChat = ${completeDeepseekChat.toString()};
 const TOKEN_KEY = ${JSON.stringify(DEEPSEEK_TOKEN_STORAGE_KEY)};
 const PROMPT_KEY = ${JSON.stringify(DEEPSEEK_PROMPT_STORAGE_KEY)};
 

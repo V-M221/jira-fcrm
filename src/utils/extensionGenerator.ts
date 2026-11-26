@@ -10,8 +10,9 @@ import { createTaskDetailsSidebar } from '../services/taskDetailsSidebar';
 import { bindJiraLabelSuggestions } from '../services/jiraLabelSuggestions';
 import { createJiraGroupingUi } from '../services/jiraGroupingUi';
 import { createJiraPeopleUi } from '../services/jiraPeopleUi';
+import { createExtensionUpdateNotice, EXTENSION_UPDATE_INTERVAL, EXTENSION_UPDATE_MESSAGES, EXTENSION_UPDATE_ZIP_URL } from '../services/extensionUpdate';
 
-export const EXTENSION_VERSION = '3.5.183';
+export const EXTENSION_VERSION = '3.5.184';
 
 export function generateManifestJson(config: ExtensionConfig): string {
   const manifest = {
@@ -456,6 +457,19 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-ext-view-tabs { display:flex;gap:6px;align-items:center;padding:8px 12px;border-bottom:1px solid #E2E8F0;background:#fff;flex-shrink:0; }
 .ozon-ext-view-tabs button { border:1px solid transparent;border-radius:8px;padding:6px 12px;background:transparent;color:#64748B;font:600 12px var(--ozon-font-sans);cursor:pointer; }
 .ozon-ext-view-tabs button[aria-selected="true"] { color:#005BFF;background:#E5F0FF; }
+#ozon-structure-root .ozon-extension-update { display:block;flex-shrink:0;background:#edf4ff;color:#071026;border-bottom:1px solid #d7e5f8;font-size:12px; }
+#ozon-structure-root .ozon-extension-update > summary { display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 16px;padding:7px 12px;min-height:32px;list-style:none;cursor:pointer; }
+.ozon-extension-update > summary::-webkit-details-marker { display:none; }
+.ozon-extension-update > summary:hover { background:#e5f0ff; }
+.ozon-extension-update > summary:focus-visible { outline:2px solid #005bff;outline-offset:-2px; }
+.ozon-extension-update-versions,.ozon-extension-update-actions { display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px; }
+.ozon-extension-update-versions > span,.ozon-extension-update-content > p { color:#526780; }
+.ozon-extension-update-guide { display:flex;align-items:center;gap:8px;color:#005bff;font-weight:600; }
+.ozon-extension-update[open] .ozon-extension-update-guide .ozon-ext-toolbar-chevron { transform:rotate(180deg); }
+.ozon-extension-update-content { display:grid;gap:8px;padding:0 12px 12px;line-height:1.5; }
+.ozon-extension-update-content > ol { margin:2px 0 0;padding-inline-start:20px; }
+.ozon-extension-update-content > p { margin:0; }
+.ozon-extension-update-actions > a { color:#005bff;font-weight:600; }
 .ozon-product-filter-hint {font-size:11px;color:#64748b;} .ozon-strategy-dashboard { display:flex;flex-direction:column;flex:1;min-height:0;min-width:0;background:#fff;color:#071026;font:400 11.5px var(--ozon-font-sans); }
 .ozon-strategy-actions { display:flex;align-items:center;gap:10px; }
 .ozon-strategy-description { padding:8px 12px;color:#64748b;border-bottom:1px solid #e2e8f0; }
@@ -8265,12 +8279,15 @@ export function generateContentScriptJs(
     formatDate
   });
 
+  const extensionUpdate = (${createExtensionUpdateNotice.toString()})(typeof chrome === 'undefined' ? undefined : chrome.runtime, ${JSON.stringify(EXTENSION_UPDATE_MESSAGES)}, ${JSON.stringify(EXTENSION_UPDATE_ZIP_URL)}, ${EXTENSION_UPDATE_INTERVAL});
+
   function renderDashboardNavigation() {
     const tabs = [['product','Продуктовый бэклог'],['development','Команды разработки'],['strategy','Стратегическое планирование'],['report','Отчёт по спринту']];
     return '<nav class="ozon-ext-view-tabs" role="tablist" aria-label="Представление">' + tabs.map(([view,label]) => '<button type="button" role="tab" data-dashboard-view="' + view + '" aria-selected="' + (activeDashboardView === view) + '">' + label + '</button>').join('') + '</nav>';
   }
 
   function bindDashboardNavigation(root) {
+    extensionUpdate.bind(root);
     root.querySelectorAll('[data-dashboard-view]').forEach(button => button.addEventListener('click', event => {
       event.stopPropagation();
       const view = button.getAttribute('data-dashboard-view');
