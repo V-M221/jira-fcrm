@@ -12,7 +12,7 @@ import { createJiraGroupingUi } from '../services/jiraGroupingUi';
 import { createJiraPeopleUi } from '../services/jiraPeopleUi';
 import { createExtensionUpdateNotice, EXTENSION_UPDATE_INTERVAL, EXTENSION_UPDATE_MESSAGES, EXTENSION_UPDATE_ZIP_URL } from '../services/extensionUpdate';
 
-export const EXTENSION_VERSION = '3.5.186';
+export const EXTENSION_VERSION = '3.5.187';
 
 export function generateManifestJson(config: ExtensionConfig): string {
   const manifest = {
@@ -509,6 +509,7 @@ body.ozon-native-board-visible > :is(.ozon-component-editor,#ozon-thread-sidebar
 .ozon-strategy-label-option {display:flex;align-items:center;gap:8px;min-height:30px;padding:5px 8px;border-radius:6px;box-sizing:border-box;cursor:pointer}
 .ozon-strategy-label-option>span {min-width:0;overflow-wrap:anywhere}
 .ozon-strategy-label-option:hover,.ozon-strategy-label-option:has(input:checked) {background:#eaf3ff}
+.ozon-strategy-component-popover .ozon-strategy-label-option[hidden] {display:none}
 .ozon-strategy-labels { display:flex;align-items:center;gap:4px;overflow:auto;scrollbar-width:thin; }.ozon-strategy-label { display:inline-flex;align-items:center;gap:3px;padding:2px 5px;border-radius:5px;background:#eff4f9;color:#475569; }.ozon-strategy-label button { border:0;background:transparent;color:#64748b;cursor:pointer; }.ozon-strategy-table tr[data-strategy-expandable="true"] { cursor:pointer; }
 .ozon-strategy-table {border-collapse:separate;border-spacing:0}.ozon-strategy-table .ozon-strategy-task-header {position:sticky;left:0;z-index:5}.ozon-strategy-table .ozon-strategy-task-cell {position:sticky;left:0;z-index:1;background:#fff;overflow:visible;box-shadow:3px 0 6px #0710260d}.ozon-strategy-table tbody tr.ozon-strategy-depth-1 .ozon-strategy-task-cell {background:#edf4ff}.ozon-strategy-table tbody tr:hover .ozon-strategy-task-cell {background:#f5f9ff}.ozon-strategy-task-line {display:flex;align-items:center;gap:6px;min-width:0}.ozon-strategy-task-line .ozon-strategy-type,.ozon-strategy-task-line .ozon-strategy-key {flex:none}.ozon-strategy-task-summary {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ozon-strategy-context td {color:#8190a3}.ozon-strategy-context-label,.ozon-strategy-legend {font-size:10px;color:#71839b}.ozon-strategy-relation {font-size:10px;padding:2px 4px;border-radius:4px;background:#e7effb;color:#526b8c}.ozon-strategy-copy-menu {position:relative;flex:none}.ozon-strategy-copy-menu summary {display:flex;align-items:center;cursor:pointer;color:#71849d;list-style:none}.ozon-strategy-copy-menu summary::-webkit-details-marker {display:none}.ozon-strategy-copy-options {position:absolute;top:100%;left:0;z-index:10;width:150px;padding:4px;background:#fff;border:1px solid #dbe4ef;border-radius:8px;box-shadow:0 5px 18px #07102626}.ozon-strategy-copy-options button {display:block;width:100%;padding:7px;border:0;border-radius:4px;background:#fff;color:#071026;text-align:left;cursor:pointer}.ozon-strategy-copy-options button:hover {background:#eaf3ff}.ozon-strategy-theme-scope {display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;color:#64748b}.ozon-strategy-theme-row {display:flex;align-items:flex-start}.ozon-strategy-theme-toggle,.ozon-strategy-theme-toggle-space {flex:none;width:20px;height:28px;border:0;background:transparent;color:#005bff;cursor:pointer}.ozon-strategy-theme-row .ozon-strategy-theme-option {min-width:0;flex:1}
 .ozon-strategy-table td:has(.ozon-strategy-copy-menu[open]) {overflow:visible;z-index:20}.ozon-strategy-copy-menu .ozon-strategy-copy-options {position:fixed;z-index:100;box-sizing:border-box}
@@ -872,6 +873,11 @@ body.ozon-native-board-visible > :is(.ozon-component-editor,#ozon-thread-sidebar
 .ozon-dev-table { width:100%;min-width:1985px;border-collapse:collapse;table-layout:fixed;font:400 11.5px var(--ozon-font-sans); }
 .ozon-dev-table th { position:sticky;top:0;z-index:2;background:#F1F5F9;text-align:left;font-size:11px;color:#475569;height:30px; }
 .ozon-dev-table th,.ozon-dev-table td { border-bottom:1px solid #E2E8F0;border-right:1px solid #EEF2F6;padding:0 6px;vertical-align:middle;white-space:nowrap;height:28px;overflow:hidden;text-overflow:ellipsis; }
+.ozon-dev-table [data-column="key"] { position:sticky;left:0;box-shadow:2px 0 4px #07102614; }
+.ozon-dev-table tbody td[data-column="key"] { z-index:1; }
+.ozon-dev-table :where(tbody) :where(td[data-column="key"]) { background:#fff; }
+.ozon-dev-table tfoot td[data-column="key"] { z-index:4; }
+.ozon-dev-table thead th[data-column="key"] { z-index:5; }
 .ozon-dev-table td>div { max-width:100%;overflow:hidden; }
 .ozon-dev-table .ozon-ext-badge { white-space:nowrap; }
 .ozon-dev-table .ozon-dev-sprint td { background:#F8FAFC;font-weight:600;height:30px;padding:4px 10px; }
