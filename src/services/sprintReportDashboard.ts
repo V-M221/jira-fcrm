@@ -407,7 +407,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     const scope=visibleReport(report);
     const levels=dimensions();
     type PercentageBase = Pick<Report['metrics'],'planned'|'completedPoints'>;
-    const rowPair=(label:string,tasks:Report['rows'],base:PercentageBase,highlight:boolean)=>{
+    const rollupRow=(label:string,tasks:Report['rows'],base:PercentageBase,highlight:boolean)=>{
       const totals=Array.from({length:pointColumns.definitions.length+1},()=>({plan:0,fact:0}));
       for (const task of tasks) {
         const plan=task.started ? task.startPoints ?? 0 : 0;
@@ -421,13 +421,17 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
           totals[index+1].fact+=fact;
         });
       }
-      const cells=(kind:'plan'|'fact',total:number)=>totals.map((column,index)=>{
-        const points=column[kind];
-        return '<td' + (index ? '' : ' class="ozon-report-rollup-total"') + '><div class="ozon-report-rollup-value"><strong>' + escape(amount(points)) + '</strong><small>' + (total ? escape(percent(points/total)) : '—') + '</small></div></td>';
+      const value=(kind:'plan'|'fact',points:number,total:number)=>{
+        const share=total ? percent(points/total) : '—';
+        const measure=kind==='plan' ? 'План' : 'Факт';
+        return '<div class="ozon-report-rollup-value is-' + kind + '" title="' + escape(measure + ' ' + amount(points) + ' SP · ' + share) + '"><strong>' + escape(amount(points)) + '</strong><small>' + escape(share) + '</small></div>';
+      };
+      const cells=totals.map(({plan,fact},index)=>{
+        return '<td' + (index ? '' : ' class="ozon-report-rollup-total"') + '><div class="ozon-report-rollup-pair">' +
+          value('plan',plan,base.planned) + '<span aria-hidden="true">/</span>' + value('fact',fact,base.completedPoints) + '</div></td>';
       }).join('');
       const style=highlight ? ' ozon-report-rollup-highlight' : '';
-      return '<tr class="ozon-report-rollup-row is-plan' + style + '"><th scope="row" rowspan="2" class="ozon-report-rollup-group">' + label + '</th><th scope="row" class="ozon-report-rollup-measure">План</th>' + cells('plan',base.planned) + '</tr>' +
-        '<tr class="ozon-report-rollup-row is-fact' + style + '"><th scope="row" class="ozon-report-rollup-measure">Факт</th>' + cells('fact',base.completedPoints) + '</tr>';
+      return '<tr class="ozon-report-rollup-row' + style + '"><th scope="row" class="ozon-report-rollup-group">' + label + '</th>' + cells + '</tr>';
     };
     const rows=(tasks:Report['rows'],depth:number,path:string[],base:PercentageBase):string=>{
       const dimension=levels[depth];
@@ -438,18 +442,18 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
         const id=JSON.stringify(nextPath);
         const expanded=groupExpanded('rollup',id,depth);
         const toggle=depth+1<levels.length ? groupToggle(id,key || emptyGroups[dimension],expanded,false,'rollup') : '';
-        const label='<div class="ozon-report-tree-line" style="--report-depth:' + depth + '">' + toggle + groupLabel(dimension,key,children[0],levels) + '</div>';
-        return rowPair(label,children,rowBase,depth===0) + (expanded ? rows(children,depth+1,nextPath,rowBase) : '');
+        const label='<div class="ozon-report-tree-line" style="--report-depth:' + depth + '">' + toggle + groupLabel(dimension,key,children[0],levels,true) + '</div>';
+        return rollupRow(label,children,rowBase,depth===0) + (expanded ? rows(children,depth+1,nextPath,rowBase) : '');
       }).join('');
     };
     const route=levels.map(key=>groupNames[key]).join(' → ');
     const tasks=scope.rows.filter(task=>task.started || task.doneAtEnd);
     const headings=pointColumns.definitions.map(([title,hint])=>'<th scope="col" title="' + escape(hint) + '">' + escape(title) + '</th>').join('');
-    return '<details class="ozon-report-streams" data-report-rollup' + (state.rollupOpen ? ' open' : '') + '><summary>План и факт по группам</summary><p>План — SP на старте. Факт — завершённые SP ' + (report.closed ? 'к закрытию' : 'к текущему моменту') + '. Доли в пределах проекта считаются от его плана и факта. Баллы без категории входят в «Всего SP».' +
+    return '<details class="ozon-report-streams" data-report-rollup' + (state.rollupOpen ? ' open' : '') + '><summary>План и факт по группам</summary><p><strong>План / факт.</strong> Слева SP на старте, справа завершённые SP ' + (report.closed ? 'к закрытию' : 'к текущему моменту') + '. Доли в пределах проекта считаются от его плана и факта. Баллы без категории входят в «Всего SP».' +
       (levels.includes('component') ? ' Задача с несколькими компонентами видна в каждом из них. В итоге она учитывается один раз.' : '') + '</p>' +
       (levels.length>1 ? '<div class="ozon-report-rollup-tools">' + depthControl('rollup') + '</div>' : '') +
-      '<div class="ozon-report-table-wrap ozon-report-rollup-wrap"><table aria-label="План и факт по группам"><thead><tr><th scope="col" class="ozon-report-rollup-group">' + escape(route || 'Группы') + '</th><th scope="col" class="ozon-report-rollup-measure">Показатель</th><th scope="col">Всего SP</th>' + headings + '</tr></thead><tbody>' +
-      rows(tasks,0,['rollup'],scope.metrics) + '</tbody><tfoot>' + rowPair(escape(state.project ? 'Всего по ' + state.project : 'Весь спринт'),tasks,scope.metrics,true) + '</tfoot></table></div></details>';
+      '<div class="ozon-report-table-wrap ozon-report-rollup-wrap"><table aria-label="План и факт по группам"><thead><tr><th scope="col" class="ozon-report-rollup-group">' + escape(route || 'Группы') + '</th><th scope="col">Всего SP</th>' + headings + '</tr></thead><tbody>' +
+      rows(tasks,0,['rollup'],scope.metrics) + '</tbody><tfoot>' + rollupRow(escape(state.project ? 'Всего по ' + state.project : 'Весь спринт'),tasks,scope.metrics,true) + '</tfoot></table></div></details>';
   }
 
   const plot={width:960,height:180,left:58,right:40,top:27,bottom:44};
@@ -526,6 +530,18 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
       const barTop=y(cumulativeCompleted);
       return '<rect class="ozon-report-burn-bar' + (day===selected ? ' is-selected' : '') + '" data-report-burn-day="' + escape(report.days[index].date) + '" x="' + (x(day)-barWidth/2) + '" y="' + barTop + '" width="' + barWidth + '" height="' + (axisY-barTop) + '" rx="1"/>';
     }).join('');
+    let previousDeltaRight=-Infinity;
+    const deltas=burnByDay.map(({completed,cumulativeCompleted},index)=>{
+      if (!completed) return '';
+      const label=positive(completed);
+      const column=x(index+1);
+      const halfWidth=label.length*3.5+2;
+      if (column-halfWidth<previousDeltaRight) return '';
+      previousDeltaRight=column+halfWidth;
+      const barTop=y(cumulativeCompleted);
+      const baseline=axisY-barTop>=18 ? Math.max(barTop+13,axisY-12) : barTop-4;
+      return '<text class="ozon-report-burn-delta" data-report-burn-delta="' + escape(report.days[index].date) + '" x="' + column + '" y="' + baseline + '" text-anchor="middle">' + escape(label) + '</text>';
+    }).join('');
     const labels=new Set([0,end]);
     const addLabel=(index:number)=>{
       if ([...labels].every(existing=>Math.abs(x(index)-x(existing))>=45)) labels.add(index);
@@ -547,7 +563,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     return '<div class="ozon-report-graph" data-report-chart><svg viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="' + escape((key ? key + '. ' : '') + 'Объём, остаток и накопительный итог переходов в «Готово». Наведите курсор для просмотра значений или выберите дату над графиком.') + '"><g class="ozon-report-grid">' + gridY + gridX + '</g>' + bars +
       '<path class="ozon-report-axis" d="M' + left + ',' + top + ' V' + axisY + ' H' + (width-right) + '"/><text class="ozon-report-axis-title" x="' + left + '" y="16">' + escape(report.pointsName) + '</text><text class="ozon-report-axis-title" x="' + ((left+width-right)/2) + '" y="' + (height-4) + '" text-anchor="middle">День спринта · МСК</text>' +
       (selected ? '<line class="ozon-report-line-selected" x1="' + x(selected) + '" x2="' + x(selected) + '" y1="' + top + '" y2="' + axisY + '"/>' : '') +
-      '<polyline class="ozon-report-line-scope" points="' + path('scope') + '"/><polyline class="ozon-report-line-remaining" points="' + path('remaining') + '"/>' + dots + pointLabels +
+      '<polyline class="ozon-report-line-scope" points="' + path('scope') + '"/><polyline class="ozon-report-line-remaining" points="' + path('remaining') + '"/>' + dots + pointLabels + deltas +
       '<g data-report-hover visibility="hidden"><line class="ozon-report-line-selected" y1="' + top + '" y2="' + axisY + '"/><circle data-report-dot="remaining" class="ozon-report-remaining-dot" r="5"/><circle data-report-dot="scope" class="ozon-report-scope-dot" r="4"/></g>' +
       '<rect class="ozon-report-graph-hit" x="' + left + '" y="' + top + '" width="' + (width-left-right) + '" height="' + (axisY-top) + '" fill="transparent"/></svg><div class="ozon-report-tooltip" hidden><strong data-tip-date></strong><span data-tip-remaining></span><span data-tip-scope></span><span data-tip-burned></span><span data-tip-reopened></span></div></div>';
   }
@@ -641,10 +657,11 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     return [...groups].sort(([a],[b])=>groupOrder(a,b));
   }
 
-  function groupLabel(dimension:string,key:string,task:TaskGroup,levels:string[]) {
+  function groupLabel(dimension:string,key:string,task:TaskGroup,levels:string[],stacked=false) {
     if (dimension!=='epic' || !key) return '<strong>' + escape(key || emptyGroups[dimension]) + '</strong>';
     const title=task.epicTitle ? '<span class="ozon-report-epic-title" title="' + escape(task.epicTitle) + '">' + escape(task.epicTitle) + '</span>' : '';
     const stream=levels.includes('stream') ? '' : '<span class="ozon-report-stream-chip">' + escape(task.stream || 'Без стрима') + '</span>';
+    if (stacked) return '<div class="ozon-report-rollup-epic"><div class="ozon-report-rollup-epic-meta">' + issueLink(key) + stream + '</div>' + title + '</div>';
     return issueLink(key) + title + stream;
   }
 
@@ -678,7 +695,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
   function assigneeCell(key:string,assigneeName?:string,person?:JiraPerson | null) {
     const name=assigneeName===undefined ? '—' : assigneeName || 'Не назначен';
     const display=person ? people.badge(person) : '<span>' + escape(name) + '</span>';
-    return '<td><div class="ozon-person-line"><button type="button" class="ozon-ext-btn ozon-ext-btn-surface ozon-report-assignee' + (assigneeName ? '' : ' is-empty') + '" data-report-action="edit-assignee" data-key="' + escape(key) + '" aria-label="Изменить исполнителя ' + escape(key) + '" title="' + escape(name) + '">' + display + '<span aria-hidden="true">▾</span></button>' + people.copyButton(person) + '</div></td>';
+    return '<td><div class="ozon-person-line ozon-report-assignee-line"><button type="button" class="ozon-ext-btn ozon-ext-btn-surface ozon-report-assignee' + (assigneeName ? '' : ' is-empty') + '" data-report-action="edit-assignee" data-key="' + escape(key) + '" aria-label="Изменить исполнителя ' + escape(key) + '" title="' + escape(name) + '">' + display + '<span aria-hidden="true">▾</span></button>' + people.copyButton(person) + '</div></td>';
   }
 
   function groupedRows<T>(items:T[], taskFor:(item:T)=>TaskGroup, renderRow:(item:T)=>string, columns:number) {
@@ -779,7 +796,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
       (changes.length ? treeTable(grouped.html,'Что изменилось',report.pointsField ? 'Работа по статусам' : '',true) + more(grouped.visibleCount) :
         '<p class="ozon-report-empty">' + (filter.id === 'all' ? 'В этот день изменений не было.' : 'В этот день нет событий выбранного типа.') + '</p>') + '</section>';
     return '<section class="ozon-report-panel"><h2>Ход спринта</h2>' + plots + journal +
-      (plots ? '<details class="ozon-report-method"><summary>Как читать график</summary><p>Точки показывают состояние на конец дня по МСК. Последняя точка показывает состояние ' + (report.closed ? 'на момент закрытия' : 'на момент обновления') + '. Столбцы показывают накопительную сумму баллов, перешедших в «Готово» с начала спринта. «Готово» означает последнюю колонку доски. Возвраты при переоткрытии показаны отдельно в подсказке.</p></details>' : '') + '</section>';
+      (plots ? '<details class="ozon-report-method"><summary>Как читать график</summary><p>Точки показывают состояние на конец дня по МСК. Последняя точка показывает состояние ' + (report.closed ? 'на момент закрытия' : 'на момент обновления') + '. Столбцы показывают накопительную сумму баллов, перешедших в «Готово» с начала спринта. Подпись на столбце показывает прирост к предыдущему столбцу. «Готово» означает последнюю колонку доски. Возвраты при переоткрытии показаны отдельно в подсказке.</p></details>' : '') + '</section>';
   }
 
   const more = (total:number) => total > state.limit ? '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-report-more>Показать ещё ' + Math.min(60,total-state.limit) + '</button>' : '';
@@ -819,14 +836,15 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
     const report = state.report;
     const visible = report && visibleReport(report);
     const selected = state.sprints.find(sprint=>String(sprint.id)===state.sprint);
-    return '<section class="ozon-report" aria-label="Отчёт по спринту"><header class="ozon-ext-header-bar"><strong>Отчёт по спринту</strong></header><div class="ozon-report-scroll"><div class="ozon-report-inner">' +
+    const heading=report && visible ? '<div class="ozon-report-period"><strong>' + escape(selected?.name || '') + '</strong>' + sprintBadge(report.closed ? 'closed' : 'active') + '<span>Отчёт за ' + shortDate(report.start) + ' — ' + shortDate(report.end) + ' · МСК</span></div>' : '<strong>Отчёт по спринту</strong>';
+    return '<section class="ozon-report" aria-label="Отчёт по спринту"><header class="ozon-ext-header-bar">' + heading + '</header><div class="ozon-report-scroll"><div class="ozon-report-inner">' +
       '<div class="ozon-report-toolbar"><div class="ozon-report-field"><span>Доска</span>' + picker('board','Доска',state.board,boards) + '</div>' +
       '<div class="ozon-report-field ozon-report-sprint-field"><span>Спринт</span>' + picker('sprint','Спринт',state.sprint,sprintOptions(),'Нет спринтов') + '</div>' +
       '<button type="button" class="ozon-ext-btn" data-report-refresh' + (state.loading ? ' disabled' : '') + '>' + (state.error ? 'Повторить' : 'Обновить отчёт') + '</button>' +
       (selected ? '<a class="ozon-ext-btn ozon-ext-btn-surface" href="' + escape(linkToJira()) + '" target="_blank" rel="noopener noreferrer">Отчёт в Jira ↗</a>' : '') + '</div>' +
       (state.loading ? '<div class="ozon-report-banner" role="status">' + spinner() + escape(state.loading) + '</div>' : '') +
       (state.error ? '<div class="ozon-report-banner ozon-report-warning" role="alert">' + escape(state.error) + '</div>' : '') +
-      (report && visible ? '<div class="ozon-report-period"><strong>' + escape(selected?.name || '') + '</strong>' + sprintBadge(report.closed ? 'closed' : 'active') + '<span>Отчёт за ' + shortDate(report.start) + ' — ' + shortDate(report.end) + ' · МСК</span></div>' +
+      (report && visible ?
         (report.warnings.length ? '<ul class="ozon-report-warning">' + report.warnings.map(warning=>'<li>' + escape(warning) + '</li>').join('') + '</ul>' : '') +
         '<div class="ozon-report-view-options">' + projectFilter(report) + '</div>' + overview(visible) + '<div class="ozon-report-sections" role="group" aria-label="Разделы отчёта">' + choices.map(choice=>'<button type="button" class="ozon-ext-btn ' + (state.section === choice.id ? '' : 'ozon-ext-btn-surface') + '" data-report-section="' + choice.id + '" aria-pressed="' + (state.section === choice.id) + '">' + choice.title + '</button>').join('') +
         (groupingUi ? '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface ozon-report-settings-button" data-report-settings="open" aria-haspopup="dialog" aria-expanded="' + Boolean(groupingDraft) + '">Группировка</button>' : '') + '</div>' + projectBreakdown(report) + groupBreakdown(report) + definitions(visible) +

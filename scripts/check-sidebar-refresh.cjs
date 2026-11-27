@@ -68,6 +68,14 @@ function bind(name, context) {
   filterContext.renderBadge = (label,category)=>'<span class="ozon-ext-badge-' + category + '">' + label + '</span>';
   filterContext.getStatusBadgeHtml = bind('getStatusBadgeHtml',filterContext);
   filterContext.getJiraIssueTypeIconSvg = bind('getJiraIssueTypeIconSvg',filterContext);
+  filterContext.projectIssueTypesList = [{name:'История',iconUrl:'/jira/types/story.svg'}];
+  filterContext.location = new URL('https://jit.o3.ru/secure/RapidBoard.jspa');
+  filterContext.URL = URL;
+  filterContext.getJiraIssueTypeIconHtml = bind('getJiraIssueTypeIconHtml',filterContext);
+  const typeBadge = bind('getIssueTypeBadgeHtml',filterContext);
+  assert.match(typeBadge('История'), /src="https:\/\/jit\.o3\.ru\/jira\/types\/story\.svg"/);
+  assert.match(typeBadge('История','/jira/types/custom.svg'), /src="https:\/\/jit\.o3\.ru\/jira\/types\/custom\.svg"/);
+  assert.doesNotMatch(typeBadge('История','https://example.com/icon.svg'), /example\.com/);
   const renderFilter = bind('renderToolbarFilter', filterContext);
   for (const id of ['component', 'epic', 'status', 'issue-type', 'sprint-state', 'sort']) {
     filterContext.activeToolbarFilter = id;

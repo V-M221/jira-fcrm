@@ -12,7 +12,7 @@ import { createJiraGroupingUi } from '../services/jiraGroupingUi';
 import { createJiraPeopleUi } from '../services/jiraPeopleUi';
 import { createExtensionUpdateNotice, EXTENSION_UPDATE_INTERVAL, EXTENSION_UPDATE_MESSAGES, EXTENSION_UPDATE_ZIP_URL } from '../services/extensionUpdate';
 
-export const EXTENSION_VERSION = '3.5.185';
+export const EXTENSION_VERSION = '3.5.186';
 
 export function generateManifestJson(config: ExtensionConfig): string {
   const manifest = {
@@ -114,7 +114,9 @@ export function generateStylesCss(config: ExtensionConfig): string {
   align-items: center !important;
   gap: 6px !important;
   padding: 5px 12px !important;
-  margin-left: 10px !important;
+  position: fixed !important;
+  right: 16px !important;
+  bottom: 16px !important;
   background-color: #E5F0FF !important;
   color: #005BFF !important;
   font-family: var(--ozon-font-sans) !important;
@@ -125,16 +127,16 @@ export function generateStylesCss(config: ExtensionConfig): string {
   cursor: pointer !important;
   transition: background-color 120ms ease !important;
   z-index: 9999 !important;
+  box-shadow: 0 2px 10px #07102622 !important;
 }
 
 #ozon-structure-toggle-btn:hover {
   background-color: #D0E3FF !important;
 }
 
-#ozon-structure-toggle-btn.active {
-  background-color: #005BFF !important;
-  color: #FFFFFF !important;
-}
+#ozon-structure-toggle-btn[hidden],#ozon-structure-root[hidden],
+body.ozon-native-board-visible > :is(.ozon-component-editor,#ozon-thread-sidebar,#ozon-links-snackbars) { display:none!important; }
+#ozon-structure-toggle-btn:focus-visible { outline:2px solid #005BFF;outline-offset:2px; }
 
 #ozon-structure-root {
   position: fixed !important;
@@ -454,9 +456,11 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-ext-status-summary { display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap; }
 .ozon-ext-status-count { color:#64748B;font-size:10px;font-weight:400;white-space:nowrap; }
 .ozon-ext-status-count + .ozon-ext-status-count::before { content:'·';margin-right:8px;color:#CBD5E1; }
-.ozon-ext-view-tabs { display:flex;gap:6px;align-items:center;padding:8px 12px;border-bottom:1px solid #E2E8F0;background:#fff;flex-shrink:0; }
-.ozon-ext-view-tabs button { border:1px solid transparent;border-radius:8px;padding:6px 12px;background:transparent;color:#64748B;font:600 12px var(--ozon-font-sans);cursor:pointer; }
-.ozon-ext-view-tabs button[aria-selected="true"] { color:#005BFF;background:#E5F0FF; }
+.ozon-ext-view-tabs { display:flex;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid #E2E8F0;background:#fff;flex-shrink:0; }
+.ozon-ext-view-tabs > nav {display:flex;gap:6px;align-items:center;min-width:0;overflow-x:auto;}
+.ozon-ext-view-tabs [role="tab"] { border:1px solid transparent;border-radius:8px;padding:6px 12px;background:transparent;color:#64748B;font:600 12px var(--ozon-font-sans);cursor:pointer;white-space:nowrap; }
+.ozon-ext-view-tabs [aria-selected="true"] { color:#005BFF;background:#E5F0FF; }
+.ozon-ext-board-switch {flex:none;white-space:nowrap;}
 #ozon-structure-root .ozon-extension-update { display:block;flex-shrink:0;background:#edf4ff;color:#071026;border-bottom:1px solid #d7e5f8;font-size:12px; }
 #ozon-structure-root .ozon-extension-update > summary { display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 16px;padding:7px 12px;min-height:32px;list-style:none;cursor:pointer; }
 .ozon-extension-update > summary::-webkit-details-marker { display:none; }
@@ -595,8 +599,9 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-report-options .ozon-ext-combo-item>span:first-child {min-width:0;white-space:normal;overflow-wrap:anywhere}
 .ozon-report-field .ozon-ext-badge,.ozon-report-options .ozon-ext-badge {flex:none}
 .ozon-report-toolbar .ozon-ext-btn {min-height:30px}
-.ozon-report-period {display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;margin-bottom:12px}
-.ozon-report-period strong {font-size:18px}.ozon-report-period span:not(.ozon-ext-badge),.ozon-report-hint,.ozon-report-tools>span,.ozon-report-method {color:#52647d}
+.ozon-report-period {display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center}
+#ozon-structure-root .ozon-report-period strong {margin:0;font-size:15px}
+.ozon-report-period span:not(.ozon-ext-badge),.ozon-report-hint,.ozon-report-tools>span,.ozon-report-method {color:#52647d}
 .ozon-report-cards {display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:10px}
 .ozon-report-card {display:grid;text-align:left;align-content:start;gap:6px;border:1px solid #dae4f1;border-radius:12px;padding:13px;background:#fff;color:#071026;font:inherit;cursor:pointer}
 .ozon-report-card:hover {border-color:#84aefb;background:#f8fbff}.ozon-report-card:focus-visible {outline:2px solid #005bff;outline-offset:2px}
@@ -628,6 +633,7 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-report-line-scope,.ozon-report-line-remaining,.ozon-report-line-selected {fill:none;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}
 .ozon-report-line-scope {stroke:#7b5ab8;stroke-width:1.25;stroke-dasharray:5 4}.ozon-report-line-remaining {stroke:#005bff;stroke-width:1.5}.ozon-report-line-selected {stroke:#a9c3e9;stroke-width:1}
 .ozon-report-burn-bar {fill:#6cb99b}.ozon-report-burn-bar.is-selected {fill:#368563}
+.ozon-report-burn-delta {fill:#064b35;font-size:12px;font-weight:700;stroke:#fff;stroke-width:2px;stroke-linejoin:round;paint-order:stroke;pointer-events:none}
 .ozon-report-legend {color:#40536e;font-size:12px}.ozon-report-legend>span::before {content:'';display:inline-block;width:18px;border-top:1.5px solid #005bff;vertical-align:middle;margin-right:6px}.ozon-report-legend>span:nth-child(2)::before {border-top:1.25px dashed #7b5ab8}.ozon-report-legend>small {color:#64748b}
 .ozon-report-legend>.ozon-report-burn-legend::before {width:12px;height:8px;border:0;border-radius:2px;background:#6cb99b}
 .ozon-report-daybar,.ozon-report-tools {margin:8px 0 12px}.ozon-report-tools input {width:min(280px,100%)}.ozon-report-filter {display:flex;align-items:center;gap:6px}
@@ -658,16 +664,20 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-report-streams p {font-size:12px;color:#52647d;margin:0 0 10px}
 .ozon-report-rollup-tools {margin-bottom:10px}
 .ozon-report-rollup-wrap {border:1px solid #e4ecf6;border-radius:8px}
-.ozon-report-rollup-wrap table {min-width:1050px;table-layout:fixed}
-.ozon-report-rollup-wrap .ozon-report-rollup-group {width:215px;position:sticky;left:0;z-index:1;border-right:1px solid #e4ecf6;vertical-align:middle}
-.ozon-report-rollup-wrap .ozon-report-rollup-measure {width:72px;color:#40536e}
+.ozon-report-rollup-wrap table {min-width:1050px;table-layout:auto}
+.ozon-report-rollup-wrap .ozon-report-rollup-group {width:25%;min-width:250px;position:sticky;left:0;z-index:1;border-right:1px solid #e4ecf6;vertical-align:middle}
+.ozon-report-rollup-epic {min-width:0}
+.ozon-report-rollup-epic-meta {display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px}
+.ozon-report-rollup-epic-meta a {white-space:nowrap}
+.ozon-report-rollup-epic .ozon-report-epic-title {display:block;margin-top:3px;white-space:normal;overflow-wrap:anywhere}
 .ozon-report-rollup-wrap thead th {vertical-align:middle}
 .ozon-report-rollup-wrap tbody .ozon-report-rollup-row:not(.ozon-report-rollup-highlight)>th {background:#fff;font-weight:400}
-.ozon-report-rollup-wrap .ozon-report-rollup-highlight td {background:#f1f5fb}
+.ozon-report-rollup-wrap .ozon-report-rollup-highlight :is(th,td) {background:#f1f5fb}
 .ozon-report-rollup-wrap td.ozon-report-rollup-total {background:#eaf2fb}
-.ozon-report-rollup-wrap .ozon-report-rollup-row.is-plan :is(td,.ozon-report-rollup-measure) {border-bottom-color:transparent}
-.ozon-report-rollup-wrap .ozon-report-rollup-row.is-fact :is(.ozon-report-rollup-value,.ozon-report-rollup-measure) {color:#1755aa}
-.ozon-report-rollup-value {display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px;color:#40536e;font-variant-numeric:tabular-nums;font-size:11px;white-space:nowrap}
+.ozon-report-rollup-pair {display:flex;align-items:baseline;gap:5px;white-space:nowrap}
+.ozon-report-rollup-pair > span {color:#748399}
+.ozon-report-rollup-value {display:inline-flex;align-items:baseline;gap:4px;color:#40536e;font-variant-numeric:tabular-nums;font-size:11px}
+.ozon-report-rollup-value.is-fact {color:#1755aa}
 .ozon-report-rollup-value strong {font-size:13px}
 .ozon-report-rollup-value small {color:inherit;font-size:10.5px}
 .ozon-report-settings-button {margin-left:auto}
@@ -708,6 +718,7 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-person-input>input,.ozon-person-line>.ozon-ext-cell-combo-trigger {flex:1;min-width:0}
 .ozon-person-line>.ozon-ext-cell-combo-trigger>.ozon-person {flex:1}
 .ozon-person-line>.ozon-report-assignee,.ozon-person-line>.component-editor-option {flex:1;min-width:0}
+.ozon-report-assignee-line:not(:has(>.ozon-person-copy)) {padding-inline-end:26px}
 .ozon-sb-author {color:#576a82;font-size:10.5px;max-width:min(275px,100%)}
 .ozon-sb-author>span:first-child {flex:none}
 .ozon-grouping-order {display:grid;gap:4px}
@@ -813,6 +824,27 @@ export function generateStylesCss(config: ExtensionConfig): string {
 #ozon-structure-root .ozon-strategy-editor-options button.ozon-ext-combo-item:hover,#ozon-structure-root .ozon-strategy-editor-options button.ozon-ext-combo-item:focus-visible {background:#E5F0FF!important;color:#005BFF!important;}
 #ozon-structure-root .ozon-strategy-editor-options button.ozon-ext-combo-item.active {background:#E5F0FF!important;color:#005BFF!important;box-shadow:inset 3px 0 #005bff!important;font-weight:600;}
 #ozon-structure-root .ozon-strategy-editor-options .ozon-strategy-theme-option {border-left:2px solid #dbe7f6!important;border-radius:0!important;}
+#ozon-structure-root .ozon-strategy-theme-list {overflow-x:hidden}
+.ozon-strategy-theme-row {display:grid;grid-template-columns:20px minmax(0,1fr);gap:5px;align-items:start;margin-bottom:4px}
+#ozon-structure-root .ozon-strategy-theme-list .ozon-strategy-theme-toggle {width:20px;min-height:24px;margin-top:6px;border-radius:5px;padding:0;text-align:center;color:#005bff;background:#eef4ff;cursor:pointer}
+#ozon-structure-root .ozon-strategy-theme-list button.ozon-strategy-theme-option {display:grid!important;grid-template-columns:minmax(0,1fr);justify-content:stretch;min-width:0;gap:4px;padding:7px 9px!important}
+.ozon-strategy-theme-meta {display:flex;align-items:center;flex-wrap:wrap;gap:5px}
+.ozon-strategy-theme-title {font-weight:600;overflow-wrap:anywhere}
+.ozon-strategy-theme-components {color:#52647d;font-size:11px;overflow-wrap:anywhere}
+#ozon-strategy-create-form {display:grid;gap:7px;min-width:0}
+.ozon-strategy-create-form label,.ozon-strategy-create-label {font-weight:600;color:#334155}
+#ozon-structure-root .ozon-strategy-create-form input {width:100%;min-width:0;min-height:34px;padding:7px 10px;border:1px solid #d5e0ef;border-radius:8px;background:#fff;color:#071026;font:inherit}
+#ozon-structure-root .ozon-strategy-create-form :is(input,summary):focus-visible {outline:2px solid #005bff;outline-offset:1px}
+.ozon-strategy-create-label {margin-top:7px}
+.ozon-strategy-create-picker > summary {display:flex;width:100%;list-style:none}
+.ozon-strategy-create-picker > summary::-webkit-details-marker {display:none}
+.ozon-strategy-create-picker[open] .ozon-ext-toolbar-chevron {transform:rotate(180deg)}
+.ozon-strategy-create-options {margin-top:5px;padding:6px;border:1px solid #dce5f0;border-radius:8px;background:#f8fafd}
+#ozon-structure-root .ozon-strategy-create-list {max-height:min(220px,38vh);flex:none}
+#ozon-structure-root .ozon-strategy-create-list [hidden] {display:none!important}
+#ozon-structure-root .ozon-strategy-create-list button[aria-pressed="true"] {background:#e5f0ff!important;color:#005bff!important}
+.ozon-strategy-create-list p {color:#52647d;margin:6px}
+.ozon-strategy-create-actions {display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
 .ozon-dev-cell-edit { display:flex!important;align-items:center;gap:5px;width:100%;max-width:100%;min-width:0;cursor:pointer;border-radius:6px; }
 .ozon-dev-cell-edit:hover { background:#E5F0FF; }
 .ozon-dev-cell-edit>.ozon-ext-toolbar-chevron { flex-shrink:0;margin-left:auto; }
@@ -1684,6 +1716,7 @@ export function generateStylesCss(config: ExtensionConfig): string {
 #ozon-structure-root .ozon-ext-ip-task-cell>.ozon-ext-type-pill,#ozon-structure-root .ozon-ext-ip-task-cell>span[title^="Приоритет"] { flex:0 0 auto!important; }
 #ozon-structure-root .ozon-ext-ip-task-cell>.ozon-ip-summary { flex:1 1 auto;min-width:0; }
 .ozon-ext-ip-epic-cell { overflow:hidden;white-space:nowrap;text-overflow:ellipsis; }
+.ozon-ext-ip-epic-cell a {min-width:0;white-space:normal;overflow-wrap:anywhere}
 #ozon-structure-root #ozon-sb-comp-trigger svg,#ozon-structure-root #ozon-sb-epic-trigger svg { width:18px!important;height:18px!important;min-width:18px!important;flex:0 0 18px!important; }
 [data-ticket-search-run] { margin-left:8px!important; }
 .ozon-dev-settings.ozon-dev-settings-stable { animation:none!important; }
@@ -1706,6 +1739,8 @@ export function generateStylesCss(config: ExtensionConfig): string {
 #ozon-structure-root .ozon-ext-ip-task-cell {flex-wrap:wrap!important;height:auto!important;min-height:36px;gap:3px 5px!important;padding-block:4px}
 #ozon-structure-root .ozon-ext-ip-task-cell>.ozon-ip-summary {flex:1 1 100%;min-width:0;white-space:normal!important;overflow-wrap:anywhere;line-height:1.35;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 #ozon-structure-root #ozon-ext-sidebar-panel .ozon-ext-ip-table-row { min-height:36px!important; }
+#ozon-structure-root .ozon-ext-ip-status-cell .ozon-ext-badge {max-width:100%}
+.ozon-ip-status-label {display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;text-align:left}
 #ozon-structure-root .ozon-ext-ip-action-cell { flex-wrap:wrap;gap:2px!important; }
 #ozon-structure-root .ozon-link-actions { position:relative;display:inline-flex;flex-shrink:0; }
 #ozon-structure-root .ozon-link-actions summary { list-style:none;cursor:pointer;color:#005BFF;padding:2px 6px;border-radius:6px;background:#E5F0FF; }
@@ -1795,7 +1830,7 @@ export function generateStylesCss(config: ExtensionConfig): string {
 }
 
 .ozon-ext-type-pill { display:inline-flex;align-items:center;gap:5px;flex:none;white-space:nowrap;border:1px solid #dbe4ef;border-radius:5px;padding:1px 6px;background:white;color:#334155;font-size:10px;font-weight:600; }
-.ozon-ext-type-pill i { width:6px;height:6px;border-radius:50%; }
+.ozon-ext-type-pill :is(img,svg),.ozon-ext-issue-type-icon {width:12px;height:12px;object-fit:contain;flex:none;vertical-align:middle}
 .ozon-ext-status-trigger { display:flex;align-items:center;justify-content:space-between;gap:4px;position:relative;cursor:pointer;color:#475569; }
 .ozon-ext-status-trigger.status-progress { color:#005bff; }
 .ozon-ext-status-trigger.status-review { color:#b45309; }
@@ -1821,7 +1856,7 @@ export function generateStylesCss(config: ExtensionConfig): string {
 @container ozon-sidebar (max-width: 780px) {
   #ozon-structure-root #ozon-ext-sidebar-panel .ozon-ext-attributes-columns {grid-template-columns:minmax(0,1fr)!important}
 }
-@container ozon-sidebar (max-width: 820px) {
+@container ozon-sidebar (max-width: 840px) {
   #ozon-ext-sidebar-panel .ozon-ext-ip-table-head {display:none!important}
   #ozon-structure-root #ozon-ext-sidebar-panel .ozon-ext-ip-table-row {grid-template-columns:minmax(0,1fr) minmax(0,1fr) 82px 24px!important;gap:3px 6px!important;padding:5px 8px!important}
   #ozon-structure-root #ozon-ext-sidebar-panel .ozon-ext-ip-table-row>div {height:auto!important;min-height:0;border:0;padding-inline:0}
@@ -1864,7 +1899,9 @@ export function generateStylesCss(config: ExtensionConfig): string {
 .ozon-ext-field-grid details summary { cursor:pointer;color:#005bff;font-size:10px; }
 .ozon-ext-sidebar-header .ozon-ext-btn-surface,.ozon-ext-filter-bar .ozon-ext-btn-surface { background:white!important;color:#005bff!important;border:1px solid #dbe4ef!important; }
 .ozon-ext-open-sb-btn[aria-expanded="false"] { background:white!important;color:#475569!important;border-radius:6px!important; }
-.ozon-strategy-task-line > .ozon-ext-open-sb-btn { margin-left:0!important; }
+.ozon-strategy-task-line > .ozon-ext-open-sb-btn {flex:none}
+#ozon-structure-root .ozon-strategy-table tbody tr.ozon-strategy-completed > td {background:#effbf3}
+#ozon-structure-root .ozon-strategy-table tbody tr.ozon-strategy-completed:hover > td {background:#e0f5e8}
 .ozon-ext-create-overlay { position:fixed;inset:0;z-index:2147482000;background:rgba(15,23,42,.38);display:flex;align-items:center;justify-content:center;padding:18px; }
 .ozon-ext-create-dialog { width:min(520px,94vw);max-height:min(82vh,760px);overflow:auto;background:#fff;border:1px solid #dbe4ef;border-radius:12px;box-shadow:0 20px 55px rgba(7,16,38,.24);padding:18px;display:flex;flex-direction:column;gap:12px;color:#071026;font:13px Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
 .ozon-ext-create-dialog strong { font-size:15px; }
@@ -1894,6 +1931,9 @@ export function generateStylesCss(config: ExtensionConfig): string {
 #ozon-structure-root .ozon-ip-field-value {white-space:normal;overflow-wrap:anywhere;min-width:0}
 #ozon-structure-root [data-action="open-ip-comp-combo"] .ozon-ip-field-value {
   display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;
+}
+#ozon-structure-root [data-action="open-ip-sprint-combo"] .ozon-ip-field-value {
+  white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;
 }
 #ozon-structure-root #ozon-ext-sidebar-panel :is(input[type="text"],input[type="search"]) {
   min-height:30px!important;border-radius:9px!important;border-color:#dce3eb!important;background-color:white!important;
@@ -1966,7 +2006,7 @@ export function generateStylesCss(config: ExtensionConfig): string {
 #ozon-structure-root .ozon-dev-team-option>.ozon-dev-team-name { display:block!important;position:static!important;inset:auto!important;flex:1 1 auto!important;min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;line-height:20px!important;text-align:left!important; }
 #ozon-structure-root .ozon-dev-team-popover>.ozon-ext-btn { display:flex!important;width:100%!important;justify-content:center!important;margin-top:6px!important; }
 #ozon-structure-root {--ozon-sidebar-standard-limit:calc(100vw - 124px)}
-#ozon-structure-root :is(.ozon-ext-filter-bar,.ozon-strategy-filters,.ozon-report-toolbar,.ozon-report-view-options) {align-items:center}
+#ozon-structure-root :is(.ozon-ext-filter-bar,.ozon-strategy-filters,.ozon-report-view-options) {align-items:center}
 #ozon-structure-root :is(.ozon-ext-filter-bar,.ozon-strategy-filters,.ozon-report-toolbar,.ozon-report-view-options) .ozon-ext-toolbar-trigger,
 #ozon-structure-root :is(.ozon-ext-filter-bar,.ozon-strategy-filters,.ozon-report-toolbar) > :is(button,a.ozon-ext-btn,input[type="search"]) {
   box-sizing:border-box;height:30px!important;min-height:30px!important;border-radius:9px!important;align-items:center;
@@ -2056,12 +2096,15 @@ export function generateContentScriptJs(
   const STORAGE_KEY_COL_WIDTHS = 'ozon_fcrm_col_widths_v31';
   const STORAGE_KEY_COL_ORDER = 'ozon_fcrm_col_order_v31';
   const STORAGE_KEY_SIDEBAR_W = 'ozon_fcrm_sidebar_width_v32';
+  const STORAGE_KEY_NATIVE_BOARD = 'ozon_fcrm_native_board';
 
   let tasks = ${JSON.stringify(initialTasks, null, 2)};
   let umbCatalog = ${JSON.stringify(umbEpicCatalog, null, 2)};
   let umbCatalogReady = false;
   let umbCatalogRequest = null;
   let isStructureVisible = true;
+  let structureRenderPending = false;
+  try { isStructureVisible = sessionStorage.getItem(STORAGE_KEY_NATIVE_BOARD) !== 'true'; } catch (_) {}
   let activeDashboardView = new URLSearchParams(window.location.search).get('rapidView') === '6197' ? 'development' : 'product';
   let productDashboardLoaded = false;
   const renderBadge = (${renderJiraBadge.toString()});
@@ -2070,7 +2113,7 @@ export function generateContentScriptJs(
   const jiraPeople = (${createJiraPeopleUi.toString()})();
   jiraPeople.bind(document,showSaveToast);
   const bindLabelSuggestions = (${bindJiraLabelSuggestions.toString()});
-  const strategicDashboard = (${createStrategicDashboard.toString()})(() => { if (activeDashboardView === 'strategy') renderStructure(); }, renderBadge, ${JSON.stringify(EXTENSION_VERSION)}, jiraPriorityService, CONFIG.sprintFieldId, { boardId:CONFIG.rapidViewId, components:()=>loadIssueCreateComponents(CONFIG.projectKey), create:(summary,componentId)=>createIssueFromSidebar({kind:'epic',projectKey:CONFIG.projectKey,summary,componentId}), link:(source,target)=>createIssueLinkInJira(source,target,'projectTask',true,true), notify:(message)=>{ const update=showLinksSnackbar(message); update(message); }, details:openSharedFcrmDetails, bindLabelSuggestions },jiraGroupingUi);
+  const strategicDashboard = (${createStrategicDashboard.toString()})(() => { if (activeDashboardView === 'strategy') renderStructure(); }, renderBadge, ${JSON.stringify(EXTENSION_VERSION)}, jiraPriorityService, CONFIG.sprintFieldId, { boardId:CONFIG.rapidViewId, components:()=>loadIssueCreateComponents(CONFIG.projectKey), create:(summary,componentId)=>createIssueFromSidebar({kind:'epic',projectKey:CONFIG.projectKey,summary,componentId}), link:(source,target)=>createIssueLinkInJira(source,target,'projectTask',true,true), notify:(message)=>{ const update=showLinksSnackbar(message); update(message); }, details:openSharedFcrmDetails, issueTypeBadge:getIssueTypeBadgeHtml, bindLabelSuggestions },jiraGroupingUi);
   async function openSharedFcrmDetails(link, button) {
     if (!/^FCRM-[0-9]+$/i.test(link.key)) return;
     const source = getSidebarSource(button);
@@ -2091,7 +2134,7 @@ export function generateContentScriptJs(
     reloadSingleTaskFromJira(link.key,true,true);
   }
   const developmentPointColumns = (${createDevelopmentPointColumns.toString()})();
-  const developmentDashboard = (${createDevelopmentDashboard.toString()})(() => renderStructure(), openSharedFcrmDetails,()=>{sbEpicComboOpen=false;sbCompComboOpen=false;sbIpCompOpenIdx=null;sbIpSprintOpenIdx=null;activeSearchSelectId='';}, renderBadge, getStatusCategoryClass, ${JSON.stringify(EXTENSION_VERSION)}, jiraPriorityService,jiraGroupingUi,developmentPointColumns);
+  const developmentDashboard = (${createDevelopmentDashboard.toString()})(() => renderStructure(), openSharedFcrmDetails,()=>{sbEpicComboOpen=false;sbCompComboOpen=false;sbIpCompOpenIdx=null;sbIpSprintOpenIdx=null;activeSearchSelectId='';}, renderBadge, getStatusCategoryClass, ${JSON.stringify(EXTENSION_VERSION)}, jiraPriorityService,jiraGroupingUi,developmentPointColumns,getIssueTypeBadgeHtml);
   const sprintReport = (${createSprintReportDashboard.toString()})(() => { if (activeDashboardView === 'report') renderStructure(); }, (${createSprintReportModel.toString()})(),
     [{id:String(CONFIG.rapidViewId),name:'FCRM'}, {id:'6197',name:'CS'}, {id:'7180',name:'CRM_CORE'}, {id:'12696',name:'CRM_BO'}], CONFIG.sprintFieldId, CONFIG.epicFieldId, renderBadge, isEpicIssueType,jiraPeople,developmentPointColumns,()=>developmentDashboard.getState().grouping,jiraGroupingUi);
   const generatingLinkKeys = new Set();
@@ -3570,10 +3613,20 @@ export function generateContentScriptJs(
     return '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;" title="Тип задачи: ' + escapeHtml(t) + '"><rect x="1.5" y="1.5" width="13" height="13" rx="3" fill="#2563EB"/><path d="M4.8 8.2L7 10.4L11.3 5.8" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   }
 
-  function getIssueTypeBadgeHtml(issueTypeName, showLabel) {
+  function getJiraIssueTypeIconHtml(name, iconUrl) {
+    const reference = iconUrl || projectIssueTypesList.find(type => type.name === name)?.iconUrl;
+    if (reference) {
+      try {
+        const url = new URL(reference, location.href);
+        if (url.origin === location.origin && /^https?:$/.test(url.protocol)) return '<img class="ozon-ext-issue-type-icon" width="12" height="12" alt="" src="' + escapeHtml(url.href) + '">';
+      } catch (_) { /* Use the local icon when Jira did not supply a usable URL. */ }
+    }
+    return getJiraIssueTypeIconSvg(name);
+  }
+
+  function getIssueTypeBadgeHtml(issueTypeName, iconUrl) {
     const t = String(issueTypeName || 'Задача').trim() || 'Задача';
-    const color = isEpicIssueType(t) ? "#9333ea" : /истори|story/i.test(t) ? "#16a34a" : /ошиб|bug/i.test(t) ? "#dc2626" : /аналит|analy/i.test(t) ? "#d97706" : "#2563eb";
-    return '<span class="ozon-ext-type-pill" title="' + escapeHtml(t) + '"><i style="background:' + color + '"></i>' + (showLabel ? escapeHtml(t) : "") + "</span>";
+    return '<span class="ozon-ext-type-pill" title="' + escapeHtml(t) + '">' + getJiraIssueTypeIconHtml(t, iconUrl) + escapeHtml(t) + '</span>';
   }
 
   /**
@@ -5555,6 +5608,7 @@ export function generateContentScriptJs(
             summary: (iss.fields && iss.fields.summary) || iss.key,
             status: (iss.fields && iss.fields.status && iss.fields.status.name) || 'Открыто',
             issueTypeName: (iss.fields && iss.fields.issuetype && iss.fields.issuetype.name) || 'Задача',
+            issueTypeIconUrl: iss.fields?.issuetype?.iconUrl || '',
             component: resolveRealLinkedIssueComponent(iss),
             components: ((iss.fields && iss.fields.components) || []).map((c) => c && c.name).filter(Boolean),
             parents: ((iss.fields && iss.fields.issuelinks) || []).map((link) => {
@@ -5744,6 +5798,7 @@ export function generateContentScriptJs(
           summary: lf.summary || lIss.key,
           status: readStatusName(lf.status, 'Открыто'),
           issueTypeName: (lf.issuetype && lf.issuetype.name) || 'Задача',
+          issueTypeIconUrl: lf.issuetype?.iconUrl || '',
           priority: (lf.priority && lf.priority.name) || 'Medium',
           storyPoints: discoveredFields.storyPoints && lf[discoveredFields.storyPoints] != null ? lf[discoveredFields.storyPoints] : null,
           component: realComp,
@@ -5917,6 +5972,7 @@ export function generateContentScriptJs(
           summary: (enriched && enriched.summary) || (target.fields && target.fields.summary) || target.key,
           status: itemStatus,
           issueTypeName: (enriched && enriched.issueTypeName) || (target.fields && target.fields.issuetype && target.fields.issuetype.name) || 'Задача',
+          issueTypeIconUrl: enriched?.issueTypeIconUrl || target.fields?.issuetype?.iconUrl || '',
           priority: (enriched && enriched.priority) || 'Medium',
           storyPoints: enriched?.storyPoints ?? null,
           component: realLinkComp,
@@ -5954,6 +6010,7 @@ export function generateContentScriptJs(
         labels: Array.isArray(f.labels) ? f.labels : [],
         issueTypeName: issueTypeName,
         issueTypeId: issueTypeId,
+        issueTypeIconUrl: f.issuetype?.iconUrl || '',
         epicKey: epicKey,
         epicName: epicName,
         component: compName,
@@ -6093,6 +6150,7 @@ export function generateContentScriptJs(
                   status: readStatusName(f.status, t.status),
                   issueTypeName: (f.issuetype && f.issuetype.name) || t.issueTypeName || 'Задача',
                   issueTypeId: (f.issuetype && f.issuetype.id) || t.issueTypeId || '',
+                  issueTypeIconUrl: f.issuetype ? f.issuetype.iconUrl || '' : t.issueTypeIconUrl,
                   priority: (f.priority && f.priority.name) || t.priority,
                   labels: Array.isArray(f.labels) ? f.labels : [],
                   component: compName,
@@ -6902,7 +6960,7 @@ export function generateContentScriptJs(
                 : '<span style="display:inline-block;width:16px;min-width:16px;flex-shrink:0;"></span>'
             }
             <a href="/browse/\${escapeHtml(task.key)}" target="_blank" class="ozon-ext-inner-ctrl ozon-mono" onclick="event.stopPropagation();" style="color:#005BFF;font-weight:700;font-size:11px;text-decoration:none;flex-shrink:0;">\${escapeHtml(task.key)}</a>
-            \${getIssueTypeBadgeHtml(task.issueTypeName || 'Задача', true)}
+            \${getIssueTypeBadgeHtml(task.issueTypeName, task.issueTypeIconUrl)}
             <button type="button" class="ozon-dev-priority-edit ozon-ext-inner-ctrl" data-priority-key="\${escapeHtml(task.key)}" title="Изменить приоритет: \${escapeHtml(task.priority || 'Не указан')}" aria-label="Изменить приоритет \${escapeHtml(task.key)}">\${getJiraPriorityIconSvg(task.priority)}</button>
             \${hasNoAssignee ? getMissingAssigneeWarnSvg() : ''}
             <span style="overflow:hidden;text-overflow:ellipsis;color:#071026;font-weight:500;font-size:11.5px;flex:1;min-width:0;">\${escapeHtml(task.summary)}</span>
@@ -6971,7 +7029,7 @@ export function generateContentScriptJs(
                 <span class="ozon-mono" style="color:#94A3B8;font-weight:700;">↳</span>
                 \${getLinkTypeTagHtml(isPt)}
                 <a href="/browse/\${escapeHtml(l.key)}" target="_blank" class="ozon-mono" style="color:#005BFF;font-weight:700;font-size:11px;text-decoration:none;flex-shrink:0;">\${escapeHtml(l.key)}</a>
-                \${getIssueTypeBadgeHtml(l.issueTypeName || 'Задача', true)}
+                \${getIssueTypeBadgeHtml(l.issueTypeName, l.issueTypeIconUrl)}
                 <button type="button" class="ozon-dev-priority-edit ozon-ext-inner-ctrl" data-priority-key="\${escapeHtml(l.key)}" title="Изменить приоритет: \${escapeHtml(l.priority || 'Не указан')}" aria-label="Изменить приоритет \${escapeHtml(l.key)}">\${getJiraPriorityIconSvg(l.priority || 'Medium')}</button>
                 <span style="color:#071026;font-weight:500;overflow:hidden;text-overflow:ellipsis;" title="\${escapeHtml(l.summary)}">\${escapeHtml(l.summary)}</span>
               </div>
@@ -7251,7 +7309,10 @@ export function generateContentScriptJs(
               <strong class="ozon-mono" style="color:#005BFF;font-size:13px;">\${escapeHtml(task.key)}</strong>
               <span style="color:#64748B;font-size:11.5px;">Загрузка описания, приоритета и связей из Jira...</span>
             </div>
-            <button type="button" class="ozon-ext-btn ozon-ext-btn-negative" id="ozon-ext-sidebar-close">✕</button>
+            <div style="display:flex;align-items:center;gap:5px;">
+              \${nativeBoardButton()}
+              <button type="button" class="ozon-ext-btn ozon-ext-btn-negative" id="ozon-ext-sidebar-close">✕</button>
+            </div>
           </div>
           <div class="ozon-ext-sidebar-body">
             <div>
@@ -7308,7 +7369,7 @@ export function generateContentScriptJs(
       const matchedTr = taskTransitions.find((tr) => ((tr.to && tr.to.name) || tr.name || '').toLowerCase() === st.toLowerCase());
       return { value: st, label: st, transitionId: matchedTr && matchedTr.id ? String(matchedTr.id) : '' };
     });
-    const issueTypeSearchOptions = issueTypeList.map((name) => ({ value: name, label: name }));
+    const issueTypeSearchOptions = issueTypeList.map((name) => ({ value: name, label: name, iconUrl: name === currentIssueType ? task.issueTypeIconUrl : undefined }));
     const sidebarSprintSearchOptions = Array.from(new Set([...editableSprints, task.sprint].filter(Boolean))).map((name) => ({ value: name, label: formatSprintWithStateText(name) }));
 
     const transitionsChipsHtml =
@@ -7469,9 +7530,10 @@ export function generateContentScriptJs(
             <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-copy-task-link" title="Копировать ссылку и название" aria-label="Копировать ссылку и название" style="width:26px;height:26px;padding:4px;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></svg></button>
             <span style="color:#64748B;font-size:10px;white-space:nowrap;" title="Создана: \${escapeHtml(task.createdAt || '—')}">Создана: \${escapeHtml(task.createdAt || '—')}</span>
             <span class="ozon-person-line ozon-sb-author"><span>Автор</span>\${jiraPeople.badge(task.author)}\${jiraPeople.copyButton(task.author)}</span>
-            \${getIssueTypeBadgeHtml(currentIssueType, true)}
+            \${getIssueTypeBadgeHtml(currentIssueType, task.issueTypeIconUrl)}
           </div>
           <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
+            \${nativeBoardButton()}
             <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-ext-sidebar-expand" title="\${sidebarExpandTitle()}" aria-label="Развёрнутый сайдбар" aria-pressed="\${sidebarExpanded}">\${sidebarExpandIcon(sidebarExpanded)}</button>
             <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-ext-sidebar-refresh" title="Обновить все" aria-label="Обновить все">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.9-3L4 10"/><path d="M4 4v6h6"/><path d="M4 13a8 8 0 0 0 14.9 3L20 14"/><path d="M20 20v-6h-6"/></svg>
@@ -7708,7 +7770,7 @@ export function generateContentScriptJs(
                                       <span class="ozon-mono" style="color:#94A3B8;font-weight:700;font-size:11px;">↳</span>
                                       <span class="ozon-ext-link-icon-box" style="background:\${gMeta.bg};color:\${gMeta.color};">\${gMeta.iconSvg}</span>
                                       <a href="/browse/\${escapeHtml(lnk.key)}" target="_blank" class="ozon-mono" style="color:#005BFF;font-weight:700;font-size:11px;text-decoration:none;flex-shrink:0;">\${escapeHtml(lnk.key)}</a>
-                                      \${getIssueTypeBadgeHtml(lnk.issueTypeName || 'Задача', true)}
+                                      \${getIssueTypeBadgeHtml(lnk.issueTypeName, lnk.issueTypeIconUrl)}
                                       <button type="button" class="ozon-dev-priority-edit ozon-ext-inner-ctrl" data-priority-key="\${escapeHtml(lnk.key)}" title="Изменить приоритет: \${escapeHtml(lnk.priority || 'Не указан')}" aria-label="Изменить приоритет \${escapeHtml(lnk.key)}">\${getJiraPriorityIconSvg(lnk.priority || 'Medium')}</button>
                                       <span style="font-weight:600;color:#071026;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="\${escapeHtml(lnk.summary)}">\${escapeHtml(lnk.summary)}</span>
                                     </div>
@@ -7843,7 +7905,7 @@ export function generateContentScriptJs(
                                                   <span class="ozon-mono" style="color:#94A3B8;font-weight:700;font-size:11px;flex-shrink:0;">↳</span>
                                                   <span class="ozon-ext-link-icon-box" style="background:\${grp.meta.bg};color:\${grp.meta.color};">\${grp.meta.iconSvg}</span>
                                                   <a href="/browse/\${escapeHtml(lnk.key)}" target="_blank" class="ozon-mono" style="color:#005BFF;font-weight:700;font-size:11px;text-decoration:none;flex-shrink:0;">\${escapeHtml(lnk.key)}</a>
-                                                  \${getIssueTypeBadgeHtml(lnk.issueTypeName || 'Задача', true)}
+                                                  \${getIssueTypeBadgeHtml(lnk.issueTypeName, lnk.issueTypeIconUrl)}
                                                   <button type="button" class="ozon-dev-priority-edit ozon-ext-inner-ctrl" data-priority-key="\${escapeHtml(lnk.key)}" title="Изменить приоритет: \${escapeHtml(lnk.priority || 'Не указан')}" aria-label="Изменить приоритет \${escapeHtml(lnk.key)}">\${getJiraPriorityIconSvg(lnk.priority || 'Medium')}</button>
                                                   \${lnk.storyPoints != null ? '<span class="ozon-ext-badge ozon-ext-badge-todo" title="Story Points">' + escapeHtml(String(lnk.storyPoints)) + ' SP</span>' : ''}
                                                   \${designIcon}
@@ -7976,13 +8038,7 @@ export function generateContentScriptJs(
     const optionLabel = (option) => {
       if (option.value !== 'all' && id === 'status') return getStatusBadgeHtml(option.label);
       if (option.value !== 'all' && id === 'issue-type') {
-        let icon = getJiraIssueTypeIconSvg(option.value);
-        if (option.iconUrl) {
-          try {
-            const url = new URL(option.iconUrl,location.href);
-            if (url.origin === location.origin && /^https?:$/.test(url.protocol)) icon = '<img width="12" height="12" alt="" src="' + escapeHtml(url.href) + '">';
-          } catch (_) { /* Keep the local type icon. */ }
-        }
+        const icon = getJiraIssueTypeIconHtml(option.value, option.iconUrl);
         return '<span class="ozon-ext-select-content"><span class="ozon-ext-filter-icon" aria-hidden="true">' + icon + '</span><span class="ozon-ext-select-text">' + escapeHtml(option.label) + '</span></span>';
       }
       return escapeHtml(option.label);
@@ -8032,7 +8088,7 @@ export function generateContentScriptJs(
       let icon = '';
       let badge = '';
       let text = label;
-      if (id === 'sidebar-issuetype') icon = getJiraIssueTypeIconSvg(option.value);
+      if (id === 'sidebar-issuetype') icon = getJiraIssueTypeIconHtml(option.value, option.iconUrl);
       if (id === 'sidebar-sprint' || id.startsWith('table-sprint-')) {
         text = escapeHtml(option.value);
         badge = getSprintStateBadgeHtml(option.value);
@@ -8224,7 +8280,7 @@ export function generateContentScriptJs(
     inner.querySelectorAll('.ozon-ext-link-group-header').forEach(group => group.remove());
     headings.innerHTML = '<span>Задача · Приоритет</span><span>Эпик</span><span>Статус</span><span>Компонент</span><span>Спринт</span><span>Действия</span>';
     inner.prepend(headings);
-    const minWidths = [210,88,76,122,206,55];
+    const minWidths = [210,120,76,122,206,55];
     let widths = [340,100,92,145,225,58];
     try { const saved = JSON.parse(localStorage.getItem('ozon-ip-column-widths-v3') || 'null'); if (Array.isArray(saved) && saved.length === 6 && saved.every(value => Number.isFinite(value) && value >= 60)) widths = saved; } catch (_) {}
     const applyWidths = () => {
@@ -8257,7 +8313,15 @@ export function generateContentScriptJs(
       else { epic.textContent='—'; epic.classList.add('is-empty'); }
       const secondary = Array.from(row.children).filter(child => child !== first && child !== detail);
       const status = document.createElement('div'); status.className='ozon-ext-ip-status-cell'; const badge = actions.querySelector('.ozon-ext-badge');
-      if (badge) { status.appendChild(badge); if (/готово|закрыт|done|closed/i.test(badge.textContent)) row.classList.add('completed'); }
+      if (badge) {
+        const label = document.createElement('span');
+        label.className = 'ozon-ip-status-label';
+        label.textContent = badge.textContent;
+        badge.title = label.textContent;
+        badge.replaceChildren(label);
+        status.appendChild(badge);
+        if (/готово|закрыт|done|closed/i.test(label.textContent)) row.classList.add('completed');
+      }
       left.classList.add('ozon-ext-ip-task-cell'); actions.classList.add('ozon-ext-ip-action-cell');
       component.classList.add('ozon-ext-ip-component-cell'); component.dataset.fieldLabel='Компонент';
       sprint.classList.add('ozon-ext-ip-sprint-cell'); sprint.dataset.fieldLabel='Спринт';
@@ -8284,9 +8348,13 @@ export function generateContentScriptJs(
 
   const extensionUpdate = (${createExtensionUpdateNotice.toString()})(typeof chrome === 'undefined' ? undefined : chrome.runtime, ${JSON.stringify(EXTENSION_UPDATE_MESSAGES)}, ${JSON.stringify(EXTENSION_UPDATE_ZIP_URL)}, ${EXTENSION_UPDATE_INTERVAL});
 
+  function nativeBoardButton() {
+    return '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface ozon-ext-board-switch" data-show-native-board title="Вернуться к обычной доске Jira">← Доска Jira</button>';
+  }
+
   function renderDashboardNavigation() {
     const tabs = [['product','Продуктовый бэклог'],['development','Команды разработки'],['strategy','Стратегическое планирование'],['report','Отчёт по спринту']];
-    return '<nav class="ozon-ext-view-tabs" role="tablist" aria-label="Представление">' + tabs.map(([view,label]) => '<button type="button" role="tab" data-dashboard-view="' + view + '" aria-selected="' + (activeDashboardView === view) + '">' + label + '</button>').join('') + '</nav>';
+    return '<div class="ozon-ext-view-tabs">' + nativeBoardButton() + '<nav role="tablist" aria-label="Представление">' + tabs.map(([view,label]) => '<button type="button" role="tab" data-dashboard-view="' + view + '" aria-selected="' + (activeDashboardView === view) + '">' + label + '</button>').join('') + '</nav></div>';
   }
 
   function bindDashboardNavigation(root) {
@@ -8331,7 +8399,8 @@ export function generateContentScriptJs(
   function renderStructure() {
     let root = document.getElementById('ozon-structure-root');
     if (!isTargetBoardPage() || !isStructureVisible) {
-      if (root) root.style.display = 'none';
+      if (root) root.hidden = true;
+      structureRenderPending = true;
       return;
     }
     if (!root) {
@@ -8339,7 +8408,8 @@ export function generateContentScriptJs(
       root.id = 'ozon-structure-root';
       document.body.appendChild(root);
     }
-    root.style.display = 'flex';
+    root.hidden = false;
+    structureRenderPending = false;
 
     if (activeDashboardView === 'report') {
       const top = root.querySelector('.ozon-report-scroll')?.scrollTop || 0;
@@ -8707,9 +8777,24 @@ export function generateContentScriptJs(
     });
     root.querySelectorAll('[data-ticket-search-toggle]').forEach(button => {
       button.addEventListener('click', () => {
-        const state = getTicketSearchState(button.getAttribute('data-issue-key'), button.getAttribute('data-ticket-search-toggle'));
+        const key = button.dataset.issueKey;
+        const kind = button.dataset.ticketSearchToggle;
+        const state = getTicketSearchState(key, kind);
         state.open = !state.open;
         renderStructure();
+        // The dashboard restores its previous scroll position in the same frame.
+        window.requestAnimationFrame(() => {
+          if (!isStructureVisible || selectedTaskKey !== key) return;
+          const panel = document.getElementById('ozon-ext-sidebar-panel');
+          const next = panel?.querySelector('[data-ticket-search-toggle="' + kind + '"]');
+          if (!next) return;
+          next.focus({preventScroll:true});
+          if (state.open) {
+            const header = panel.querySelector('.ozon-ext-sidebar-header');
+            const top = panel.scrollTop + next.getBoundingClientRect().top - panel.getBoundingClientRect().top - (header?.offsetHeight || 0) - 8;
+            panel.scrollTo({top,behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'});
+          }
+        });
       });
     });
     root.querySelectorAll('[data-ticket-search-channels]').forEach(input => {
@@ -8973,8 +9058,9 @@ export function generateContentScriptJs(
             transitionIssueStatusInJira(key, value, button.getAttribute('data-transition-id') || null);
           } else if (id === 'sidebar-issuetype') {
             const typeId = issueTypeIdByName[value] || issueTypeIdByName[String(value).toLowerCase()] || '';
-            tasks = tasks.map(task => task.key === key ? Object.assign({}, task, { issueTypeName: value, issueTypeId: typeId }) : task);
-            saveTaskOverride(key, { issueTypeName: value, issueTypeId: typeId });
+            const issueTypeUpdate = { issueTypeName: value, issueTypeId: typeId, issueTypeIconUrl: '' };
+            tasks = tasks.map(task => task.key === key ? Object.assign({}, task, issueTypeUpdate) : task);
+            saveTaskOverride(key, issueTypeUpdate);
             updateIssueTypeInJira(key, value);
           } else if (id === 'sidebar-sprint') {
             tasks = tasks.map(task => task.key === key ? Object.assign({}, task, { sprint: value }) : task);
@@ -10048,7 +10134,8 @@ export function generateContentScriptJs(
         const matchedTypeId = issueTypeIdByName[newIssueType] || issueTypeIdByName[String(newIssueType).toLowerCase()] || '';
         updateCurrentTask({
           issueTypeName: newIssueType,
-          issueTypeId: matchedTypeId
+          issueTypeId: matchedTypeId,
+          issueTypeIconUrl: ''
         });
         updateIssueTypeInJira(selectedTaskKey, newIssueType);
         renderStructure();
@@ -10668,36 +10755,49 @@ export function generateContentScriptJs(
     }
   }
 
+  function setStructureVisible(visible, moveFocus = true) {
+    isStructureVisible = visible;
+    document.body.classList.toggle('ozon-native-board-visible', !visible);
+    const root = document.getElementById('ozon-structure-root');
+    const button = document.getElementById('ozon-structure-toggle-btn');
+    if (button) button.hidden = visible;
+    if (root) root.hidden = !visible;
+    if (!moveFocus) return;
+    try { sessionStorage.setItem(STORAGE_KEY_NATIVE_BOARD, String(!visible)); } catch (_) {}
+    if (visible) {
+      if (!root || structureRenderPending) renderStructure();
+      document.querySelector('.ozon-ext-view-tabs [aria-selected="true"]')?.focus({preventScroll:true});
+    } else {
+      button?.focus({preventScroll:true});
+    }
+  }
+
   function injectToggleButton() {
     if (!isTargetBoardPage()) return;
     if (document.getElementById('ozon-structure-toggle-btn')) return;
-    const headerTarget =
-      document.querySelector('#ghx-modes-tools') ||
-      document.querySelector('#ghx-header') ||
-      document.querySelector('.aui-header-primary .aui-nav') ||
-      document.body;
-
     const btn = document.createElement('button');
+    btn.type = 'button';
     btn.id = 'ozon-structure-toggle-btn';
-    btn.className = 'active';
-    btn.textContent = 'Ozon Structure FCRM';
-    btn.addEventListener('click', () => {
-      isStructureVisible = !isStructureVisible;
-      btn.classList.toggle('active', isStructureVisible);
-      renderStructure();
-    });
-
-    headerTarget.appendChild(btn);
+    btn.textContent = 'Открыть виджет FCRM';
+    btn.setAttribute('aria-controls', 'ozon-structure-root');
+    btn.hidden = isStructureVisible;
+    btn.addEventListener('click', () => setStructureVisible(true));
+    document.body.appendChild(btn);
   }
 
   function init() {
     if (!isTargetBoardPage()) return;
     document.addEventListener('click', (event) => {
+      if (event.target instanceof Element && event.target.closest('#ozon-structure-root [data-show-native-board]')) {
+        setStructureVisible(false);
+        return;
+      }
       const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null;
       if (anchor && anchor.closest('#ozon-structure-root, .ozon-component-editor, #ozon-thread-sidebar')) prepareNavigationLink(anchor);
     }, true);
     ensureGoogleFontsLoaded();
     injectToggleButton();
+    setStructureVisible(isStructureVisible, false);
     renderStructure();
     function addEditorTaskContext(panel, key) {
       const task = tasks.find((item) => item.key === key);
@@ -10776,7 +10876,7 @@ export function generateContentScriptJs(
       openPriorityEditor(button.getAttribute('data-priority-key') || button.getAttribute('data-key'),button);
     }, true);
     document.addEventListener('pointerdown', event => { if (priorityEditor?.isConnected && event.target instanceof Element && !priorityEditor.contains(event.target)) priorityEditor.closePriority(false); }, true);
-    document.addEventListener('keydown', event => { if (event.key==='Escape' && priorityEditor?.isConnected) {event.stopImmediatePropagation();priorityEditor.closePriority();} },true);
+    document.addEventListener('keydown', event => { if (isStructureVisible && event.key==='Escape' && priorityEditor?.isConnected) {event.stopImmediatePropagation();priorityEditor.closePriority();} },true);
     // Общий редактор компонентов для таблиц и связей во всех представлениях.
     let componentEditor = null;
     async function openComponentEditor(key) {
@@ -11275,7 +11375,7 @@ export function generateContentScriptJs(
       if (planningEditor?.isConnected && event.target instanceof Element && !planningEditor.contains(event.target)) planningEditor.closePlanningEditor(false);
     },true);
     document.addEventListener('keydown', event => {
-      if (event.key === 'Escape' && planningEditor?.isConnected) {
+      if (isStructureVisible && event.key === 'Escape' && planningEditor?.isConnected) {
         event.stopImmediatePropagation();
         planningEditor.closePlanningEditor();
         return;
@@ -11333,6 +11433,7 @@ export function generateContentScriptJs(
     });
     document.addEventListener('pointerdown', (event) => {
       const target = event.target;
+      if (!isStructureVisible || target instanceof Element && target.closest('[data-show-native-board]')) return;
       if (createInProjectMenuOpen && target instanceof Element && !target.closest('.ozon-ext-create-menu, [data-action="toggle-create-in-project-menu"]')) {
         createInProjectMenuOpen = false;
         document.querySelector('.ozon-ext-create-menu')?.remove();
@@ -11365,6 +11466,7 @@ export function generateContentScriptJs(
 
     // Закрытие открытых поповеров по клику вне них
     document.addEventListener('click', (e) => {
+      if (!isStructureVisible || e.target.closest('#ozon-structure-toggle-btn')) return;
       if (
         !e.target.closest('.ozon-ext-combo-popover') &&
         !e.target.closest('.ozon-ext-toolbar-trigger') &&
@@ -11392,7 +11494,7 @@ export function generateContentScriptJs(
       }
     });
 
-    document.addEventListener('keydown',event=>{if(event.key==='Escape')closeSidebarPickers();});
+    document.addEventListener('keydown',event=>{if(isStructureVisible && event.key==='Escape')closeSidebarPickers();});
     window.addEventListener('popstate', () => {
       renderStructure();
     });
