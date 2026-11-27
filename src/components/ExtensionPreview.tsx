@@ -70,7 +70,7 @@ export default function ExtensionPreview() {
         <span style={{ color: '#b8c4d0', flex: 1 }}>Демонстрационные данные · Jira и DeepSeek работают в установленном расширении</span>
         <button onClick={download} style={{ padding: '5px 10px', border: 0, borderRadius: 8, color: '#005bff', background: '#e5f2ff', cursor: 'pointer' }}>Скачать эту сборку ZIP</button>
       </div>
-      <iframe title="Интерфейс расширения из ZIP" srcDoc={document} style={{ width: '100%', flex: 1, minHeight: 0, border: 0 }} sandbox="allow-scripts allow-same-origin allow-popups allow-downloads" />
+      <iframe title="Интерфейс расширения из ZIP" srcDoc={document} allowFullScreen style={{ width: '100%', flex: 1, minHeight: 0, border: 0 }} sandbox="allow-scripts allow-same-origin allow-popups allow-downloads" />
     </main>
   );
 }

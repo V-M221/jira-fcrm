@@ -12,7 +12,7 @@ import { createJiraGroupingUi } from '../services/jiraGroupingUi';
 import { createJiraPeopleUi } from '../services/jiraPeopleUi';
 import { createExtensionUpdateNotice, EXTENSION_UPDATE_INTERVAL, EXTENSION_UPDATE_MESSAGES, EXTENSION_UPDATE_ZIP_URL } from '../services/extensionUpdate';
 
-export const EXTENSION_VERSION = '3.5.188';
+export const EXTENSION_VERSION = '3.5.189';
 
 export function fcrmReviewRowClass(key:string, status:string):string {
   if (!/^FCRM-\d+$/i.test(key)) return '';
@@ -468,6 +468,15 @@ body.ozon-native-board-visible > :is(.ozon-component-editor,#ozon-thread-sidebar
 .ozon-ext-view-tabs [role="tab"] { border:1px solid transparent;border-radius:8px;padding:6px 12px;background:transparent;color:#64748B;font:600 12px var(--ozon-font-sans);cursor:pointer;white-space:nowrap; }
 .ozon-ext-view-tabs [aria-selected="true"] { color:#005BFF;background:#E5F0FF; }
 .ozon-ext-board-switch {flex:none;white-space:nowrap;}
+#ozon-structure-root.ozon-dashboard-fullscreen {top:0!important}
+#ozon-structure-root.ozon-dashboard-fullscreen .ozon-report-inner {max-width:none}
+#ozon-structure-root .ozon-ext-fullscreen-toggle {display:inline-flex;align-items:center;gap:6px;flex:none;margin-inline-start:auto;min-height:30px;white-space:nowrap}
+#ozon-structure-root.ozon-dashboard-fullscreen .ozon-ext-fullscreen-toggle {color:#005bff;background:#e5f0ff}
+#ozon-structure-root .ozon-ext-fullscreen-toggle:focus-visible {outline:2px solid #005bff;outline-offset:2px}
+@media (max-width:640px) {
+  #ozon-structure-root .ozon-ext-fullscreen-toggle {justify-content:center;width:32px;padding-inline:0}
+  .ozon-ext-fullscreen-toggle>span {display:none}
+}
 #ozon-structure-root .ozon-extension-update { display:block;flex-shrink:0;background:#edf4ff;color:#071026;border-bottom:1px solid #d7e5f8;font-size:12px; }
 #ozon-structure-root .ozon-extension-update > summary { display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 16px;padding:7px 12px;min-height:32px;list-style:none;cursor:pointer; }
 .ozon-extension-update > summary::-webkit-details-marker { display:none; }
@@ -2755,7 +2764,7 @@ export function generateContentScriptJs(
   function sidebarWidthCss() {
     return sidebarExpanded ? '100vw' : 'min(' + sidebarWidth + 'px,var(--ozon-sidebar-standard-limit))';
   }
-  function sidebarExpandIcon(expanded) {
+  function expandCornersIcon(expanded) {
     const corners = expanded ? 'M3 8h5V3m13 5h-5V3M3 16h5v5m13-5h-5v5' : 'M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5';
     return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + corners + '"/></svg>';
   }
@@ -7553,7 +7562,7 @@ export function generateContentScriptJs(
           </div>
           <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
             \${nativeBoardButton()}
-            <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-ext-sidebar-expand" title="\${sidebarExpandTitle()}" aria-label="Развёрнутый сайдбар" aria-pressed="\${sidebarExpanded}">\${sidebarExpandIcon(sidebarExpanded)}</button>
+            <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-ext-sidebar-expand" title="\${sidebarExpandTitle()}" aria-label="Развёрнутый сайдбар" aria-pressed="\${sidebarExpanded}">\${expandCornersIcon(sidebarExpanded)}</button>
             <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-ext-sidebar-refresh" title="Обновить все" aria-label="Обновить все">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.9-3L4 10"/><path d="M4 4v6h6"/><path d="M4 13a8 8 0 0 0 14.9 3L20 14"/><path d="M20 20v-6h-6"/></svg>
             </button>
@@ -8371,13 +8380,58 @@ export function generateContentScriptJs(
     return '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface ozon-ext-board-switch" data-show-native-board title="Вернуться к обычной доске Jira">← Доска Jira</button>';
   }
 
+  let dashboardFullscreen = false;
+  let ownsNativeFullscreen = false;
+  let nativeFullscreenRequest = null;
+
+  function fullscreenButtonContent(expanded) {
+    return expandCornersIcon(expanded) + '<span>' + (expanded ? 'Свернуть' : 'На весь экран') + '</span>';
+  }
+
+  function fullscreenButtonLabel(expanded) {
+    return expanded ? 'Свернуть полноэкранный режим' : 'Развернуть на весь экран';
+  }
+
+  function updateDashboardFullscreen(root, expanded) {
+    dashboardFullscreen = expanded;
+    root?.classList.toggle('ozon-dashboard-fullscreen', expanded);
+    const button = root?.querySelector('[data-toggle-fullscreen]');
+    if (!button) return;
+    button.setAttribute('aria-label', fullscreenButtonLabel(expanded));
+    button.title = fullscreenButtonLabel(expanded) + (expanded ? ' (Esc)' : '');
+    button.innerHTML = fullscreenButtonContent(expanded);
+  }
+
+  function setDashboardFullscreen(root, expanded) {
+    updateDashboardFullscreen(root, expanded);
+    const page = document.documentElement;
+    if (!expanded) {
+      if (ownsNativeFullscreen && document.fullscreenElement === page) {
+        document.exitFullscreen().catch(() => {});
+      }
+      return;
+    }
+    if (nativeFullscreenRequest || document.fullscreenElement || !document.fullscreenEnabled || !page.requestFullscreen) return;
+    // Fullscreen the page so Jira editors mounted beside the dashboard remain visible.
+    nativeFullscreenRequest = page.requestFullscreen().then(() => {
+      ownsNativeFullscreen = document.fullscreenElement === page;
+      if (ownsNativeFullscreen && !dashboardFullscreen) return document.exitFullscreen();
+    }).catch(() => {
+      // The dashboard still occupies the viewport if browser fullscreen is unavailable.
+    }).finally(() => { nativeFullscreenRequest = null; });
+  }
+
   function renderDashboardNavigation() {
     const tabs = [['product','Продуктовый бэклог'],['development','Команды разработки'],['strategy','Стратегическое планирование'],['report','Отчёт по спринту']];
-    return '<div class="ozon-ext-view-tabs">' + nativeBoardButton() + '<nav role="tablist" aria-label="Представление">' + tabs.map(([view,label]) => '<button type="button" role="tab" data-dashboard-view="' + view + '" aria-selected="' + (activeDashboardView === view) + '">' + label + '</button>').join('') + '</nav></div>';
+    return '<div class="ozon-ext-view-tabs">' + nativeBoardButton() + '<nav role="tablist" aria-label="Представление">' + tabs.map(([view,label]) => '<button type="button" role="tab" data-dashboard-view="' + view + '" aria-selected="' + (activeDashboardView === view) + '">' + label + '</button>').join('') + '</nav>' +
+      '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface ozon-ext-fullscreen-toggle" data-toggle-fullscreen aria-controls="ozon-structure-root" aria-label="' + fullscreenButtonLabel(dashboardFullscreen) + '" title="' + fullscreenButtonLabel(dashboardFullscreen) + (dashboardFullscreen ? ' (Esc)' : '') + '">' + fullscreenButtonContent(dashboardFullscreen) + '</button></div>';
   }
 
   function bindDashboardNavigation(root) {
     extensionUpdate.bind(root);
+    root.querySelector('[data-toggle-fullscreen]')?.addEventListener('click', () => {
+      setDashboardFullscreen(root, !dashboardFullscreen);
+    });
     root.querySelectorAll('[data-dashboard-view]').forEach(button => button.addEventListener('click', event => {
       event.stopPropagation();
       const view = button.getAttribute('data-dashboard-view');
@@ -8418,6 +8472,7 @@ export function generateContentScriptJs(
   function renderStructure() {
     let root = document.getElementById('ozon-structure-root');
     if (!isTargetBoardPage() || !isStructureVisible) {
+      if (dashboardFullscreen) setDashboardFullscreen(root, false);
       if (root) root.hidden = true;
       structureRenderPending = true;
       return;
@@ -9828,7 +9883,7 @@ export function generateContentScriptJs(
         applySidebarWidth();
         expandBtn.title = sidebarExpandTitle();
         expandBtn.setAttribute('aria-pressed',String(sidebarExpanded));
-        expandBtn.innerHTML = sidebarExpandIcon(sidebarExpanded);
+        expandBtn.innerHTML = expandCornersIcon(sidebarExpanded);
         positionSidebarPickers(root);
       });
     }
@@ -10778,6 +10833,7 @@ export function generateContentScriptJs(
     isStructureVisible = visible;
     document.body.classList.toggle('ozon-native-board-visible', !visible);
     const root = document.getElementById('ozon-structure-root');
+    if (!visible && dashboardFullscreen) setDashboardFullscreen(root, false);
     const button = document.getElementById('ozon-structure-toggle-btn');
     if (button) button.hidden = visible;
     if (root) root.hidden = !visible;
@@ -10806,6 +10862,18 @@ export function generateContentScriptJs(
 
   function init() {
     if (!isTargetBoardPage()) return;
+    document.addEventListener('fullscreenchange', () => {
+      if (!ownsNativeFullscreen || document.fullscreenElement === document.documentElement) return;
+      ownsNativeFullscreen = false;
+      if (dashboardFullscreen) updateDashboardFullscreen(document.getElementById('ozon-structure-root'), false);
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Escape' || event.defaultPrevented || !dashboardFullscreen || (document.fullscreenElement && !ownsNativeFullscreen)) return;
+      const target = event.target;
+      if (target instanceof Element && target.closest('[role="dialog"], .ozon-ext-toolbar-combo:has([aria-expanded="true"])')) return;
+      event.preventDefault();
+      setDashboardFullscreen(document.getElementById('ozon-structure-root'), false);
+    });
     document.addEventListener('click', (event) => {
       if (event.target instanceof Element && event.target.closest('#ozon-structure-root [data-show-native-board]')) {
         setStructureVisible(false);
