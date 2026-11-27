@@ -20,7 +20,7 @@ export function createDevelopmentPointColumns() {
   return {definitions,matches};
 }
 
-export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (task:any, trigger:HTMLElement) => void, onBeforeEditor?:()=>void, renderBadge = renderJiraBadge, inferCategory?: (name: string) => string, widgetVersion = '', priorityService?: any, groupingUi?:ReturnType<typeof createJiraGroupingUi>, pointColumns = createDevelopmentPointColumns()) {
+export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (task:any, trigger:HTMLElement) => void, onBeforeEditor?:()=>void, renderBadge = renderJiraBadge, inferCategory?: (name: string) => string, widgetVersion = '', priorityService?: any, groupingUi?:ReturnType<typeof createJiraGroupingUi>, pointColumns = createDevelopmentPointColumns(), renderIssueType?: (name:string, iconUrl?:string) => string) {
   const teams = [{ id:'cs', name:'CS', boardId:6197,pointsField:'' },{id:'crm_core',name:'CRM_CORE',boardId:7180,pointsField:''},{id:'crm_bo',name:'CRM_BO',boardId:12696,pointsField:''}];
   const groupNames: Record<string, string> = { sprint:'Спринт', project:'Проект', epic:'Epic', stream:'Стрим', component:'Компонент' };
   const groupingStorage = 'ozon-dev-grouping-v1';
@@ -251,6 +251,7 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
       component: fields.components?.map((item:any) => item.name).filter(Boolean).join(', ') || 'Без компонента',
       labels: Array.isArray(fields.labels) ? fields.labels : [],
       priority: String(fields.priority?.name || 'Не указан'), issueType: String(fields.issuetype?.name || 'Задача'),
+      issueTypeIconUrl: fields.issuetype?.iconUrl || '',
       links: (fields.issuelinks || []).flatMap((link: any) => {
         const target = link.outwardIssue || link.inwardIssue;
         if (!target?.key) return [];
@@ -349,6 +350,7 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
         issue.stream = typeof stream === 'string' ? stream : stream?.value || '';
         if (epic?.summary) issue.epicTitle = epic.summary;
         issue.epicType = epic?.issuetype?.name || '';
+        issue.epicTypeIconUrl = epic?.issuetype?.iconUrl || '';
         issue.epicPriority = epic?.priority?.name || '';
         issue.epicStatus = epic?.status?.name || 'Статус недоступен';
         issue.epicCategory = epic?.status?.statusCategory?.key || '';
@@ -359,6 +361,7 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
           if (target?.status) { link.status = target.status.name; link.category = target.status.statusCategory?.key || ''; }
           link.priority = target?.priority?.name || 'Не указан';
           link.issueType = target?.issuetype?.name || 'Задача';
+          link.issueTypeIconUrl = target?.issuetype?.iconUrl || '';
           link.component = Array.isArray(target?.components) ? target.components.map((component:any) => component.name).filter(Boolean).join(', ') || 'Без компонента' : 'Без компонента';
           const related = normalizeIssue({key:link.key,fields:target || {}});
           link.epicKey = related.epicKey;
@@ -487,12 +490,14 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
     if (/low|низк/i.test(name)) return 3;
     return 4;
   }
+  const taskTypeBadge = (name = 'Задача', iconUrl?:string) => renderIssueType?.(name,iconUrl) || '<span class="ozon-ext-type-pill">' + escape(name) + '</span>';
+
   function taskRows(items: any[], level: number, groupPath: string) {
     return [...items].sort((a,b) => priorityRank(a.priority || '') - priorityRank(b.priority || '') || a.key.localeCompare(b.key,'ru',{numeric:true})).map(issue => {
       const expanded = state.expandedLinks.has(issue.key) !== (state.depth > state.grouping.length);
       const key = escape(issue.key);
       const values: Record<string,string> = {
-        key:'<div class="ozon-dev-task-key" style="padding-left:' + level*18 + 'px;"><button class="ozon-dev-link-toggle" data-dev-action="links" data-key="' + key + '" aria-label="Связи «Задача проекта» для ' + key + '" aria-expanded="' + expanded + '">' + (expanded ? '▾' : '▸') + '</button>' + issueLink(issue.key) + '<span class="ozon-ext-type-pill">' + escape(issue.issueType || 'Задача') + '</span><button type="button" class="ozon-dev-priority-edit" data-dev-action="edit-priority" data-key="' + key + '" aria-label="Изменить приоритет ' + key + '">' + priorityHtml(issue.priority) + '</button></div>',
+        key:'<div class="ozon-dev-task-key" style="padding-left:' + level*18 + 'px;"><button class="ozon-dev-link-toggle" data-dev-action="links" data-key="' + key + '" aria-label="Связи «Задача проекта» для ' + key + '" aria-expanded="' + expanded + '">' + (expanded ? '▾' : '▸') + '</button>' + issueLink(issue.key) + taskTypeBadge(issue.issueType,issue.issueTypeIconUrl) + '<button type="button" class="ozon-dev-priority-edit" data-dev-action="edit-priority" data-key="' + key + '" aria-label="Изменить приоритет ' + key + '">' + priorityHtml(issue.priority) + '</button></div>',
         title:'<div class="ozon-dev-task-title"><span class="ozon-dev-ellipsis" title="' + escape(issue.summary) + '">' + escape(issue.summary) + '</span><span class="ozon-dev-indicators">' + indicators(issue) + '</span></div>',
         epic:epicHtml(issue), status:badge(issue.status,issue.category), sprint:sprintHtml(issue.sprint,isEpic(issue.issueType || '') ? '' : issue.key), component:'<button class="ozon-dev-cell-edit" data-dev-action="edit-component" data-key="' + key + '" aria-label="Изменить компонент ' + key + '" title="' + escape(issue.component || 'Без компонента') + '"><span class="ozon-dev-ellipsis">' + escape(issue.component || 'Без компонента') + '</span><span class="ozon-ext-toolbar-chevron"></span></button>', points:pointPair([issue]),
       };
@@ -501,8 +506,8 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
       if (expanded) {
         const links = issue.links.filter((link:any) => link.projectTask);
         html += links.length ? links.map((link:any) => '<tr class="ozon-dev-related ozon-tree-depth-' + ((level + 1) % 2) + ' ' + (link.category === 'done' ? 'ozon-dev-completed' : '') + '" data-details-row="' + escape(JSON.stringify([groupPath, issue.key, link.key])) + '">' + rowCells({
-          key:'<div class="ozon-dev-task-key" style="padding-left:' + (level+1)*18 + 'px;"><span style="color:#94A3B8;">↳</span><span class="ozon-ext-link-type-tag" role="img" aria-label="Задача проекта" title="Тип связи: Задача проекта"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg></span>' + issueLink(link.key) + '<span class="ozon-ext-type-pill"><span style="color:#005BFF;">●</span> ' + escape(link.issueType || 'Задача') + '</span><button type="button" class="ozon-dev-priority-edit" data-priority-key="' + escape(link.key) + '" title="Изменить приоритет: ' + escape(link.priority || 'Не указан') + '" aria-label="Изменить приоритет ' + escape(link.key) + '">' + priorityHtml(link.priority || 'Не указан') + '</button></div>',
-          title:'<div class="ozon-dev-task-title"><span class="ozon-dev-ellipsis" title="' + escape(link.summary) + '">' + escape(link.summary) + '</span>' + (/^FCRM-/i.test(link.key) ? '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-dev-action="open-fcrm" data-details-trigger aria-expanded="false" data-key="' + escape(link.key) + '">Детали</button>' : '') + '</div>',
+          key:'<div class="ozon-dev-task-key" style="padding-left:' + (level+1)*18 + 'px;"><span style="color:#94A3B8;">↳</span><span class="ozon-ext-link-type-tag" role="img" aria-label="Задача проекта" title="Тип связи: Задача проекта"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg></span>' + issueLink(link.key) + taskTypeBadge(link.issueType,link.issueTypeIconUrl) + '<button type="button" class="ozon-dev-priority-edit" data-priority-key="' + escape(link.key) + '" title="Изменить приоритет: ' + escape(link.priority || 'Не указан') + '" aria-label="Изменить приоритет ' + escape(link.key) + '">' + priorityHtml(link.priority || 'Не указан') + '</button></div>',
+          title:'<div class="ozon-dev-task-title"><span class="ozon-dev-ellipsis" title="' + escape(link.summary) + '">' + escape(link.summary) + '</span>' + (/^FCRM-/i.test(link.key) ? '<button type="button" class="ozon-ext-inner-ctrl ozon-ext-open-sb-btn" data-dev-action="open-fcrm" data-details-trigger aria-expanded="false" data-key="' + escape(link.key) + '">Детали</button>' : '') + '</div>',
           epic:link.epicKey ? '<div class="ozon-dev-epic-inline" title="' + escape([link.epicKey,link.epicStatus,link.epicTitle].filter(Boolean).join(' · ')) + '">' + issueLink(link.epicKey) + (layout.epicDisplay !== 'key' && link.epicStatus ? badge(link.epicStatus,link.epicCategory) : '') + (layout.epicDisplay === 'full' ? '<span class="ozon-dev-ellipsis">' + escape(link.epicTitle) + '</span>' : '') + '</div>' : '', status:badge(link.status,link.category), sprint:sprintHtml(link.sprint), component:'<span class="ozon-dev-ellipsis" title="' + escape(link.component || 'Без компонента') + '">' + escape(link.component || 'Без компонента') + '</span>',
         }) + '</tr>').join('') : '<tr class="ozon-dev-related"><td colspan="' + flatColumns().length + '" style="padding-left:' + ((level+1)*18+12) + 'px;color:#D92D20;">Нет связей «Задача проекта» <button class="ozon-ext-btn" data-dev-action="edit-link" data-key="' + key + '">Связать с FCRM</button></td></tr>';
       }
@@ -522,7 +527,7 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
       const closed = state.collapsed.has(groupId) || (level >= state.depth && !state.expandedGroups.has(groupId));
       const first = children[0];
       const priorityControl = dimension === 'epic' && key ? '<button type="button" class="ozon-dev-priority-edit" data-priority-key="' + escape(key) + '" title="Изменить приоритет: ' + escape(first.epicPriority || 'Не указан') + '" aria-label="Изменить приоритет ' + escape(key) + '">' + (first.epicPriority ? priorityHtml(first.epicPriority) : '·') + '</button>' : '';
-      const title = dimension === 'sprint' ? escape(first.sprint.name) + ' ' + badge(stateName(first.sprint.state), first.sprint.state) : dimension === 'project' || dimension === 'component' ? escape(key) : dimension === 'stream' ? escape(key || 'Без стрима') : key ? issueLink(key) + ' ' + (first.epicType ? '<span class="ozon-ext-type-pill">' + escape(first.epicType) + '</span> ' : '') + priorityControl + ' ' + escape(first.epicTitle) + ' <button class="ozon-dev-stream-edit' + (!first.stream ? ' is-empty' : '') + '" data-dev-action="edit-stream" data-key="' + escape(key) + '" aria-label="Изменить стрим ' + escape(key) + '">' + escape(first.stream || 'Без стрима') + '<span class="ozon-ext-toolbar-chevron"></span></button>' : 'Без эпика';
+      const title = dimension === 'sprint' ? escape(first.sprint.name) + ' ' + badge(stateName(first.sprint.state), first.sprint.state) : dimension === 'project' || dimension === 'component' ? escape(key) : dimension === 'stream' ? escape(key || 'Без стрима') : key ? issueLink(key) + ' ' + (first.epicType ? taskTypeBadge(first.epicType,first.epicTypeIconUrl) + ' ' : '') + priorityControl + ' ' + escape(first.epicTitle) + ' <button class="ozon-dev-stream-edit' + (!first.stream ? ' is-empty' : '') + '" data-dev-action="edit-stream" data-key="' + escape(key) + '" aria-label="Изменить стрим ' + escape(key) + '">' + escape(first.stream || 'Без стрима') + '<span class="ozon-ext-toolbar-chevron"></span></button>' : 'Без эпика';
       const label = '<div class="ozon-dev-group-line" style="padding-left:' + level*18 + 'px;"><button class="ozon-dev-link-toggle" data-dev-action="collapse" data-group="' + escape(groupId) + '" aria-expanded="' + !closed + '" aria-label="' + (closed ? 'Развернуть ' : 'Свернуть ') + escape(groupNames[dimension] + ' ' + (key || 'Без эпика')) + '">' + (closed ? '▸' : '▾') + '</button> ' + title + ' <span class="ozon-ext-group-total">' + children.length + ' задач</span> ' + statusSummary(children) + '</div>';
       const epicStatusHtml = dimension === 'epic' && key ? badge(first.epicStatus,first.epicCategory) : '';
       const componentHtml = dimension === 'epic' && key ? '<button class="ozon-dev-cell-edit" data-dev-action="edit-component" data-key="' + escape(key) + '" aria-label="Изменить компонент эпика ' + escape(key) + '" title="' + escape(first.epicComponent || 'Без компонента') + '"><span class="ozon-dev-ellipsis">' + escape(first.epicComponent || 'Без компонента') + '</span><span class="ozon-ext-toolbar-chevron"></span></button>' : '';
@@ -733,7 +738,7 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
           const known = source.links.find((old:any) => old.key === link.key);
           if (link.key !== option.value) return {...link,...known};
           const fields = option.raw?.fields || {};
-          return {...link,summary:fields.summary || link.summary,status:fields.status?.name || link.status,category:fields.status?.statusCategory?.key || link.category,priority:fields.priority?.name || 'Не указан',issueType:fields.issuetype?.name || 'Задача',sprint:lastSprint(fields[sprintField] || [])};
+          return {...link,summary:fields.summary || link.summary,status:fields.status?.name || link.status,category:fields.status?.statusCategory?.key || link.category,priority:fields.priority?.name || 'Не указан',issueType:fields.issuetype?.name || 'Задача',issueTypeIconUrl:fields.issuetype?.iconUrl || '',sprint:lastSprint(fields[sprintField] || [])};
         });
       } else if (editor.kind === 'stream') {
         await write('/rest/api/2/issue/' + encodeURIComponent(editor.key),'PUT',{fields:{customfield_24000:option.value}});
@@ -772,6 +777,7 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
           updated.epicTitle = epic.fields?.summary || updated.epicKey;
           updated.epicStatus = epic.fields?.status?.name || 'Статус недоступен'; updated.epicCategory = epic.fields?.status?.statusCategory?.key || '';
           updated.epicType = epic.fields?.issuetype?.name || '';
+          updated.epicTypeIconUrl = epic.fields?.issuetype?.iconUrl || '';
           updated.epicPriority = epic.fields?.priority?.name || '';
           updated.epicComponent = (epic.fields?.components || []).map((component:any) => component.name).filter(Boolean).join(', ');
           const stream = epic.fields?.customfield_24000; updated.stream = typeof stream === 'string' ? stream : stream?.value || '';
@@ -1003,7 +1009,7 @@ export function createDevelopmentDashboard(onRender: () => void, onOpenTask?: (t
       const stream = fields.customfield_24000;
       return {
         epicKey:value.id, epicTitle:fields.summary || value.id, epicStatus:fields.status?.name || '',
-        epicCategory:fields.status?.statusCategory?.key || '', epicType:fields.issuetype?.name || '',
+        epicCategory:fields.status?.statusCategory?.key || '', epicType:fields.issuetype?.name || '', epicTypeIconUrl:fields.issuetype?.iconUrl || '',
         epicPriority:fields.priority?.name || '', epicComponent:(fields.components || []).map((item:any) => item.name).filter(Boolean).join(', '),
         stream:typeof stream === 'string' ? stream : stream?.value || ''
       };
