@@ -398,7 +398,7 @@ reportState.sprint = '75';
 reportState.picker = 'sprint';
 function sprintMatches(query) {
   reportState.sprintQuery=query;
-  return [...dashboard.html().matchAll(/data-report-choice="(\d+)" aria-selected=/g)].map(match=>match[1]);
+  return [...dashboard.html().matchAll(/data-report-sprint-choice="(\d+)"/g)].map(match=>match[1]);
 }
 assert.deepEqual(sprintMatches(''),['75','74','175']);
 assert.deepEqual(sprintMatches('#75'),['75']);
@@ -409,6 +409,26 @@ assert.deepEqual(sprintMatches('CS 03/11'),['74','175']);
 assert.deepEqual(sprintMatches('24.12'),[]);
 assert.match(dashboard.html(),/role="status">Спринты не найдены/);
 Object.assign(reportState,{picker:'',sprintQuery:''});
+
+Object.assign(reportState,{sprint:'', report:null, selectedSprints:['75','74','175']});
+reportState.sprintResults.set('74',{report,loadedAt:0});
+reportState.sprintResults.set('75',{report,loadedAt:0});
+reportState.sprintErrors.set('175','Не удалось загрузить тестовый спринт');
+const comparisonTable = () => dashboard.html().match(/<table aria-label="Показатели по спринтам">.*?<\/table>/)[0];
+const comparison = comparisonTable();
+assert.ok(comparison.indexOf('CS #175') < comparison.indexOf('CS #74'));
+assert.ok(comparison.indexOf('CS #74') < comparison.indexOf('CS #75'));
+assert.match(comparison,/Не удалось загрузить тестовый спринт/);
+assert.match(comparison,/Переоценка/);
+assert.match(dashboard.html(),/data-report-open-sprint="74"/);
+reportState.comparisonUnit='tasks';
+const comparisonTasks = comparisonTable();
+assert.doesNotMatch(comparisonTasks,/Переоценка| SP/);
+reportState.comparisonProject='OB';
+assert.notEqual(comparisonTable(),comparisonTasks);
+Object.assign(reportState,{sprint:'75', selectedSprints:[], comparisonProject:'', comparisonUnit:'points'});
+reportState.sprintResults.clear();
+reportState.sprintErrors.clear();
 
 Object.assign(dashboard.getState(),{report:model.build({...input,pointsField:''}),section:'days',scopeFilter:'all'});
 assert.doesNotMatch(dashboard.html(),/data-report-chart/);
@@ -489,4 +509,35 @@ applySettings.listeners.get('click')();
 assert.deepEqual(JSON.parse(storage.get('ozon-sprint-report-v1')).grouping,null);
 assert.doesNotMatch(groupTable(dashboard.html()),/→ Компонент/);
 
-console.log('Sprint report checks passed: history, cumulative completion bars, chart interaction, point categories and tree controls.');
+async function checkMultiSprintLoading() {
+  const second = {id:8,name:'Test 8',state:'closed',startDate:'2026-10-26T09:00:00+03:00',completeDate:'2026-10-30T18:00:00+03:00'};
+  const third = {...second,id:9,name:'Test 9'};
+  let configurations=0, histories=0;
+  const rows=[];
+  const mock=async path=>{
+    const url=new URL(path,'https://jira.example');
+    const response=(data,ok=true)=>({ok,status:ok?200:503,json:async()=>data});
+    if (url.pathname.endsWith('/board/1/sprint')) return response({values:[third,second,sprint],isLast:true});
+    if (url.pathname.endsWith('/configuration')) {configurations++;return response({estimation:{field:{fieldId:'customfield_1',displayName:'Story Points'}}});}
+    if (url.pathname.endsWith('/field')) return response([]);
+    if (url.pathname.endsWith('/sprintreport')) return url.searchParams.get('sprintId')==='9' ? response({},false) :
+      response({contents:{completedIssues:[],issuesNotCompletedInCurrentSprint:[ref('TEST-1')],puntedIssues:[]}});
+    if (/\/sprint\/\d+$/.test(url.pathname)) return response([sprint,second,third].find(item=>String(item.id)===url.pathname.split('/').at(-1)));
+    if (url.pathname.endsWith('/issue')) return response({},false);
+    if (url.searchParams.get('expand')==='changelog') {histories++; return response({issues:[issues[0]],isLast:true});}
+    return response({issues:[],isLast:true});
+  };
+  const factory=load('sprintReportDashboard',{fetch:mock,AbortController,URLSearchParams,localStorage:{getItem:()=>null,setItem(){}}}).createSprintReportDashboard;
+  const multi=factory(()=>{rows.push(multi.getState().sprintResults.size);},model,[{id:'1',name:'Test'}],'customfield_2','customfield_3',()=>'',()=>false,people,columns);
+  multi.open({board:'1',sprints:['8','9','7']});
+  await new Promise(setImmediate);
+  const state=multi.getState();
+  assert.equal(state.loading,'');
+  assert.deepEqual([...state.sprintResults.keys()],[ '7','8' ],[state.error,...state.sprintErrors.values()].filter(Boolean).join(' · '));
+  assert.ok(state.sprintErrors.has('9'),'One failure preserves the other reports');
+  assert.ok(rows.includes(1),'Completed reports render while the next sprint loads');
+  assert.equal(configurations,1,'Board metadata is loaded once per batch');
+  assert.equal(histories,1,'A task shared by two sprints uses the same fetched changelog');
+}
+checkMultiSprintLoading().then(()=>console.log('Sprint report checks passed: history, charts, grouping, sprint comparison, partial failure and shared history.'))
+  .catch(error=>{console.error(error);process.exitCode=1;});

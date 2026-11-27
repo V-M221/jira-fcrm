@@ -291,5 +291,5 @@ export function createSprintReportModel() {
     })) warnings.add('График истории и итоговый состав Jira расходятся. Сводка «Завершили» и «Не завершили» использует итоговый состав.');
     return {start,end,closed:closed(sprint),rows,events,days,metrics,byProject,pointsField,pointsName, warnings:[...warnings]};
   }
-  return {nativeScope,build,epicKeyFor,streamName,avatarFor};
+  return {nativeScope,build,epicKeyFor,streamName,avatarFor,emptyMetrics};
 }

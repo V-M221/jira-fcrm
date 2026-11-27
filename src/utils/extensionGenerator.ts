@@ -12,7 +12,7 @@ import { createJiraGroupingUi } from '../services/jiraGroupingUi';
 import { createJiraPeopleUi } from '../services/jiraPeopleUi';
 import { createExtensionUpdateNotice, EXTENSION_UPDATE_INTERVAL, EXTENSION_UPDATE_MESSAGES, EXTENSION_UPDATE_ZIP_URL } from '../services/extensionUpdate';
 
-export const EXTENSION_VERSION = '3.5.189';
+export const EXTENSION_VERSION = '3.5.190';
 
 export function fcrmReviewRowClass(key:string, status:string):string {
   if (!/^FCRM-\d+$/i.test(key)) return '';
@@ -611,6 +611,12 @@ body.ozon-native-board-visible > :is(.ozon-component-editor,#ozon-thread-sidebar
 .ozon-report-options.ozon-report-sprint-options {display:flex;flex-direction:column;overflow:hidden}
 .ozon-report-sprint-options .ozon-report-sprint-search {flex:none;box-sizing:border-box;margin-bottom:4px}
 .ozon-report-sprint-options .ozon-report-option-list {min-height:0;overflow-y:auto;overscroll-behavior:contain}
+.ozon-report-options.ozon-report-sprint-options {width:min(340px,calc(100vw - 24px));min-width:0;max-height:min(360px,60vh)}
+.ozon-report-sprint-options .ozon-dev-sprint-option {padding-inline:6px}
+.ozon-report-sprint-options .ozon-dev-sprint-option input[type="checkbox"] {min-height:0}
+.ozon-report-sprint-options .ozon-dev-sprint-option:has(input:checked) {background:#eaf3ff}
+.ozon-report-sprint-footer {display:flex;align-items:center;justify-content:flex-end;gap:6px;flex:none;flex-wrap:wrap;padding:7px 2px 2px;border-top:1px solid #e2e8f0}
+.ozon-report-sprint-footer>span {margin-right:auto;color:#52647d;font-size:11px;white-space:nowrap}
 .ozon-report-picker-empty {margin:4px 0;padding:6px 8px;color:#52647d;font-weight:400}
 #ozon-structure-root .ozon-report-options .ozon-ext-combo-item {display:flex!important;align-items:center;gap:6px;justify-content:flex-start}
 .ozon-report-options .ozon-ext-combo-item>span:first-child {min-width:0;white-space:normal;overflow-wrap:anywhere}
@@ -627,6 +633,38 @@ body.ozon-native-board-visible > :is(.ozon-component-editor,#ozon-thread-sidebar
 .ozon-report-method.ozon-report-definitions {margin:0 0 14px;font-size:12px}.ozon-report-definitions p {max-width:84ch;line-height:1.5}
 .ozon-report-panel {margin-top:12px;background:#fff;border:1px solid #dae4f1;border-radius:12px;padding:16px}
 .ozon-report-panel h2 {font-size:16px;margin:0 0 12px}.ozon-report-panel>p {margin:0 0 10px}
+.ozon-report-trend-top,.ozon-report-trend-controls,.ozon-report-trend-unit,.ozon-report-trend-legend {display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.ozon-report-trend-top {justify-content:space-between;margin-bottom:8px}
+.ozon-report-trend-top h2 {margin:0}
+.ozon-report-trend-legend {gap:8px 16px;color:#40536e;font-size:11.5px}
+.ozon-report-comparison {--trend-planned:#789de0;--trend-completed:#228663;--trend-remaining:#9273c3}
+.ozon-report-trend-legend span::before {content:'';display:inline-block;width:10px;height:8px;border-radius:2px;margin-inline-end:4px;background:var(--trend-color)}
+.ozon-report-comparison .planned {--trend-color:var(--trend-planned)}
+.ozon-report-comparison .completed {--trend-color:var(--trend-completed)}
+.ozon-report-comparison .remaining {--trend-color:var(--trend-remaining)}
+.ozon-report-trend-chart {display:grid;grid-template-columns:42px minmax(0,1fr);margin:3px 0 14px;--trend-height:148px}
+.ozon-report-trend-axis {display:flex;flex-direction:column;justify-content:space-between;text-align:right;color:#52647d;font-size:11px;height:calc(var(--trend-height) + 13px);padding-inline-end:7px;margin-block-start:14px}
+.ozon-report-trend-scroll {overflow-x:auto;padding-top:22px;scrollbar-width:thin}
+.ozon-report-trend-plot {display:grid;grid-template-columns:repeat(var(--trend-sprints),minmax(120px,1fr));min-width:calc(var(--trend-sprints) * 120px);background:repeating-linear-gradient(to top,#e0e8f3 0 1px,transparent 1px 25%) left top/100% var(--trend-height) no-repeat}
+.ozon-report-trend-sprint {min-width:0;text-align:center;border-inline-start:1px solid #e9edf4}
+.ozon-report-trend-bars {position:relative;display:flex;align-items:end;justify-content:center;gap:5px;width:100%;height:var(--trend-height);background:transparent;border:0;border-bottom:1px solid #d5dfed;padding:0 4px}
+button.ozon-report-trend-bars,.ozon-report-trend-link {cursor:pointer}
+button.ozon-report-trend-bars:hover,.ozon-report-trend-bars:focus-visible {background:#eaf3ff60}
+.ozon-report-trend-bars:focus-visible,.ozon-report-trend-link:focus-visible {outline:2px solid #005bff;outline-offset:-2px}
+.ozon-report-trend-bar {position:relative;width:clamp(18px,17%,28px);height:max(2px,var(--bar-height));background:var(--trend-color);border-radius:3px 3px 0 0}
+.ozon-report-trend-bar>span {position:absolute;bottom:calc(100% + 2px);left:50%;transform:translateX(-50%);color:#233853;font:600 11px var(--ozon-font-sans);white-space:nowrap}
+.ozon-report-trend-pending {align-self:center;color:#52647d}
+.ozon-report-trend-name {display:block;padding:6px 5px;color:#334155;overflow-wrap:anywhere}
+.ozon-report-trend-name small,.ozon-report-trend-table th small {display:block;color:#52647d;font-weight:400}
+.ozon-report-trend-table {border:1px solid #e4ecf6;border-radius:8px}
+.ozon-report-trend-table table {min-width:710px}
+.ozon-report-trend-table tbody th {width:25%;text-align:left}
+.ozon-report-trend-table th .ozon-ext-badge {margin-top:4px}
+.ozon-report-trend-table td {font-variant-numeric:tabular-nums}
+.ozon-report-trend-link {display:block;padding:0;border:0;text-align:left;background:transparent;color:#005bff;font:inherit}
+.ozon-report-trend-link:hover strong {text-decoration:underline}
+.ozon-report-trend-warning {margin-top:5px;color:#774600;font-size:11px;font-weight:400}
+.ozon-report-trend-warning ul {margin:4px 0;padding-inline-start:16px}
 .ozon-report-chart-toolbar,.ozon-report-chart-modes {display:flex;align-items:center;flex-wrap:wrap;gap:8px}
 .ozon-report-chart-toolbar {justify-content:space-between;margin:4px 0 10px}
 .ozon-report-chart {margin-bottom:8px}
@@ -8437,8 +8475,9 @@ export function generateContentScriptJs(
       const view = button.getAttribute('data-dashboard-view');
       if (view === activeDashboardView) return;
       const development = developmentDashboard.getState();
-      const currentSprint = activeDashboardView === 'development' && development.selected.length === 1
-        ? development.sprints.find(sprint => String(sprint.id) === development.selected[0] && /^(active|closed)$/i.test(sprint.state)) : null;
+      const currentSprints = activeDashboardView === 'development' && view === 'report'
+        ? development.sprints.filter(sprint => development.selected.includes(String(sprint.id)) && /^(active|closed)$/i.test(sprint.state)) : [];
+      const sprintBoards = new Set(currentSprints.map(sprint => String(sprint.boardId || sprint.originBoardId)));
       if (activeDashboardView === 'report') sprintReport.cancel();
       developmentDashboard.cancel();
       activeDashboardView = view;
@@ -8448,7 +8487,7 @@ export function generateContentScriptJs(
       renderStructure();
       if (view === 'strategy') strategicDashboard.prepareFilters();
       if (view === 'product') prepareProductFilters();
-      if (view === 'report') sprintReport.open(currentSprint ? {board:String(currentSprint.boardId || currentSprint.originBoardId),sprint:String(currentSprint.id)} : undefined);
+      if (view === 'report') sprintReport.open(sprintBoards.size===1 ? {board:[...sprintBoards][0],sprints:currentSprints.map(sprint=>String(sprint.id))} : undefined);
     }));
   }
 
@@ -8489,21 +8528,32 @@ export function generateContentScriptJs(
       const top = root.querySelector('.ozon-report-scroll')?.scrollTop || 0;
       const tableLeft = root.querySelector('.ozon-report-tree-wrap')?.scrollLeft || 0;
       const rollupLeft = root.querySelector('.ozon-report-rollup-wrap')?.scrollLeft || 0;
+      const trendLeft = root.querySelector('.ozon-report-trend-scroll')?.scrollLeft || 0;
+      const trendTableLeft = root.querySelector('.ozon-report-trend-table')?.scrollLeft || 0;
       const sprintSearch = root.querySelector('[data-report-sprint-search]');
       const sprintCaret = sprintSearch && document.activeElement === sprintSearch ? [sprintSearch.selectionStart,sprintSearch.selectionEnd] : null;
+      const sprintListTop = root.querySelector('[data-report-sprint-list]')?.scrollTop || 0;
+      const sprintOption = root.contains(document.activeElement) ? document.activeElement?.dataset.reportSprintChoice : '';
       root.innerHTML = renderDashboardNavigation() + sprintReport.html();
       bindDashboardNavigation(root);
       sprintReport.bind(root);
       const scroll = root.querySelector('.ozon-report-scroll');
       const tree = root.querySelector('.ozon-report-tree-wrap');
       const rollup = root.querySelector('.ozon-report-rollup-wrap');
+      const trend = root.querySelector('.ozon-report-trend-scroll');
+      const trendTable = root.querySelector('.ozon-report-trend-table');
+      const sprintList = root.querySelector('[data-report-sprint-list]');
       if (tree) tree.scrollLeft = tableLeft;
       if (rollup) rollup.scrollLeft = rollupLeft;
+      if (trend) trend.scrollLeft = trendLeft;
+      if (trendTable) trendTable.scrollLeft = trendTableLeft;
+      if (sprintList) sprintList.scrollTop = sprintListTop;
       if (sprintCaret) {
         const nextSearch = root.querySelector('[data-report-sprint-search]');
         nextSearch?.focus({preventScroll:true});
         if (sprintCaret[0] !== null && sprintCaret[1] !== null) nextSearch?.setSelectionRange(...sprintCaret);
       }
+      if (sprintOption) [...root.querySelectorAll('[data-report-sprint-choice]')].find(item=>item.dataset.reportSprintChoice===sprintOption)?.focus({preventScroll:true});
       if (scroll) scroll.scrollTop = top;
       animateDashboardSurfaces(root);
       return;
