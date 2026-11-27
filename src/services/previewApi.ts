@@ -195,9 +195,11 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
       reportHistory.set(key,history);
       return {key,summary:history.fields.summary,statusId:history.fields.status.id,statusName:history.fields.status.name};
     };
-    const a=make(1,'Автозаполнение реквизитов клиента',5,'done',true,[change(0,status('todo','progress')),change(2,status('progress','review')),change(3,status('review','done'))]);
+    const previous=selected.state==='closed';
+    const a=make(1,'Автозаполнение реквизитов клиента',previous ? 8 : 5,'done',true,[change(0,status('todo','progress')),change(2,status('progress','review')),change(3,status('review','done'))]);
     const remainingStatus = range[0] === 'FCRM' ? 'userTesting' : 'progress';
-    const b=make(2,'Уведомление об истечении срока договора',13,remainingStatus,true,[change(0,status('todo','progress')),change(2,{field:'Story Points',fieldId:'customfield_10002',from:'8',to:'13'}),change(4,status('progress','done')),change(5,status('done',remainingStatus))]);
+    const finalEstimate=previous ? 9 : 13;
+    const b=make(2,'Уведомление об истечении срока договора',finalEstimate,remainingStatus,true,[change(0,status('todo','progress')),change(2,{field:'Story Points',fieldId:'customfield_10002',from:previous ? '5' : '8',to:String(finalEstimate)}),change(4,status('progress','done')),change(5,status('done',remainingStatus))]);
     const c=make(3,'Фильтр по сегменту в карточке клиента',3,'progress',false,[change(1,status('todo','progress')),change(3,membership(false))]);
     const d=make(4,'Проверка лимита при оформлении заявки',2,'done',true,[change(1,membership(true)),change(2,status('todo','progress')),change(5,status('progress','done'))]);
     const e=make(5,'Уточнение требований к журналу операций',null,'todo',true,[]);
