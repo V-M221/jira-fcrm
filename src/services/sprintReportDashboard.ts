@@ -4,7 +4,7 @@ import type {createJiraGroupingUi} from './jiraGroupingUi';
 import type {createDevelopmentPointColumns} from './developmentDashboard';
 
 // Serialized into content.js. Receives its model and the local board list from the host.
-export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<typeof createSprintReportModel>, boards:{id:string;name:string}[], configuredSprintField:string, configuredEpicField:string, renderBadge:(label:string, state:string)=>string, isEpicIssueType:(type:string)=>boolean, people:ReturnType<typeof createJiraPeopleUi>, pointColumns:ReturnType<typeof createDevelopmentPointColumns>, developmentGrouping:()=>string[] = ()=>['project','epic'], groupingUi?:ReturnType<typeof createJiraGroupingUi>) {
+export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<typeof createSprintReportModel>, boards:{id:string;name:string}[], configuredSprintField:string, configuredEpicField:string, renderBadge:(label:string, state:string)=>string, isEpicIssueType:(type:string)=>boolean, people:ReturnType<typeof createJiraPeopleUi>, pointColumns:ReturnType<typeof createDevelopmentPointColumns>, developmentGrouping:()=>string[] = ()=>['project','epic'], groupingUi?:ReturnType<typeof createJiraGroupingUi>, reviewRowClass:(key:string,status:string)=>string=()=> '') {
   type Report = ReturnType<typeof model.build>;
   type Leader = NonNullable<ReturnType<Report['byProject']['get']>>['leaders'][number];
   const state = {board:boards[0].id,sprint:'',sprints:[] as any[],report:null as Report | null, section:'days',day:'',query:'',limit:60,rollupOpen:false,
@@ -780,7 +780,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
       ].filter(Boolean);
       const result=change.burned > 0 ? 'В «Готово» ' + metric(report,change.burned) : change.burned < 0 ? 'Вернули ' + metric(report,-change.burned) : '—';
       const task=tasks.get(change.key);
-      return '<tr>' + taskKeyCell(change.key,task?.issueType) + '<td>' + escape(task?.summary || '') + '</td>' + assigneeCell(change.key,task?.assigneeName,task?.assignee) + '<td>' + timeFormat.format(change.at) + '</td><td>' + facts.map(escape).join('<br>') + '</td>' +
+      return '<tr class="' + reviewRowClass(change.key,change.after.status.name) + '">' + taskKeyCell(change.key,task?.issueType) + '<td>' + escape(task?.summary || '') + '</td>' + assigneeCell(change.key,task?.assigneeName,task?.assignee) + '<td>' + timeFormat.format(change.at) + '</td><td>' + facts.map(escape).join('<br>') + '</td>' +
         (report.pointsField ? '<td>' + escape(result) + '</td>' : '') + '</tr>';
     };
     const {completed,reopened} = dayBurn(allChanges);
@@ -823,7 +823,7 @@ export function createSprintReportDashboard(onRender:()=>void, model:ReturnType<
       ].filter(change=>change.visible && (state.scopeFilter==='all' || state.scopeFilter===change.id));
       const status = isScope ? movements.map(change=>scopeLabel(change.label,change.dates)).join(' · ') : isStart ? task.startStatus : task.endStatus;
       const points = isScope ? escape(movements.map(change=>positive(change.points)).join(' / ')) : pointsCell(isStart ? task.startPoints : task.endPoints);
-      return '<tr>' + taskKeyCell(task.key,task.issueType) + '<td>' + escape(task.summary) + (!task.completeHistory ? ' <small class="ozon-report-history-warning">История неполная</small>' : '') + '</td>' + assigneeCell(task.key,task.assigneeName,task.assignee) + '<td>' + escape(status || '—') + '</td>' +
+      return '<tr class="' + reviewRowClass(task.key,isStart ? task.startStatus : task.endStatus) + '">' + taskKeyCell(task.key,task.issueType) + '<td>' + escape(task.summary) + (!task.completeHistory ? ' <small class="ozon-report-history-warning">История неполная</small>' : '') + '</td>' + assigneeCell(task.key,task.assigneeName,task.assignee) + '<td>' + escape(status || '—') + '</td>' +
         (report.pointsField ? '<td>' + points + '</td>' : '') + '</tr>';
     };
     const grouped=groupedRows(filtered,task=>task,row,report.pointsField ? 5 : 4);
