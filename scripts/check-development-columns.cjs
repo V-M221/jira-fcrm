@@ -33,10 +33,14 @@ const choose = (id,checked) => {
 };
 const shown = (html,id) => html.includes('data-dev-col="' + id + '"');
 
+stored.set('ozon-dev-columns',JSON.stringify({order:['status','points','key','title']}));
 const dashboard=setup();
+assert.match(dashboard.html(),/<colgroup><col data-dev-col="key"[^>]*><col data-dev-col="status"/);
+assert.match(dashboard.html(),/<th rowspan="2" scope="col" data-column="key">Ключ/);
 dashboard.bind(root);
 click('settings-open');
 assert.match(dashboard.html(),/data-settings-column="key" checked disabled/);
+assert.match(dashboard.html(),/data-group-level="key"><span class="ozon-grouping-grip"/);
 assert.match(dashboard.html(),/data-settings-column="metric-0" checked/);
 choose('key',false);
 choose('status',false);
