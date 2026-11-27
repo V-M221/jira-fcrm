@@ -12,7 +12,14 @@ import { createJiraGroupingUi } from '../services/jiraGroupingUi';
 import { createJiraPeopleUi } from '../services/jiraPeopleUi';
 import { createExtensionUpdateNotice, EXTENSION_UPDATE_INTERVAL, EXTENSION_UPDATE_MESSAGES, EXTENSION_UPDATE_ZIP_URL } from '../services/extensionUpdate';
 
-export const EXTENSION_VERSION = '3.5.187';
+export const EXTENSION_VERSION = '3.5.188';
+
+export function fcrmReviewRowClass(key:string, status:string):string {
+  if (!/^FCRM-\d+$/i.test(key)) return '';
+  const name = String(status || '').trim().toLowerCase().replace(/[\s/‐‑–—-]+/g, ' ');
+  return ['product design review', 'user testing', 'продуктовое дизайн ревью', 'пользовательское тестирование'].includes(name)
+    ? ' ozon-fcrm-review' : '';
+}
 
 export function generateManifestJson(config: ExtensionConfig): string {
   const manifest = {
@@ -2031,6 +2038,11 @@ body.ozon-native-board-visible > :is(.ozon-component-editor,#ozon-thread-sidebar
 #ozon-structure-root .ozon-dev-settings label { display:flex;align-items:center;gap:8px; }
 #ozon-structure-root .ozon-dev-settings input[type="checkbox"] { flex:0 0 16px!important; }
 
+#ozon-structure-root tr.ozon-fcrm-review > td,
+#ozon-structure-root div.ozon-fcrm-review { background-color:#fff3e3!important; }
+#ozon-structure-root tr.ozon-fcrm-review:is(:hover,.ozon-details-source) > td,
+#ozon-structure-root div.ozon-fcrm-review:hover { background-color:#ffead0!important; }
+
 `;
 }
 
@@ -2114,12 +2126,13 @@ export function generateContentScriptJs(
   let activeDashboardView = new URLSearchParams(window.location.search).get('rapidView') === '6197' ? 'development' : 'product';
   let productDashboardLoaded = false;
   const renderBadge = (${renderJiraBadge.toString()});
+  const reviewRowClass = (${fcrmReviewRowClass.toString()});
   const jiraPriorityService = (${createJiraPriorityService.toString()})();
   const jiraGroupingUi = (${createJiraGroupingUi.toString()})();
   const jiraPeople = (${createJiraPeopleUi.toString()})();
   jiraPeople.bind(document,showSaveToast);
   const bindLabelSuggestions = (${bindJiraLabelSuggestions.toString()});
-  const strategicDashboard = (${createStrategicDashboard.toString()})(() => { if (activeDashboardView === 'strategy') renderStructure(); }, renderBadge, ${JSON.stringify(EXTENSION_VERSION)}, jiraPriorityService, CONFIG.sprintFieldId, { boardId:CONFIG.rapidViewId, components:()=>loadIssueCreateComponents(CONFIG.projectKey), create:(summary,componentId)=>createIssueFromSidebar({kind:'epic',projectKey:CONFIG.projectKey,summary,componentId}), link:(source,target)=>createIssueLinkInJira(source,target,'projectTask',true,true), notify:(message)=>{ const update=showLinksSnackbar(message); update(message); }, details:openSharedFcrmDetails, issueTypeBadge:getIssueTypeBadgeHtml, bindLabelSuggestions },jiraGroupingUi);
+  const strategicDashboard = (${createStrategicDashboard.toString()})(() => { if (activeDashboardView === 'strategy') renderStructure(); }, renderBadge, ${JSON.stringify(EXTENSION_VERSION)}, jiraPriorityService, CONFIG.sprintFieldId, { boardId:CONFIG.rapidViewId, components:()=>loadIssueCreateComponents(CONFIG.projectKey), create:(summary,componentId)=>createIssueFromSidebar({kind:'epic',projectKey:CONFIG.projectKey,summary,componentId}), link:(source,target)=>createIssueLinkInJira(source,target,'projectTask',true,true), notify:(message)=>{ const update=showLinksSnackbar(message); update(message); }, details:openSharedFcrmDetails, issueTypeBadge:getIssueTypeBadgeHtml, bindLabelSuggestions },jiraGroupingUi,reviewRowClass);
   async function openSharedFcrmDetails(link, button) {
     if (!/^FCRM-[0-9]+$/i.test(link.key)) return;
     const source = getSidebarSource(button);
@@ -2140,9 +2153,9 @@ export function generateContentScriptJs(
     reloadSingleTaskFromJira(link.key,true,true);
   }
   const developmentPointColumns = (${createDevelopmentPointColumns.toString()})();
-  const developmentDashboard = (${createDevelopmentDashboard.toString()})(() => renderStructure(), openSharedFcrmDetails,()=>{sbEpicComboOpen=false;sbCompComboOpen=false;sbIpCompOpenIdx=null;sbIpSprintOpenIdx=null;activeSearchSelectId='';}, renderBadge, getStatusCategoryClass, ${JSON.stringify(EXTENSION_VERSION)}, jiraPriorityService,jiraGroupingUi,developmentPointColumns,getIssueTypeBadgeHtml);
+  const developmentDashboard = (${createDevelopmentDashboard.toString()})(() => renderStructure(), openSharedFcrmDetails,()=>{sbEpicComboOpen=false;sbCompComboOpen=false;sbIpCompOpenIdx=null;sbIpSprintOpenIdx=null;activeSearchSelectId='';}, renderBadge, getStatusCategoryClass, ${JSON.stringify(EXTENSION_VERSION)}, jiraPriorityService,jiraGroupingUi,developmentPointColumns,getIssueTypeBadgeHtml,reviewRowClass);
   const sprintReport = (${createSprintReportDashboard.toString()})(() => { if (activeDashboardView === 'report') renderStructure(); }, (${createSprintReportModel.toString()})(),
-    [{id:String(CONFIG.rapidViewId),name:'FCRM'}, {id:'6197',name:'CS'}, {id:'7180',name:'CRM_CORE'}, {id:'12696',name:'CRM_BO'}], CONFIG.sprintFieldId, CONFIG.epicFieldId, renderBadge, isEpicIssueType,jiraPeople,developmentPointColumns,()=>developmentDashboard.getState().grouping,jiraGroupingUi);
+    [{id:String(CONFIG.rapidViewId),name:'FCRM'}, {id:'6197',name:'CS'}, {id:'7180',name:'CRM_CORE'}, {id:'12696',name:'CRM_BO'}], CONFIG.sprintFieldId, CONFIG.epicFieldId, renderBadge, isEpicIssueType,jiraPeople,developmentPointColumns,()=>developmentDashboard.getState().grouping,jiraGroupingUi,reviewRowClass);
   const generatingLinkKeys = new Set();
   const ticketSearchStates = new Map();
   let draggedThreadChannel = null;
@@ -2294,7 +2307,7 @@ export function generateContentScriptJs(
         if (state.items) {
           if (!state.items.length) body += '<p>' + (state.errors.length ? 'Подтверждённых результатов нет. Поиск выполнен с ошибками.' : 'Совпадений не найдено.') + '</p>';
           body += state.items.map(item => kind === 'fcrm'
-            ? '<div style="display:flex;align-items:flex-start;gap:8px;padding:10px 0;border-bottom:1px solid #e2e8f0;"><div style="min-width:0;flex:1;"><a href="/browse/' + encodeURIComponent(item.key) + '" target="_blank" rel="noopener noreferrer" style="color:#005bff;font-weight:700;">' + escapeHtml(item.key) + '</a><div style="overflow-wrap:anywhere;">' + escapeHtml(item.title) + '</div></div>' + getStatusBadgeHtml(item.status) + '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-similar-link="' + escapeHtml(item.key) + '" data-issue-key="' + escapeHtml(key) + '">Связать</button></div>'
+            ? '<div class="' + reviewRowClass(item.key,item.status) + '" style="display:flex;align-items:flex-start;gap:8px;padding:10px 0;border-bottom:1px solid #e2e8f0;"><div style="min-width:0;flex:1;"><a href="/browse/' + encodeURIComponent(item.key) + '" target="_blank" rel="noopener noreferrer" style="color:#005bff;font-weight:700;">' + escapeHtml(item.key) + '</a><div style="overflow-wrap:anywhere;">' + escapeHtml(item.title) + '</div></div>' + getStatusBadgeHtml(item.status) + '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-similar-link="' + escapeHtml(item.key) + '" data-issue-key="' + escapeHtml(key) + '">Связать</button></div>'
             : renderThreadSearchResult(key, item)).join('');
         }
         if (state.errors.length) body += '<div role="alert" style="margin-top:10px;color:#b42318;">' + state.errors.map(error => '<div>' + escapeHtml(error) + '</div>').join('') + '</div>';
@@ -7011,7 +7024,7 @@ export function generateContentScriptJs(
     };
 
     let html = \`
-      <tr class="ozon-ext-task-row ozon-tree-depth-\${treeDepth % 2} \${isDoneTask(task) ? 'completed' : ''}" data-details-row="\${escapeHtml(JSON.stringify([...groupPath, task.key]))}" data-key="\${escapeHtml(task.key)}" title="Нажмите на строку, чтобы развернуть/свернуть связанные задачи (или нажмите «◨ Детали» для открытия боковой панели)">
+      <tr class="ozon-ext-task-row ozon-tree-depth-\${treeDepth % 2} \${isDoneTask(task) ? 'completed' : ''}\${reviewRowClass(task.key,task.status)}" data-details-row="\${escapeHtml(JSON.stringify([...groupPath, task.key]))}" data-key="\${escapeHtml(task.key)}" title="Нажмите на строку, чтобы развернуть/свернуть связанные задачи (или нажмите «◨ Детали» для открытия боковой панели)">
         \${columnOrder.map((colId) => cellMap[colId] || '<td></td>').join('')}
       </tr>
     \`;
@@ -7059,7 +7072,7 @@ export function generateContentScriptJs(
         };
 
         return \`
-          <tr class="ozon-ext-subrow ozon-tree-depth-\${(treeDepth + 1) % 2} \${isDoneTask(l) ? 'completed' : ''}">
+          <tr class="ozon-ext-subrow ozon-tree-depth-\${(treeDepth + 1) % 2} \${isDoneTask(l) ? 'completed' : ''}\${reviewRowClass(l.key,l.status)}">
             \${columnOrder.map((colId) => subCellMap[colId] || '<td></td>').join('')}
           </tr>
         \`;
@@ -7770,7 +7783,7 @@ export function generateContentScriptJs(
                             .map((lnk, ptIdx) => {
                               const gMeta = getLinkedProjectGroupMeta(lnk.key, true);
                               return \`
-                                <div class="ozon-ext-link-compact-row ozon-ext-pt-level2">
+                                <div class="ozon-ext-link-compact-row ozon-ext-pt-level2\${reviewRowClass(lnk.key,lnk.status)}">
                                   <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
                                     <div style="display:flex;align-items:center;gap:5px;overflow:hidden;min-width:0;">
                                       <span class="ozon-mono" style="color:#94A3B8;font-weight:700;font-size:11px;">↳</span>
@@ -7905,7 +7918,7 @@ export function generateContentScriptJs(
                                               '</div>' : '';
 
                                           return \`
-                                            <div class="ozon-ext-link-compact-row">
+                                            <div class="ozon-ext-link-compact-row\${reviewRowClass(lnk.key,lnk.status)}">
                                               <div style="display:flex;align-items:center;justify-content:space-between;gap:5px;">
                                                 <div style="display:flex;align-items:center;gap:5px;overflow:hidden;min-width:0;flex:1;">
                                                   <span class="ozon-mono" style="color:#94A3B8;font-weight:700;font-size:11px;flex-shrink:0;">↳</span>
@@ -7995,7 +8008,7 @@ export function generateContentScriptJs(
                   const status = isIssue ? getStatusBadgeHtml(link.status || 'Статус недоступен') : '';
                   const target = link.url || ('/browse/' + encodeURIComponent(link.key));
                   const moveButton = isIssue ? renderLinkActions(link, '') : (link.id && /^remote-\\d+$/.test(String(link.id)) ? '<button type="button" class="ozon-ext-btn ozon-ext-btn-negative" data-action="delete-remote-link" data-remote-id="' + escapeHtml(String(link.id).slice(7)) + '" aria-label="Удалить веб-ссылку">✕</button>' : '');
-                  return '<div style="display:flex;align-items:center;gap:6px;padding:6px 2px;border-bottom:1px solid #EEF2F6;min-width:0;"><span style="font-size:10px;color:#64748B;flex:0 0 auto;">' + escapeHtml(relation) + '</span>' + (isIssue ? '<a class="ozon-mono" href="' + escapeHtml(target) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(link.key) + '</a><span class="ozon-other-summary" style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(link.summary || link.key) + '</span>' : '<a href="' + escapeHtml(target) + '" target="_blank" rel="noopener noreferrer" style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(link.summary || link.key) + '</a>') + status + moveButton + '</div>';
+                  return '<div class="' + reviewRowClass(link.key,link.status) + '" style="display:flex;align-items:center;gap:6px;padding:6px 2px;border-bottom:1px solid #EEF2F6;min-width:0;"><span style="font-size:10px;color:#64748B;flex:0 0 auto;">' + escapeHtml(relation) + '</span>' + (isIssue ? '<a class="ozon-mono" href="' + escapeHtml(target) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(link.key) + '</a><span class="ozon-other-summary" style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(link.summary || link.key) + '</span>' : '<a href="' + escapeHtml(target) + '" target="_blank" rel="noopener noreferrer" style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(link.summary || link.key) + '</a>') + status + moveButton + '</div>';
                 }).join('') + '</div>'
               : '<div style="padding:10px 12px;color:#64748B;font-size:11.5px;">Других связей нет</div>') : ''}
           </div>

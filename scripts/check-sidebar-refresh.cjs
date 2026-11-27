@@ -6,13 +6,22 @@ const source = fs.readFileSync('FCRM-Chrome-3.3/content.js', 'utf8');
 const tree = ts.createSourceFile('content.js', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
 const declarations = new Map();
 function visit(node) {
-  if (ts.isFunctionDeclaration(node) && node.name) declarations.set(node.name.text, node.getText(tree));
+  if ((ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node)) && node.name) declarations.set(node.name.text, node.getText(tree));
   ts.forEachChild(node, visit);
 }
 visit(tree);
 function bind(name, context) {
   return vm.runInNewContext('(' + declarations.get(name) + ')', context);
 }
+const reviewRowClass = bind('fcrmReviewRowClass', {});
+for (const status of ['product/design review', ' Product / Design Review ', 'User Testing', 'Продуктовое дизайн-ревью', 'Пользовательское тестирование']) {
+  assert.equal(reviewRowClass('FCRM-123', status), ' ozon-fcrm-review');
+  assert.equal(reviewRowClass('OB-123', status), '');
+}
+for (const status of ['Testing', 'Тестирование', 'Код-ревью', 'Готово', '']) {
+  assert.equal(reviewRowClass('FCRM-123', status), '');
+}
+
 (async () => {
   let componentRequests = 0;
   let available = true;

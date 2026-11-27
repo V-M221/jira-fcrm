@@ -11,7 +11,12 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
   remoteLinks.set('FCRM-2993', [{id:91001,object:{url:'https://chatzone.o3t.ru/ozon/channels/bank-crm-dev',title:'[Демо] Обсуждение оформления диспута'}},{id:91002,object:{url:'https://confluence.o3.ru/',title:'[Демо] Продуктовые требования'}}]);
   const types = ['Задача', 'История', 'Эпик', 'Ошибка', 'Аналитика'].map((name, index) => ({ id: String(index + 1), name, subtask: false }));
   const statusNames: Record<string, string> = { todo: 'К выполнению', in_progress: 'В работе', review: 'Код-ревью', testing: 'Тестирование', done: 'Готово', canceled: 'Отменено' };
-  const statuses = [...new Set([...Object.values(statusNames), 'Backlog'])].map((name, index) => ({ id: String(index + 1), name }));
+  const statuses = [...new Set([...Object.values(statusNames), 'Backlog', 'product/design review', 'User Testing'])].map((name, index) => ({ id: String(index + 1), name }));
+  const sampleStatuses: Record<string, string> = {
+    'FCRM-4885': 'product/design review',
+    'FCRM-4902': 'User Testing',
+    'FCRM-2993': 'User Testing',
+  };
   const firstSprint = tasks.find(task => task.sprint && !/бэклог/i.test(task.sprint))?.sprint;
   const firstNumber = Number(/Sprint\s+(\d+)/i.exec(firstSprint || '')?.[1] || 0);
   const user = { name: 'preview-user', displayName: 'Пользователь предпросмотра', active: true };
@@ -80,7 +85,7 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
       id: String(10000 + issues.size), key: task.key,
       fields: {
         summary: task.summary || task.key, description: task.description || '',
-        issuetype: type, status: { name: statusNames[task.status] || task.status || 'К выполнению' },
+        issuetype: type, status: { name: sampleStatuses[task.key] || statusNames[task.status] || task.status || 'К выполнению' },
         priority: { name: task.priority || 'Средний' },
         components: [...new Set<string>(components)].map(name => ({ id: componentId(name), name })),
         assignee: person(task.assignee), reporter: person(task.author) || user, creator: person(task.author) || user,
@@ -143,7 +148,8 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
     todo:{id:'1001',name:'К выполнению',statusCategory:{key:'new'}},
     progress:{id:'1002',name:'В работе',statusCategory:{key:'indeterminate'}},
     review:{id:'1003',name:'Ревью',statusCategory:{key:'indeterminate'}},
-    done:{id:'1004',name:'Готово',statusCategory:{key:'done'}}
+    done:{id:'1004',name:'Готово',statusCategory:{key:'done'}},
+    userTesting:{id:'1005',name:'User Testing',statusCategory:{key:'indeterminate'}},
   };
   const reportConfiguration = {
     estimation:{type:'field',field:{fieldId:'customfield_10002',displayName:'Story Points'}},
@@ -190,7 +196,8 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
       return {key,summary:history.fields.summary,statusId:history.fields.status.id,statusName:history.fields.status.name};
     };
     const a=make(1,'Автозаполнение реквизитов клиента',5,'done',true,[change(0,status('todo','progress')),change(2,status('progress','review')),change(3,status('review','done'))]);
-    const b=make(2,'Уведомление об истечении срока договора',13,'progress',true,[change(0,status('todo','progress')),change(2,{field:'Story Points',fieldId:'customfield_10002',from:'8',to:'13'}),change(4,status('progress','done')),change(5,status('done','progress'))]);
+    const remainingStatus = range[0] === 'FCRM' ? 'userTesting' : 'progress';
+    const b=make(2,'Уведомление об истечении срока договора',13,remainingStatus,true,[change(0,status('todo','progress')),change(2,{field:'Story Points',fieldId:'customfield_10002',from:'8',to:'13'}),change(4,status('progress','done')),change(5,status('done',remainingStatus))]);
     const c=make(3,'Фильтр по сегменту в карточке клиента',3,'progress',false,[change(1,status('todo','progress')),change(3,membership(false))]);
     const d=make(4,'Проверка лимита при оформлении заявки',2,'done',true,[change(1,membership(true)),change(2,status('todo','progress')),change(5,status('progress','done'))]);
     const e=make(5,'Уточнение требований к журналу операций',null,'todo',true,[]);
