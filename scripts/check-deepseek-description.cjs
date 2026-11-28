@@ -63,6 +63,70 @@ function loadFormatter(name) {
   return module.exports[name];
 }
 
+async function checkReadinessAndCatalog() {
+  const dependencies = {'./deepseek':context.exports};
+  for (const name of ['../utils/answerMarkup','../utils/widgetTheme','./extensionUpdate','./deepseekExtension']) {
+    const path = name.startsWith('../') ? 'src/' + name.slice(3) : 'src/services/' + name.slice(2);
+    const module = {exports:{}, require:specifier => {
+      assert.ok(dependencies[specifier], 'Unexpected module ' + specifier);
+      return dependencies[specifier];
+    }};
+    vm.runInNewContext(ts.transpileModule(fs.readFileSync(path + '.ts','utf8'), {
+      compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022},
+    }).outputText,module);
+    dependencies[name] = module.exports;
+  }
+  const {generateBackgroundJs,generateIssueEnhanceJs} = dependencies['./deepseekExtension'];
+  new vm.Script(generateIssueEnhanceJs());
+  const listeners = [];
+  const requests = [];
+  let configuredToken = '';
+  let auth = new Response(JSON.stringify({data:{id:'fixture-user',token:'session-secret'}}),{headers:{'Content-Type':'application/json'}});
+  const chrome = {runtime:{id:'fixture-extension',onMessage:{addListener:listener=>listeners.push(listener)}},
+    storage:{local:{get:async()=>({ozon_deepseek_bearer_token:configuredToken})}},
+    tabs:{query(){throw Error('Readiness must not inspect tabs');}},
+  };
+  vm.runInNewContext(generateBackgroundJs(),{chrome,AbortSignal,URL,fetch:async(url,options)=>{
+    requests.push({url,options});
+    if (auth instanceof Error) throw auth;
+    return auth.clone();
+  }});
+  const send = (message, sender = {id:chrome.runtime.id}) => new Promise(resolve=>{
+    if (!listeners.some(listener=>listener(message,sender,resolve))) resolve(undefined);
+  });
+  const check = refresh => send({type:'o3ds:readiness',refresh});
+  const initial = await Promise.all([check(false),check(true)]);
+  assert.equal(JSON.stringify(initial),'[{"canRun":true,"reason":"session"},{"canRun":true,"reason":"session"}]');
+  assert.equal(requests.length,1);
+  assert.equal(requests[0].url,'https://deepseek.o3t.ru/api/v1/auths/');
+  assert.equal(requests[0].options.method,'GET');
+  assert.equal(requests[0].options.credentials,'include');
+  assert.equal(requests[0].options.redirect,'manual');
+  assert.equal(requests[0].options.signal instanceof AbortSignal,true);
+  assert.equal((await check(false)).reason,'session');
+  assert.equal(requests.length,1);
+  auth = new Response('',{status:401});
+  assert.equal(JSON.stringify(await check(true)),'{"canRun":false,"reason":"sign-in"}');
+  configuredToken = 'Bearer fixture-secret';
+  assert.equal(JSON.stringify(await check(true)),'{"canRun":true,"reason":"token"}');
+  assert.equal(requests.length,2);
+  configuredToken = 'Bearer ';
+  auth = new Response('',{status:503});
+  assert.equal(JSON.stringify(await check(true)),'{"canRun":false,"reason":"unavailable"}');
+  auth = new Error('Simulated network interruption');
+  assert.equal((await check(true)).reason,'unavailable');
+  assert.equal(await send({type:'o3ds:readiness',refresh:true},{id:'untrusted'}),undefined);
+  assert.equal(requests.length,4);
+  const catalog = await send({type:'o3ds:prompt-catalog'});
+  assert.equal(catalog.ok,true);
+  assert.ok(catalog.entries.every(entry=>entry.title && entry.description && entry.phase && entry.buttons.length && entry.system && entry.user));
+  const search = catalog.entries.find(entry=>entry.title==='Найти похожие задачи FCRM');
+  assert.equal(search.buttons[0],'Искать похожие в FCRM');
+  assert.match(search.description,/кандидат.*Jira/);
+  assert.match(search.system,/Никаких инструментов/);
+  assert.equal(requests.length,4);
+}
+
 async function checkDraftLinkWrites() {
   const source = 'FCRM-100';
   const theme = 'FCRM-200';
@@ -263,6 +327,7 @@ async function checkDraftLinkWrites() {
   assert.equal(repairs[0].action,'repair');
   assert.equal(repairs[1].replaceKey,'FCRM-125');
   await checkDraftLinkWrites();
+  await checkReadinessAndCatalog();
 
   const original = jira.description;
   assert.equal((await saveJiraDraft('FCRM-2970',draft)).changed,true);
@@ -276,5 +341,5 @@ async function checkDraftLinkWrites() {
   assert.ok(jira.description.endsWith(original));
   omitSavedFields = true;
   await assert.rejects(saveJiraDraft('FCRM-2970',{description:'Проверка сбоя'}),/не подтвердила результат/);
-  console.log('DeepSeek checks passed: scoped tools, nonblocking draft, chosen links, exact save, original text and retry.');
+  console.log('DeepSeek checks passed: scoped tools, nonblocking draft, chosen links, exact save, original text, retry, readiness and offline prompt catalog.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

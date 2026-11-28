@@ -1,6 +1,50 @@
 export const DEEPSEEK_CHAT_URL = 'https://deepseek.o3t.ru/api/chat/completions';
 export const DEEPSEEK_AUTHS_URL = 'https://deepseek.o3t.ru/api/v1/auths/';
 export const DEEPSEEK_TOKEN_STORAGE_KEY = 'ozon_deepseek_bearer_token';
+export type DeepseekReadiness =
+  | {canRun: true; reason: 'token' | 'session'}
+  | {canRun: false; reason: 'sign-in' | 'unavailable'};
+
+/** A read-only probe embedded in the extension background worker. */
+export function createDeepseekReadinessProbe(readToken: () => Promise<unknown>, authUrl: string) {
+  let previous: {value: DeepseekReadiness; expires: number} | undefined;
+  let pending: Promise<DeepseekReadiness> | undefined;
+
+  async function check(): Promise<DeepseekReadiness> {
+    try {
+      const configured = await readToken();
+      if (typeof configured === 'string' && configured.trim().replace(/^bearer(?:\s+|$)/i, '').trim()) {
+        return {canRun: true, reason: 'token'};
+      }
+      const response = await fetch(authUrl, {
+        method: 'GET', credentials: 'include', cache: 'no-store', redirect: 'manual',
+        headers: {Accept: 'application/json'}, signal: AbortSignal.timeout(5000),
+      });
+      if (response.type === 'opaqueredirect' || [401, 403].includes(response.status) ||
+          (response.status >= 300 && response.status < 400) || response.headers.get('Content-Type')?.includes('text/html')) {
+        return {canRun: false, reason: 'sign-in'};
+      }
+      if (!response.ok) return {canRun: false, reason: 'unavailable'};
+      const payload = await response.json().catch(() => null);
+      const identity = [payload, payload?.data].some(profile =>
+        [profile?.token, profile?.access_token, profile?.id, profile?.email].some(field => typeof field === 'string' && field.trim()));
+      return identity ? {canRun: true, reason: 'session'} : {canRun: false, reason: 'sign-in'};
+    } catch {
+      return {canRun: false, reason: 'unavailable'};
+    }
+  }
+
+  return (refresh = false): Promise<DeepseekReadiness> => {
+    if (pending) return pending;
+    if (!refresh && previous && previous.expires > Date.now()) return Promise.resolve(previous.value);
+    pending = check().then(value => {
+      previous = {value, expires: Date.now() + 10000};
+      return value;
+    }).finally(() => {pending = undefined;});
+    return pending;
+  };
+}
+
 export const DEEPSEEK_PROMPT_STORAGE_KEY = 'ozon_deepseek_system_prompt';
 export const DEFAULT_DEEPSEEK_SYSTEM_PROMPT = `Готовь краткое продуктовое описание FCRM на русском для Jira Server. Пиши Jira Wiki (h2. заголовок, * пункт, [название|URL]). Сохраняй подтверждённые ограничения, поля, суммы и сроки. Различай исходное состояние, согласованный объём и отложенные работы. Оставляй технические детали только там, где они влияют на требование или приёмку. Используй списки вместо новых таблиц и сохраняй требования из существующих таблиц. FTD — дизайн, OB — бэкенд, OBFRONT — интерфейс. Сохраняй характер исследования, если решение ещё предстоит выбрать.`;
 export const DEEPSEEK_CHAT_MESSAGE_TYPE = 'o3ds:chat';

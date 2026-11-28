@@ -471,6 +471,7 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
   Object.defineProperty(window, 'chrome', { configurable: true, value: {
     storage: {local:{get: async () => ({})}},
     runtime: { lastError: null, onMessage: {addListener(listener: Function) { backgroundListeners.push(listener); }}, sendMessage(message: any, callback: (response: any) => void) {
+      if (message.type === 'o3ds:readiness') { callback({canRun:true,reason:'session'}); return; }
       if (message.type === 'o3ds:prompt-catalog') {
         for (const listener of backgroundListeners) {
           if (listener(message, {tab:{id:1}}, callback) === true) return;

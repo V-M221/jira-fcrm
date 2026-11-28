@@ -124,5 +124,21 @@ export function createJiraGroupingUi() {
     });
   }
 
-  return {html,bind,depthHtml,bindDepth};
+  function treeToggle(expanded:boolean, label:string, attributes:Record<string,string>, className='') {
+    const extra=Object.entries(attributes).map(([name,value])=>' '+name+'="'+escape(value)+'"').join('');
+    return '<button type="button" class="ozon-table-tree-toggle ' + escape(className) + '"' + extra + ' aria-expanded="' + expanded + '" aria-label="' + (expanded ? 'Свернуть ' : 'Развернуть ') + escape(label) + '"><svg width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M4 2v8l5-4Z"/></svg></button>';
+  }
+
+  function themeButton(key:string) {
+    if (!/^FCRM-\d+$/i.test(key)) return '';
+    return '<button type="button" class="ozon-strategy-link-button ozon-ext-inner-ctrl" data-theme-picker-key="' + escape(key) + '" title="Связать с тематикой" aria-label="Связать ' + escape(key) + ' с тематикой" aria-haspopup="dialog"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M10 13a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.7 1.7m2.7 5a4 4 0 0 0-5.7 0l-3 3A4 4 0 0 0 11 19.7l1.7-1.7"/></svg></button>';
+  }
+
+  function progressHtml(label:string, percent:number|null=null, id='') {
+    const value=typeof percent==='number' && Number.isFinite(percent) ? Math.max(0,Math.min(100,Math.round(percent))) : null;
+    const name=escape(label);
+    return '<div class="ozon-ext-load-progress"' + (id ? ' id="' + escape(id) + '"' : '') + (value===null ? ' data-progress-indeterminate' : '') + '><div class="ozon-ext-load-line"><span role="status" data-load-progress-label>' + name + '</span><span data-load-progress-value' + (value===null ? ' hidden' : '') + '>' + (value===null ? '' : value+'%') + '</span></div><div class="ozon-ext-load-progress-track" role="progressbar" aria-label="' + name + '"' + (value===null ? '' : ' aria-valuenow="' + value + '"') + '><div class="ozon-ext-load-progress-fill"' + (value===null ? '' : ' style="--load-progress:' + value + '%"') + '></div></div></div>';
+  }
+
+  return {html,bind,depthHtml,bindDepth,treeToggle,themeButton,progressHtml};
 }

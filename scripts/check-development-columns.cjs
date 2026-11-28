@@ -14,6 +14,20 @@ function load(name) {
 
 const grouping = load('jiraGroupingUi').createJiraGroupingUi();
 const {createDevelopmentDashboard} = load('developmentDashboard');
+// A depth selected in an old session does not reopen groups in a newly created view.
+stored.set('ozon-dev-grouping-v1',JSON.stringify({order:['project','sprint'],depth:2}));
+const fresh=()=>createDevelopmentDashboard(()=>{},undefined,undefined,undefined,undefined,'test',undefined,grouping);
+const first=fresh();
+assert.deepEqual(Array.from(first.getState().grouping),['project','sprint']);
+assert.equal(first.getState().depth,0);
+first.setDepth(2);
+assert.equal(first.getState().depth,2);
+assert.equal(fresh().getState().depth,0);
+assert.match(grouping.treeToggle(false,'Проект',{'data-group':'work','disabled':''}),/data-group="work" disabled="" aria-expanded="false"/);
+assert.match(grouping.progressHtml('Уточняем данные'),/data-progress-indeterminate/);
+assert.doesNotMatch(grouping.progressHtml('Уточняем данные'),/aria-valuenow=/);
+assert.match(grouping.progressHtml('Страницы',25),/aria-valuenow="25"/);
+stored.delete('ozon-dev-grouping-v1');
 const setup = () => {
   const dashboard = createDevelopmentDashboard(()=>{},undefined,undefined,undefined,undefined,'test',undefined,grouping);
   const sprint={id:1,name:'Sprint',state:'active'};

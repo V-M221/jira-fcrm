@@ -2,7 +2,7 @@ import type {createJiraGroupingUi} from './jiraGroupingUi';
 
 // Serialized into the extension. This view owns its data and does not modify the other dashboards.
 export function createStrategicDashboard(onRender: () => void, renderBadge: (label: string, category: string) => string, version: string, priorityService?: any, configuredSprintField?: string, actions?: any, groupingUi?:ReturnType<typeof createJiraGroupingUi>, reviewRowClass:(key:string,status:string)=>string=()=> '') {
-  const state = { issues: [] as any[], loading: false, loaded: false, error: '', notice:'', progress: '', expanded: new Set<string>(), search:'', componentFilter:new Set<string>(), issueType:'', issueTypeOpen:false, sort:'priority', sortOpen:false, hideCanceled:false, hideDone:false, onlyThemes:false, filterCollapsed:new Set<string>(), filterComponents:[] as string[], filtersLoading:false, filtersReady:false, filtersError:'', componentOpen:false, componentQuery:'', labelOpen:false, labelQuery:'', labelFilter:new Set<string>(), settings:false, editor:null as any };
+  const state = { issues: [] as any[], loading: false, loaded: false, error: '', notice:'', progress: '', progressPercent:null as number|null, expanded: new Set<string>(), search:'', componentFilter:new Set<string>(), issueType:'', issueTypeOpen:false, sort:'priority', sortOpen:false, hideCanceled:false, hideDone:false, onlyThemes:false, filterCollapsed:new Set<string>(), filterComponents:[] as string[], filtersLoading:false, filtersReady:false, filtersError:'', componentOpen:false, componentQuery:'', labelOpen:false, labelQuery:'', labelFilter:new Set<string>(), settings:false, editor:null as any };
   const noComponent = '__none__';
   const matchesComponent = (name:string) => !state.componentFilter.size || state.componentFilter.has(name || noComponent);
   const escape = (value: any) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -25,6 +25,7 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
   const exactIssueKey = () => /^(?:https?:\/\/[^/]+\/browse\/)?(FCRM-\d+)(?:[/?#].*)?$/i.exec(state.search.trim())?.[1].toUpperCase() || '';
   let outsideBound=false;
   let request = 0;
+  let activeLoad:Promise<void>|null=null;
   let sprintField = configuredSprintField || '';
   let epicField = '';
   let epicNameField = '';
@@ -33,10 +34,23 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
   const epicMetadata = new Map<string,any>();
   const obprojectMetadata = new Map<string,any>();
   const obprojectKeyOf = (value:any) => { const field=Array.isArray(value) ? value[0] : value; const raw=field && typeof field === 'object' ? field.key || field.value || field.name || field.url || '' : field || ''; return String(raw).toUpperCase().match(/OBPROJECT-\d+/)?.[0] || ''; };
-  function setLoadProgress(message:string) {
+  function setLoadProgress(message:string, percent:number|null=null) {
     state.progress=message;
+    state.progressPercent=percent;
     const progress=document.getElementById('ozon-strategy-progress');
-    if (progress) progress.textContent=message;
+    if (!progress) return;
+    const label=progress.querySelector('[data-load-progress-label]');
+    if (!label) { progress.textContent=message; return; }
+    const value=progress.querySelector<HTMLElement>('[data-load-progress-value]')!;
+    const track=progress.querySelector('[role="progressbar"]')!;
+    const fill=progress.querySelector<HTMLElement>('.ozon-ext-load-progress-fill')!;
+    label.textContent=message;
+    track.setAttribute('aria-label',message);
+    progress.toggleAttribute('data-progress-indeterminate',percent===null);
+    value.hidden=percent===null;
+    value.textContent=percent===null ? '' : percent+'%';
+    if (percent===null) { track.removeAttribute('aria-valuenow'); fill.style.removeProperty('--load-progress'); }
+    else { track.setAttribute('aria-valuenow',String(percent)); fill.style.setProperty('--load-progress',percent+'%'); }
   }
   async function loadObprojectMetadata(issues:any[],generation:number) {
     const keys=[...new Set<string>(issues.map(issue => obprojectKeyOf(issue.fields?.customfield_20100)).filter(Boolean))];
@@ -122,11 +136,14 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
     catch(error:any) { state.filtersError='Не удалось загрузить компоненты: ' + (error?.message || 'ошибка Jira'); }
     finally { state.filtersLoading=false; onRender(); }
   }
-  async function load() {
-    if (state.loading) return;
+  function load() {
+    if (!activeLoad) activeLoad=loadIssues().finally(()=>{activeLoad=null;});
+    return activeLoad;
+  }
+  async function loadIssues() {
     const current = ++request;
     sprintOptionsCache = null;
-    state.loading = true; state.error = ''; state.notice = ''; state.progress = 'Загружаем задачи проекта FCRM…';
+    state.loading = true; state.error = ''; state.notice = ''; state.progress = 'Загружаем задачи проекта FCRM…'; state.progressPercent=null;
     const began=performance.now();
     onRender();
     try {
@@ -151,7 +168,7 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
           issues.push(issue);
         }
         start+=data.issues.length;
-        setLoadProgress('Загружено ' + Math.min(start, total) + ' из ' + total + ' задач…');
+        setLoadProgress('Загружено ' + Math.min(start, total) + ' из ' + total + ' задач…',total>0 ? Math.min(100,Math.round(start/total*100)) : null);
       }
       const first=await page(0);
       if (current!==request) return;
@@ -174,7 +191,7 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
     } catch (error:any) { if (current === request) state.error = error?.message || 'Не удалось загрузить задачи'; }
     finally {
       if (current===request) {
-        state.loading=false; state.progress='';
+        state.loading=false; state.progress=''; state.progressPercent=null;
         const renderStart=performance.now();
         onRender();
         if (!state.error) performance.measure('FCRM стратегия · построение таблицы',{start:renderStart,end:performance.now()});
@@ -182,8 +199,9 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
     }
   }
 
-  function buildGraph(onlyThemes = false, includeEpic = false) {
-    const cacheKey = [onlyThemes, includeEpic, state.hideCanceled, state.hideDone, state.sort].join('|');
+  function buildGraph(onlyThemes = false, includeEpic = false, includeHidden=false) {
+    const hideCanceled=!includeHidden && state.hideCanceled, hideDone=!includeHidden && state.hideDone;
+    const cacheKey = [onlyThemes, includeEpic, hideCanceled, hideDone, state.sort].join('|');
     if (graphCache.has(cacheKey)) return graphCache.get(cacheKey);
     const nodes = new Map<string, any>();
     const allIssuesByKey = new Map(state.issues.map(issue => [issue.key,issue]));
@@ -192,7 +210,7 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
       if (onlyThemes && !(f.labels || []).some((label:any) => String(label).toLowerCase() === 'fcrm_umb_epic')) return;
       const isCanceled=/cancel|отмен|отклон|rejected/i.test(String(f.status?.name || ''));
       const completed = !isCanceled && (f.status?.statusCategory?.key === 'done' || /^(готово|закрыт[ао]?|done|closed)$/i.test(String(f.status?.name || '').trim()));
-      if ((state.hideCanceled && isCanceled) || (state.hideDone && completed)) return;
+      if ((hideCanceled && isCanceled) || (hideDone && completed)) return;
       nodes.set(raw.key, { key:raw.key, completed, summary:f.summary || raw.key, type:f.issuetype?.name || 'Задача', typeIcon:f.issuetype?.iconUrl || '', sprint:sprintValue(f), status:f.status?.name || 'Не указан', category:f.status?.statusCategory?.key || '', componentNames:(f.components || []).map((component:any) => component.name).filter(Boolean), components:(f.components || []).map((component:any) => component.name).filter(Boolean).join(', ') || 'Без компонента', priority:f.priority?.name || 'Не указан', created:f.created || '', obproject:'', epicKey:String((typeof f[epicField] === 'string' ? f[epicField] : f[epicField]?.key || f[epicField]?.value) || f.epic?.key || ''), labels:Array.isArray(f.labels) ? f.labels : [], thematic:(f.labels || []).some((label:any) => String(label).toLowerCase() === 'fcrm_umb_epic'), parents:new Set<string>(), missingParents:new Set<string>(), children:new Set<string>(), links:f.issuelinks || [] });
     });
     nodes.forEach(node => { const raw=allIssuesByKey.get(node.key); const source=/^(epic|эпик)$/i.test(node.type) ? raw : allIssuesByKey.get(node.epicKey); node.obproject=obprojectKeyOf(source?.fields?.customfield_20100); });
@@ -234,9 +252,13 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
     const graph={nodes, roots, cycles, compare, maxDepth}; graphCache.set(cacheKey,graph); return graph;
   }
   function depthControl() {
-    const maxDepth=state.loaded ? Math.min(40,buildGraph(state.onlyThemes,true).maxDepth)+Number(layout.byComponent) : 0;
-    const options=[{value:'0',label:layout.byComponent ? 'Компоненты' : 'Верхний уровень'},...Array.from({length:Math.max(0,maxDepth-1)},(_,index)=>({value:String(index+1),label:layout.byComponent && index===0 ? 'Тематики и задачи' : 'Уровень ' + (index+2)})),{value:'all',label:'Все уровни'}];
-    return groupingUi?.depthHtml('strategy',options,treeDepth === null ? 'manual' : treeDepth >= maxDepth && treeDepth>0 ? 'all' : String(treeDepth),!state.loaded || state.loading) || '';
+    const maxDepth=state.loaded ? Math.min(40,buildGraph(state.onlyThemes,true).maxDepth)+1 : 0;
+    const options=[{value:'0',label:'Верхний уровень'},...Array.from({length:Math.max(0,maxDepth-1)},(_,index)=>({value:String(index+1),label:layout.byComponent && index===0 ? 'Тематики и задачи' : 'Уровень ' + (index+2)})),{value:'all',label:'Все уровни'}];
+    return groupingUi?.depthHtml('strategy',options,state.expanded.size || state.filterCollapsed.size ? 'manual' : treeDepth !== null && treeDepth >= maxDepth && treeDepth>0 ? 'all' : String(treeDepth ?? 0),!state.loaded || state.loading) || '';
+  }
+  function strategyToggle(path:string, label:string, expanded:boolean) {
+    return groupingUi?.treeToggle(expanded,label,{'data-strategy-action':'toggle','data-path':path})
+      || '<button type="button" class="ozon-strategy-toggle" data-strategy-action="toggle" data-path="' + escape(path) + '" aria-expanded="' + expanded + '" aria-label="' + (expanded ? 'Свернуть ' : 'Развернуть ') + escape(label) + '">' + (expanded ? '▾' : '▸') + '</button>';
   }
   function html() {
     const header = '<header class="ozon-ext-header-bar"><strong>Стратегическое планирование FCRM</strong><div class="ozon-strategy-actions"><span class="ozon-dev-version">v' + escape(version) + '</span></div></header>';
@@ -275,7 +297,7 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
     const error = state.error ? '<div class="ozon-strategy-message" role="alert">Не удалось загрузить все задачи FCRM: ' + escape(state.error) + '.' +
       (state.loaded ? ' Показан последний загруженный список.' : '') + ' <button type="button" class="ozon-ext-btn" data-strategy-action="reload">Повторить</button></div>' : '';
     if (state.loading) {
-      const progress = '<div class="ozon-strategy-message" role="status" id="ozon-strategy-progress">' + escape(state.progress) + '</div>';
+      const progress = '<div class="ozon-strategy-message">' + (groupingUi?.progressHtml(state.progress,state.progressPercent,'ozon-strategy-progress') || '<span role="status" id="ozon-strategy-progress">' + escape(state.progress) + '</span>') + '</div>';
       const placeholder = '<tr>' + visibleColumns.map(id => '<td><span class="ozon-ext-skeleton" style="height:13px;width:' + (id === 'task' ? '70%' : '55%') + '"></span></td>').join('') + '</tr>';
       return '<section class="ozon-strategy-dashboard">' + header + filters + progress + tableHtml(placeholder.repeat(8), true) + settings + '</section>';
     }
@@ -325,20 +347,20 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
         return count;
       };
       let result='';
-      const pending = keys.slice().reverse().map(key => ({key, path:prefix ? prefix+'|'+key : key, ancestors:new Set<string>(), depth:prefix ? 1 : 0}));
+      const pending = keys.slice().reverse().map(key => ({key, path:prefix ? prefix+'|'+key : key, ancestors:new Set<string>(), depth:1}));
       while (pending.length) {
         const item = pending.pop()!; const node = nodes.get(item.key); const cycle = item.ancestors.has(item.key); const parentKey = item.path.split('|').at(-2) || ''; const epicRelation = Boolean(parentKey && node.epicKey === parentKey); const projectRelation=Boolean(parentKey && node.links.some((link:any) => { const inward=Boolean(link.inwardIssue); const target=inward ? link.inwardIssue : link.outwardIssue; const direction=inward ? link.type?.inward : link.type?.outward; return target?.key === parentKey && /задача проекта|project task/i.test(String(direction || '')); })); const contextOnly=ownMatches!==null && !ownMatches.has(item.key);
         const children = [...node.children].filter((key:any) => show(key)).sort(compare);
         const exactMatch = !cycle && node.key === exact && matches.has(node.key);
-        const expanded = !cycle && !state.filterCollapsed.has(item.path) && (state.expanded.has(item.path) || (treeDepth===null ? Boolean((exact || prefix) && contextOnly) : item.depth < treeDepth));
-        const toggle = children.length && !cycle ? '<button type="button" class="ozon-strategy-toggle" data-strategy-action="toggle" data-path="' + escape(item.path) + '" aria-expanded="' + expanded + '" aria-label="' + (expanded ? 'Свернуть ' : 'Развернуть ') + escape(node.key) + '">' + (expanded ? '▾' : '▸') + '</button>' : '<span class="ozon-strategy-toggle-spacer"></span>';
+        const expanded = !cycle && !state.filterCollapsed.has(item.path) && (state.expanded.has(item.path) || (treeDepth===null ? Boolean((filtering || prefix) && contextOnly) : item.depth < treeDepth));
+        const toggle = children.length && !cycle ? strategyToggle(item.path,node.key,expanded) : '<span class="ozon-table-tree-spacer" aria-hidden="true"></span>';
         const category = node.category === 'done' ? 'done' : node.category === 'indeterminate' ? 'progress' : 'todo';
         const epic = node.epicKey ? (nodes.get(node.epicKey) || epicMetadata.get(node.epicKey)) : null;
         const epicValue = node.epicKey ? '<div class="ozon-dev-epic-inline"><a class="ozon-mono" href="https://jit.o3.ru/browse/' + encodeURIComponent(node.epicKey) + '" target="_blank" rel="noopener noreferrer">' + escape(node.epicKey) + '</a>' + (epic ? ' ' + renderBadge(escape(epic.status),epic.category === 'done' ? 'done' : epic.category === 'indeterminate' ? 'progress' : 'todo') + ' <span title="' + escape(epic.summary) + '">' + escape(epic.summary) + '</span>' : '') + '</div>' : '—';
         const ob=obprojectMetadata.get(node.obproject);
         const obCell = node.obproject ? '<div class="ozon-dev-epic-inline"><a class="ozon-mono" href="https://jit.o3.ru/browse/' + encodeURIComponent(node.obproject) + '" target="_blank" rel="noopener noreferrer">' + escape(node.obproject) + '</a>' + (ob?.status ? renderBadge(escape(ob.status),ob.category === 'done' ? 'done' : ob.category === 'indeterminate' ? 'progress' : 'todo') : '') + (ob?.summary ? '<span title="' + escape(ob.summary) + '">' + escape(ob.summary) + '</span>' : '') + '</div>' : '—';
         const epicCell = '<div class="ozon-dev-cell-edit ozon-dev-epic-inline"><span class="ozon-strategy-epic-value">' + epicValue + '</span><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-strategy-action="edit-epic" data-key="' + escape(node.key) + '" aria-label="Изменить эпик ' + escape(node.key) + '">▾</button></div>';
-        const rowHtml = '<tr class="ozon-strategy-depth-' + (item.depth % 2) + '" data-strategy-path="' + escape(item.path) + '" data-strategy-expandable="' + Boolean(children.length && !cycle) + '"><td><div class="ozon-strategy-type" style="padding-left:' + (Math.min(item.depth,40) * 18 + 8) + 'px">' + toggle + typeHtml(node) + '</div></td><td><div class="ozon-strategy-key"><a href="https://jit.o3.ru/browse/' + encodeURIComponent(node.key) + '" target="_blank" rel="noopener noreferrer" class="ozon-mono">' + escape(node.key) + '</a><details class="ozon-strategy-copy-menu"><summary aria-label="Копировать ' + escape(node.key) + '" title="Копировать"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V3H3v13h4"/></svg></summary><div class="ozon-strategy-copy-options"><button type="button" data-strategy-action="copy" data-key="' + escape(node.key) + '">Ссылка и название</button><button type="button" data-strategy-action="copy-key" data-key="' + escape(node.key) + '">Только ключ</button></div></details><button type="button" class="ozon-strategy-link-button" data-strategy-action="link" data-key="' + escape(node.key) + '" title="Связать с тематикой" aria-label="Связать ' + escape(node.key) + ' с тематикой">⛓</button></div></td><td><span class="ozon-strategy-indent" style="width:' + (Math.min(item.depth, 8) * 12) + 'px" aria-hidden="true">' + (item.depth ? '↳' : '') + '</span>' + (epicRelation ? '<span class="ozon-strategy-epic-relation" title="Задача входит в эпик по Epic Link">Epic Link</span> ' : '') + (node.thematic ? '<span class="ozon-ext-badge ozon-ext-badge-progress">Тематика</span> ' : '') + '<span title="' + escape(node.summary) + '">' + escape(node.summary) + '</span>' + (cycle ? ' <span class="ozon-strategy-warning">Циклическая связь</span>' : '') + (node.missingParents.size ? ' <span class="ozon-strategy-warning" title="' + escape([...node.missingParents].join(', ')) + '">Тематика недоступна</span>' : '') + '</td><td>' + renderBadge(escape(node.status),category) + '</td><td><button type="button" class="ozon-strategy-component-edit" data-strategy-action="edit-component" data-key="' + escape(node.key) + '" aria-label="Изменить компонент ' + escape(node.key) + '" title="' + escape(node.components) + '"><span>' + escape(node.components) + '</span><span aria-hidden="true">▾</span></button></td><td><button type="button" class="ozon-dev-priority-edit" data-strategy-action="priority" data-key="' + escape(node.key) + '" title="Приоритет: ' + escape(node.priority) + '" aria-label="Изменить приоритет ' + escape(node.key) + '">' + priorityIcon(node.priority) + '</button></td><td><div class="ozon-strategy-sprint ' + (/^(epic|эпик)$/i.test(node.type) ? 'ozon-strategy-sprint-locked' : 'ozon-strategy-sprint-edit') + '" ' + (/^(epic|эпик)$/i.test(node.type) ? 'title="У эпиков нельзя изменить спринт"' : 'role="button" tabindex="0" data-strategy-action="edit-sprint" data-key="' + escape(node.key) + '" aria-label="Изменить спринт ' + escape(node.key) + '"') + '>' + (node.sprint?.name ? '<span title="' + escape(node.sprint.name) + '">' + escape(node.sprint.name) + '</span>' + renderBadge(node.sprint.state === 'active' ? 'Активный' : node.sprint.state === 'future' ? 'Будущий' : 'Прошедший', node.sprint.state === 'active' ? 'done' : node.sprint.state === 'future' ? 'progress' : 'todo') : '—') + '</div></td><td><div class="ozon-strategy-labels">' + node.labels.map((label:string) => '<span class="ozon-strategy-label">' + escape(label) + '<button type="button" data-strategy-action="remove-label" data-key="' + escape(node.key) + '" data-label="' + escape(label) + '" aria-label="Удалить метку ' + escape(label) + '">×</button></span>').join('') + '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-strategy-action="labels" data-key="' + escape(node.key) + '" aria-label="Добавить метку">+</button></div></td><td>' + epicCell + '</td><td>' + obCell + '</td></tr>';
+        const rowHtml = '<tr class="ozon-strategy-depth-' + (item.depth % 2) + '" data-strategy-path="' + escape(item.path) + '" data-strategy-expandable="' + Boolean(children.length && !cycle) + '"><td><div class="ozon-strategy-type" style="padding-left:' + (Math.min(item.depth,40) * 18 + 8) + 'px">' + toggle + typeHtml(node) + '</div></td><td><div class="ozon-strategy-key"><a href="https://jit.o3.ru/browse/' + encodeURIComponent(node.key) + '" target="_blank" rel="noopener noreferrer" class="ozon-mono">' + escape(node.key) + '</a>' + (groupingUi?.themeButton(node.key) || '') + '</div></td><td><span class="ozon-strategy-indent" style="width:' + (Math.min(item.depth, 8) * 12) + 'px" aria-hidden="true">' + (item.depth ? '↳' : '') + '</span>' + (epicRelation ? '<span class="ozon-strategy-epic-relation" title="Задача входит в эпик по Epic Link">Epic Link</span> ' : '') + (node.thematic ? '<span class="ozon-ext-badge ozon-ext-badge-progress">Тематика</span> ' : '') + '<span title="' + escape(node.summary) + '">' + escape(node.summary) + '</span>' + (cycle ? ' <span class="ozon-strategy-warning">Циклическая связь</span>' : '') + (node.missingParents.size ? ' <span class="ozon-strategy-warning" title="' + escape([...node.missingParents].join(', ')) + '">Тематика недоступна</span>' : '') + '</td><td>' + renderBadge(escape(node.status),category) + '</td><td><button type="button" class="ozon-strategy-component-edit" data-strategy-action="edit-component" data-key="' + escape(node.key) + '" aria-label="Изменить компонент ' + escape(node.key) + '" title="' + escape(node.components) + '"><span>' + escape(node.components) + '</span><span aria-hidden="true">▾</span></button></td><td><button type="button" class="ozon-dev-priority-edit" data-strategy-action="priority" data-key="' + escape(node.key) + '" title="Приоритет: ' + escape(node.priority) + '" aria-label="Изменить приоритет ' + escape(node.key) + '">' + priorityIcon(node.priority) + '</button></td><td><div class="ozon-strategy-sprint ' + (/^(epic|эпик)$/i.test(node.type) ? 'ozon-strategy-sprint-locked' : 'ozon-strategy-sprint-edit') + '" ' + (/^(epic|эпик)$/i.test(node.type) ? 'title="У эпиков нельзя изменить спринт"' : 'role="button" tabindex="0" data-strategy-action="edit-sprint" data-key="' + escape(node.key) + '" aria-label="Изменить спринт ' + escape(node.key) + '"') + '>' + (node.sprint?.name ? '<span title="' + escape(node.sprint.name) + '">' + escape(node.sprint.name) + '</span>' + renderBadge(node.sprint.state === 'active' ? 'Активный' : node.sprint.state === 'future' ? 'Будущий' : 'Прошедший', node.sprint.state === 'active' ? 'done' : node.sprint.state === 'future' ? 'progress' : 'todo') : '—') + '</div></td><td><div class="ozon-strategy-labels">' + node.labels.map((label:string) => '<span class="ozon-strategy-label">' + escape(label) + '<button type="button" data-strategy-action="remove-label" data-key="' + escape(node.key) + '" data-label="' + escape(label) + '" aria-label="Удалить метку ' + escape(label) + '">×</button></span>').join('') + '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-strategy-action="labels" data-key="' + escape(node.key) + '" aria-label="Добавить метку">+</button></div></td><td>' + epicCell + '</td><td>' + obCell + '</td></tr>';
         const cells = rowHtml.match(/<td>[\s\S]*?<\/td>/g) || [];
         const inner=(index:number) => (cells[index] || '').replace(/^<td>|<\/td>$/g,'');
         const descendantCount = children.length && !cycle ? countDescendants(node.key) : 0;
@@ -352,7 +374,13 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
     };
     const taskCount = filtering ? matches.size : nodes.size;
     const taskNoun = ({one:'задача',few:'задачи',many:'задач'} as Record<string,string>)[plurals.select(taskCount)] || 'задач';
-    const renderGroup = (title:string,keys:string[]) => keys.length ? '<tr class="ozon-strategy-group"><td colspan="' + visibleColumns.length + '">' + escape(title) + ' <span class="ozon-ext-group-total">' + keys.length + '</span></td></tr>' + renderTree(keys,visible,filtering ? matches : null) : '';
+    const groupIsOpen=(path:string)=>!state.filterCollapsed.has(path) && (state.expanded.has(path) || (treeDepth===null ? filtering : treeDepth>0));
+    const groupHeader=(title:string,path:string,count:number,expanded:boolean,component=false)=>'<tr class="ozon-strategy-group' + (component ? ' ozon-strategy-component-group' : '') + '" data-strategy-path="' + escape(path) + '" data-strategy-expandable="true"><td colspan="' + visibleColumns.length + '">' + strategyToggle(path,title,expanded) + escape(title) + ' <span class="ozon-ext-group-total">' + count + '</span></td></tr>';
+    const renderGroup = (title:string,path:string,keys:string[]) => {
+      if (!keys.length) return '';
+      const expanded=groupIsOpen(path);
+      return groupHeader(title,path,keys.length,expanded) + (expanded ? renderTree(keys,visible,filtering ? matches : null) : '');
+    };
     const renderComponents=()=>{
       const groups=new Map<string,Set<string>>();
       for (const [key,node] of nodes) {
@@ -367,51 +395,19 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
       return [...groups].sort(([a],[b])=>Number(!a)-Number(!b) || collator.compare(a,b)).map(([component,keys])=>{
         const path='component:'+encodeURIComponent(component);
         const label=component || 'Без компонента';
-        const expanded=!state.filterCollapsed.has(path) && (state.expanded.has(path) || (treeDepth===null ? filtering : treeDepth>0));
-        const toggle='<button type="button" class="ozon-strategy-toggle" data-strategy-action="toggle" data-path="' + escape(path) + '" aria-expanded="' + expanded + '" aria-label="' + (expanded ? 'Свернуть ' : 'Развернуть ') + escape(label) + '">' + (expanded ? '▾' : '▸') + '</button>';
-        const heading='<tr class="ozon-strategy-group ozon-strategy-component-group" data-strategy-path="' + escape(path) + '" data-strategy-expandable="true"><td colspan="' + visibleColumns.length + '">' + toggle + escape(label) + ' <span class="ozon-ext-group-total">' + keys.size + '</span></td></tr>';
+        const expanded=groupIsOpen(path);
+        const heading=groupHeader(label,path,keys.size,expanded,true);
         if (!expanded) return heading;
         const context=withParents(keys);
         const top=[...context].filter(key=>starts.has(key)).sort(compare);
         return heading + renderTree(top,key=>context.has(key),keys,path);
       }).join('');
     };
-    const rows=layout.byComponent ? renderComponents() : renderGroup('Тематики и их задачи',roots.filter(key=>visible(key) && (nodes.get(key).thematic || nodes.get(key).children.size))) +
-      renderGroup('Без тематики',roots.filter(key=>visible(key) && !nodes.get(key).thematic && !nodes.get(key).children.size)) + renderGroup('Циклические связи',cycles.filter(visible));
+    const rows=layout.byComponent ? renderComponents() : renderGroup('Тематики и их задачи','group:themes',roots.filter(key=>visible(key) && (nodes.get(key).thematic || nodes.get(key).children.size))) +
+      renderGroup('Без тематики','group:no-theme',roots.filter(key=>visible(key) && !nodes.get(key).thematic && !nodes.get(key).children.size)) + renderGroup('Циклические связи','group:cycles',cycles.filter(visible));
     const editor = state.editor;
     const currentComponents:any[] = state.issues.find(issue => issue.key === editor?.key)?.fields?.components || [];
     const componentSelected = (option:any) => currentComponents.some(item => (item.id && option.id && String(item.id) === String(option.id)) || (item.name && item.name === option.name));
-    const linkedThemesHtml = () => {
-      const current = editor && nodes.get(editor.key);
-      const linked = new Map<string,any>();
-      (current?.links || []).forEach((link:any) => {
-        const inward=Boolean(link.inwardIssue), target=inward ? link.inwardIssue : link.outwardIssue;
-        const direction=inward ? link.type?.inward : link.type?.outward;
-        if (!target?.key || !/задача проекта|project task/i.test(String(direction || ''))) return;
-        const existing=nodes.get(target.key), fields=target.fields || {};
-        linked.set(target.key, {...(existing || {key:target.key,summary:fields.summary || '',status:fields.status?.name || '',category:fields.status?.statusCategory?.key || ''}), linkId:link.id || ''});
-      });
-      const entries=[...linked.values()].sort((a:any,b:any) => collator.compare(a.summary || a.key,b.summary || b.key));
-      return '<div class="ozon-strategy-linked-themes"><strong>Установленные связи «Задача проекта»</strong>' + (entries.length ? '<div class="ozon-strategy-linked-list">' + entries.map((item:any) => '<div class="ozon-strategy-linked-item"><div><a class="ozon-mono" href="https://jit.o3.ru/browse/' + encodeURIComponent(item.key) + '" target="_blank" rel="noopener noreferrer">' + escape(item.key) + '</a>' + (item.status ? ' ' + renderBadge(escape(item.status),item.category === 'done' ? 'done' : item.category === 'indeterminate' ? 'progress' : 'todo') : '') + '<button type="button" class="ozon-strategy-unlink" data-strategy-action="unlink-theme" data-key="' + escape(item.key) + '" data-id="' + escape(item.linkId) + '" aria-label="Удалить связь с ' + escape(item.key) + '" title="Удалить связь" ' + (editor.busy ? 'disabled' : '') + '>✕</button></div><div class="ozon-strategy-linked-title">' + escape(item.summary || 'Название недоступно') + '</div></div>').join('') + '</div>' : '<p>Связей пока нет</p>') + '</div>';
-    };
-    const themeOptionsHtml = () => {
-      const options:any[] = editor?.options || [];
-      const byKey=new Map<string,any>(options.map((item:any) => [item.key,item]));
-      const query=String(editor?.query || '').trim().toLowerCase();
-      const visible=new Set<string>();
-      const pending=options.filter(item => !query || (item.key + ' ' + item.summary).toLowerCase().includes(query)).map(item => item.key);
-      while (pending.length) { const key=pending.pop()!; if (visible.has(key)) continue; visible.add(key); (byKey.get(key)?.parents || []).forEach((parent:string) => { if (byKey.has(parent)) pending.push(parent); }); }
-      const children=new Map<string,string[]>();
-      const roots:string[]=[];
-      options.forEach(item => { if (!visible.has(item.key)) return; const parents=[...(item.parents || [])].filter((key:any) => key !== item.key && visible.has(key) && byKey.has(key)); if (!parents.length) roots.push(item.key); parents.forEach((parent:any) => { if (!children.has(parent)) children.set(parent,[]); children.get(parent)!.push(item.key); }); });
-      const covered=new Set<string>();
-      const cover=(key:string) => { const stack=[key]; while(stack.length) { const current=stack.pop()!; if(covered.has(current)) continue; covered.add(current); stack.push(...(children.get(current) || [])); } };
-      roots.forEach(cover); options.forEach(item => { if(visible.has(item.key) && !covered.has(item.key)) { roots.push(item.key); cover(item.key); } });
-      let result='';
-      const renderTree=(root:string) => { const stack=[{key:root,depth:0,ancestors:new Set<string>()}]; while(stack.length) { const entry=stack.pop()!; if(entry.ancestors.has(entry.key)) continue; const item=byKey.get(entry.key); if (!item) continue; const descendants=(children.get(entry.key) || []).filter(key => !entry.ancestors.has(key)); const open=Boolean(query) || !editor.collapsed?.has(entry.key); const indent=Math.min(entry.depth,8)*14; result += '<div class="ozon-strategy-theme-row" style="margin-left:' + indent + 'px;width:calc(100% - ' + indent + 'px)">' + (descendants.length ? '<button type="button" class="ozon-strategy-theme-toggle" data-strategy-action="theme-toggle" data-key="' + escape(item.key) + '" aria-expanded="' + open + '" aria-label="' + (open ? 'Свернуть ' : 'Развернуть ') + escape(item.key) + '">' + (open ? '▾' : '▸') + '</button>' : '<span class="ozon-strategy-theme-toggle-space"></span>') + '<button type="button" class="ozon-ext-combo-item ozon-strategy-theme-option" data-strategy-action="save-link" data-strategy-match="' + (!query || (item.key + ' ' + item.summary).toLowerCase().includes(query)) + '" data-key="' + escape(item.key) + '" ' + (editor.busy ? 'disabled' : '') + '><span class="ozon-strategy-theme-meta"><span class="ozon-mono">' + escape(item.key) + '</span>' + renderBadge(escape(item.status),item.category === 'done' ? 'done' : item.category === 'indeterminate' ? 'progress' : 'todo') + '</span><span class="ozon-strategy-theme-title">' + escape(item.summary) + '</span><span class="ozon-strategy-theme-components">' + escape(item.components) + '</span></button></div>'; if(open) { const ancestors=new Set(entry.ancestors); ancestors.add(entry.key); descendants.slice().reverse().forEach(key => stack.push({key,depth:entry.depth+1,ancestors})); } } };
-      roots.forEach(renderTree);
-      return result || '<div class="ozon-ext-toolbar-empty">Тематики не найдены</div>';
-    };
     const currentPriority = editor?.kind === 'priority' ? state.issues.find(item => item.key === editor.key)?.fields?.priority : null;
     const currentSprint = editor?.kind === 'sprint' ? sprintValue(state.issues.find(item => item.key === editor.key)?.fields || {}) : null;
     const renderCreateThemeForm = (draft:typeof editor) => {
@@ -427,7 +423,7 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
         '<div class="ozon-strategy-create-actions"><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-strategy-action="close-editor">Отмена</button>' +
         '<button type="submit" class="ozon-ext-btn"' + (draft.busy ? ' disabled' : '') + '>Создать тематику</button></div></form>';
     };
-    const panel = !editor ? '' : '<aside class="ozon-dev-editor ozon-ext-combo-popover" role="dialog" aria-label="' + (editor.kind === 'create' ? 'Создать тематику' : editor.kind === 'link' ? 'Связать с тематикой' : 'Редактирование задачи') + '"><div class="ozon-dev-editor-head"><strong>' + (editor.kind === 'priority' ? 'Приоритет' : editor.kind === 'component' ? 'Компонент задачи' : editor.kind === 'sprint' ? 'Спринт задачи' : editor.kind === 'epic' ? 'Эпик задачи' : editor.kind === 'link' ? 'Связать с тематикой' : editor.kind === 'create' ? 'Создать тематику' : 'Добавить метку') + (editor.key ? ' · ' + escape(editor.key) : '') + '</strong><button type="button" class="ozon-ext-btn" data-strategy-action="close-editor">✕</button></div>' + (editor.kind === 'sprint' ? '<div class="ozon-sprint-current"><span>Текущий спринт</span><strong>' + escape(currentSprint?.name || 'Бэклог') + '</strong></div>' : editor.kind === 'priority' ? '<div class="ozon-sprint-current"><span>Текущий приоритет</span><strong>' + priorityIcon(currentPriority?.name || '') + ' ' + escape(currentPriority?.name || 'Не указан') + '</strong></div>' : '') + (editor.error ? '<p role="alert" class="ozon-dev-error">' + escape(editor.error) + '</p>' : '') + (editor.loading ? '<p role="status">Загрузка…</p>' : editor.kind === 'sprint' ? '<input id="ozon-strategy-sprint-search" type="search" dir="ltr" placeholder="Поиск спринта…" aria-label="Поиск спринта" value="' + escape(editor.query || '') + '"><div class="ozon-dev-editor-options ozon-strategy-editor-options"><button type="button" class="ozon-ext-combo-item" data-strategy-action="save-sprint" data-id="" ' + (editor.busy ? 'disabled' : '') + '>Бэклог</button>' + editor.options.filter((sp) => !editor.query || sp.name.toLowerCase().includes(editor.query.toLowerCase())).map((sp) => '<button type="button" class="ozon-ext-combo-item" data-strategy-action="save-sprint" data-id="' + escape(sp.id) + '" ' + (editor.busy ? 'disabled' : '') + '><span>' + escape(sp.name) + '</span>' + renderBadge(String(sp.state).toLowerCase() === 'active' ? 'Активный' : 'Будущий', String(sp.state).toLowerCase() === 'active' ? 'done' : 'progress') + '</button>').join('') + '</div>' : editor.kind === 'component' ? '<input id="ozon-strategy-component-editor-search" type="search" dir="ltr" placeholder="Поиск компонента…" aria-label="Поиск компонента задачи" value="' + escape(editor.query || '') + '"><div class="ozon-dev-editor-options ozon-strategy-editor-options"><button type="button" class="ozon-ext-combo-item ' + (!currentComponents.length ? 'active' : '') + '" aria-pressed="' + !currentComponents.length + '" data-strategy-action="save-component" data-id="" ' + (editor.busy ? 'disabled' : '') + '>Без компонента</button>' + editor.options.filter((option) => !editor.query || String(option.name).toLowerCase().includes(editor.query.toLowerCase())).map((option) => '<button type="button" class="ozon-ext-combo-item ' + (componentSelected(option) ? 'active' : '') + '" aria-pressed="' + componentSelected(option) + '" data-strategy-action="save-component" data-id="' + escape(option.id) + '" ' + (editor.busy ? 'disabled' : '') + '>' + escape(option.name) + '</button>').join('') + '</div>' : editor.kind === 'epic' ? '<input id="ozon-strategy-epic-search" type="search" dir="ltr" placeholder="Поиск по ключу или названию…" value="' + escape(editor.query || '') + '"><div class="ozon-dev-editor-options ozon-dev-epic-options ozon-strategy-editor-options"><button type="button" class="ozon-ext-combo-item" data-strategy-action="save-epic" data-key="" ' + (editor.busy ? 'disabled' : '') + '>Без эпика</button>' + editor.options.map((item) => '<button type="button" class="ozon-ext-combo-item" data-strategy-action="save-epic" data-key="' + escape(item.key) + '" ' + (editor.busy ? 'disabled' : '') + '><span class="ozon-mono">' + escape(item.key) + '</span>' + renderBadge(escape(item.status), item.category === 'done' ? 'done' : item.category === 'indeterminate' ? 'progress' : 'todo') + '<span class="ozon-dev-option-title">' + escape(item.summary) + '</span><span class="ozon-dev-option-components">' + escape(item.components) + '</span></button>').join('') + (editor.searching ? '<p role="status">Загрузка…</p>' : '') + '</div>' : editor.kind === 'priority' ? '<div class="ozon-dev-editor-options ozon-strategy-editor-options">' + editor.options.map((option, index) => '<button type="button" class="ozon-ext-combo-item ' + ((String(option.value) === String(currentPriority?.id) || option.label === currentPriority?.name) ? 'active' : '') + '" aria-pressed="' + (String(option.value) === String(currentPriority?.id) || option.label === currentPriority?.name) + '" data-strategy-action="save-priority" data-index="' + index + '" ' + (editor.busy ? 'disabled' : '') + '>' + priorityIcon(option.label) + escape(option.label) + '</button>').join('') + '</div>' : editor.kind === 'link' ? linkedThemesHtml() + '<div class="ozon-strategy-theme-scope"><span>' + (currentComponents.length ? 'Компоненты задачи: ' + escape(currentComponents.map((item) => item.name).filter(Boolean).join(', ')) : 'У задачи не указан компонент') + '</span><button type="button" class="ozon-ext-btn ' + (editor.allComponents ? '' : 'ozon-ext-btn-surface') + '" data-strategy-action="theme-scope" aria-pressed="' + Boolean(editor.allComponents) + '">Все компоненты</button></div><input id="ozon-strategy-link-search" type="search" dir="ltr" aria-label="Поиск тематики" placeholder="Поиск по ключу или названию…" value="' + escape(editor.query || '') + '"><div class="ozon-dev-editor-options ozon-strategy-editor-options ozon-strategy-theme-list">' + themeOptionsHtml() + '</div>' : editor.kind === 'create' ? renderCreateThemeForm(editor) : '<form id="ozon-strategy-label-form"><input id="ozon-strategy-label-input" placeholder="Название метки" aria-label="Название метки" required><button type="submit" class="ozon-ext-btn" ' + (editor.busy ? 'disabled' : '') + '>Добавить</button></form>') + '</aside>';
+    const panel = !editor ? '' : '<aside class="ozon-dev-editor ozon-ext-combo-popover" role="dialog" aria-label="' + (editor.kind === 'create' ? 'Создать тематику' : 'Редактирование задачи') + '"><div class="ozon-dev-editor-head"><strong>' + (editor.kind === 'priority' ? 'Приоритет' : editor.kind === 'component' ? 'Компонент задачи' : editor.kind === 'sprint' ? 'Спринт задачи' : editor.kind === 'epic' ? 'Эпик задачи' : editor.kind === 'create' ? 'Создать тематику' : 'Добавить метку') + (editor.key ? ' · ' + escape(editor.key) : '') + '</strong><button type="button" class="ozon-ext-btn" data-strategy-action="close-editor">✕</button></div>' + (editor.kind === 'sprint' ? '<div class="ozon-sprint-current"><span>Текущий спринт</span><strong>' + escape(currentSprint?.name || 'Бэклог') + '</strong></div>' : editor.kind === 'priority' ? '<div class="ozon-sprint-current"><span>Текущий приоритет</span><strong>' + priorityIcon(currentPriority?.name || '') + ' ' + escape(currentPriority?.name || 'Не указан') + '</strong></div>' : '') + (editor.error ? '<p role="alert" class="ozon-dev-error">' + escape(editor.error) + '</p>' : '') + (editor.loading ? (groupingUi?.progressHtml('Загрузка…') || '<p role="status">Загрузка…</p>') : editor.kind === 'sprint' ? '<input id="ozon-strategy-sprint-search" type="search" dir="ltr" placeholder="Поиск спринта…" aria-label="Поиск спринта" value="' + escape(editor.query || '') + '"><div class="ozon-dev-editor-options ozon-strategy-editor-options"><button type="button" class="ozon-ext-combo-item" data-strategy-action="save-sprint" data-id="" ' + (editor.busy ? 'disabled' : '') + '>Бэклог</button>' + editor.options.filter((sp) => !editor.query || sp.name.toLowerCase().includes(editor.query.toLowerCase())).map((sp) => '<button type="button" class="ozon-ext-combo-item" data-strategy-action="save-sprint" data-id="' + escape(sp.id) + '" ' + (editor.busy ? 'disabled' : '') + '><span>' + escape(sp.name) + '</span>' + renderBadge(String(sp.state).toLowerCase() === 'active' ? 'Активный' : 'Будущий', String(sp.state).toLowerCase() === 'active' ? 'done' : 'progress') + '</button>').join('') + '</div>' : editor.kind === 'component' ? '<input id="ozon-strategy-component-editor-search" type="search" dir="ltr" placeholder="Поиск компонента…" aria-label="Поиск компонента задачи" value="' + escape(editor.query || '') + '"><div class="ozon-dev-editor-options ozon-strategy-editor-options"><button type="button" class="ozon-ext-combo-item ' + (!currentComponents.length ? 'active' : '') + '" aria-pressed="' + !currentComponents.length + '" data-strategy-action="save-component" data-id="" ' + (editor.busy ? 'disabled' : '') + '>Без компонента</button>' + editor.options.filter((option) => !editor.query || String(option.name).toLowerCase().includes(editor.query.toLowerCase())).map((option) => '<button type="button" class="ozon-ext-combo-item ' + (componentSelected(option) ? 'active' : '') + '" aria-pressed="' + componentSelected(option) + '" data-strategy-action="save-component" data-id="' + escape(option.id) + '" ' + (editor.busy ? 'disabled' : '') + '>' + escape(option.name) + '</button>').join('') + '</div>' : editor.kind === 'epic' ? '<input id="ozon-strategy-epic-search" type="search" dir="ltr" placeholder="Поиск по ключу или названию…" value="' + escape(editor.query || '') + '"><div class="ozon-dev-editor-options ozon-dev-epic-options ozon-strategy-editor-options"><button type="button" class="ozon-ext-combo-item" data-strategy-action="save-epic" data-key="" ' + (editor.busy ? 'disabled' : '') + '>Без эпика</button>' + editor.options.map((item) => '<button type="button" class="ozon-ext-combo-item" data-strategy-action="save-epic" data-key="' + escape(item.key) + '" ' + (editor.busy ? 'disabled' : '') + '><span class="ozon-mono">' + escape(item.key) + '</span>' + renderBadge(escape(item.status), item.category === 'done' ? 'done' : item.category === 'indeterminate' ? 'progress' : 'todo') + '<span class="ozon-dev-option-title">' + escape(item.summary) + '</span><span class="ozon-dev-option-components">' + escape(item.components) + '</span></button>').join('') + (editor.searching ? '<p role="status">Загрузка…</p>' : '') + '</div>' : editor.kind === 'priority' ? '<div class="ozon-dev-editor-options ozon-strategy-editor-options">' + editor.options.map((option, index) => '<button type="button" class="ozon-ext-combo-item ' + ((String(option.value) === String(currentPriority?.id) || option.label === currentPriority?.name) ? 'active' : '') + '" aria-pressed="' + (String(option.value) === String(currentPriority?.id) || option.label === currentPriority?.name) + '" data-strategy-action="save-priority" data-index="' + index + '" ' + (editor.busy ? 'disabled' : '') + '>' + priorityIcon(option.label) + escape(option.label) + '</button>').join('') + '</div>' : editor.kind === 'create' ? renderCreateThemeForm(editor) : '<form id="ozon-strategy-label-form"><input id="ozon-strategy-label-input" placeholder="Название метки" aria-label="Название метки" required><button type="submit" class="ozon-ext-btn" ' + (editor.busy ? 'disabled' : '') + '>Добавить</button></form>') + '</aside>';
     return '<section class="ozon-strategy-dashboard">' + header + filters + error + '<div class="ozon-strategy-description">Все задачи FCRM · ' + taskCount + ' ' + taskNoun + (filtering ? ' по фильтрам · Родительские строки показаны для контекста' : '') + '. Задача может отображаться в нескольких тематиках. ' + (layout.byComponent ? 'Задачи с несколькими компонентами видны в каждой группе. ' : '') + '<span class="ozon-strategy-legend">Связи: <span class="ozon-strategy-relation">Задача проекта</span> <span class="ozon-strategy-epic-relation">Epic Link</span></span></div>' + tableHtml(rows || '<tr><td colspan="' + visibleColumns.length + '">Задачи FCRM не найдены</td></tr>') + panel + settings + '</section>';
   }
   async function linkTheme(sourceKey:string,targetKey:string) {
@@ -453,6 +449,7 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
       state.notice='Связь ' + sourceKey + ' с тематикой ' + themeName + ' создана, но не удалось обновить её в таблице. Нажмите «Обновить задачи», чтобы проверить данные Jira.';
     }
     actions?.notify?.(state.notice);
+    actions?.themeLinkChanged?.(sourceKey);
   }
   async function unlinkTheme(sourceKey:string,targetKey:string,linkId:string) {
     const issue=state.issues.find(item => item.key === sourceKey);
@@ -470,11 +467,167 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
     issue.fields.issuelinks=(issue.fields.issuelinks || []).filter((link:any) => !(String(link.id || '') === linkId || (!link.id && matches(link))));
     try { const updated=await fetch('/rest/api/2/issue/' + encodeURIComponent(sourceKey) + '?fields=issuelinks',{credentials:'same-origin',headers:{Accept:'application/json'},cache:'no-store'}); if (updated.ok) { const data=await updated.json(); if (Array.isArray(data.fields?.issuelinks) && !data.fields.issuelinks.some((link:any) => String(link.id || "") === linkId)) issue.fields.issuelinks=data.fields.issuelinks; } } catch (_) { /* Удаление уже подтверждено Jira. */ }
     invalidateGraph(); actions?.notify?.('Связь ' + sourceKey + ' с тематикой ' + targetKey + ' удалена.');
+    actions?.themeLinkChanged?.(sourceKey);
   }
   function themeCandidates(key:string,allComponents:boolean) {
-    const graph=buildGraph(); const current=graph.nodes.get(key); const descendants=new Set<string>(), pending=[key];
+    const graph=buildGraph(false,false,true); const current=graph.nodes.get(key); const descendants=new Set<string>(), pending=[key];
     while(pending.length) { const next=pending.pop()!; if (descendants.has(next)) continue; descendants.add(next); graph.nodes.get(next)?.children.forEach((child:string)=>pending.push(child)); }
     return [...graph.nodes.values()].filter((item:any) => item.thematic && !descendants.has(item.key) && !current?.parents.has(item.key) && (allComponents || (current?.componentNames.length ? item.componentNames.some((name:string) => current.componentNames.includes(name)) : !item.componentNames.length))).sort((a:any,b:any)=>collator.compare(a.summary,b.summary));
+  }
+  type ThemeEditor={key:string;loading:boolean;busy:boolean;error:string;query:string;allComponents:boolean;collapsed:Set<string>;options:any[];fromDetails:boolean;rowPath:string};
+  let themeEditor:ThemeEditor|null=null;
+  const redrawThemePicker=()=> (actions?.themePickerChanged || onRender)();
+  async function loadThemePicker(editor:ThemeEditor) {
+    editor.loading=true; editor.error=''; redrawThemePicker();
+    try {
+      if (!state.loaded) await load();
+      if (!state.loaded) throw new Error(state.error || 'Не удалось загрузить тематики');
+      if (!state.issues.some(issue => issue.key===editor.key)) {
+        const fields='summary,issuetype,status,components,labels,issuelinks,priority,created';
+        const response=await fetch('/rest/api/2/issue/' + encodeURIComponent(editor.key) + '?fields=' + fields,{credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json'}});
+        if (!response.ok) throw new Error('Не удалось загрузить задачу (HTTP ' + response.status + ')');
+        const issue=await response.json();
+        if (issue.key!==editor.key || !issue.fields || !Array.isArray(issue.fields.issuelinks)) throw new Error('Jira не вернула связи задачи');
+        if (!state.issues.some(item=>item.key===issue.key)) { state.issues.push(issue); invalidateGraph(); }
+      }
+      editor.options=themeCandidates(editor.key,editor.allComponents);
+    } catch(error:any) { editor.error=error.message; }
+    finally {
+      editor.loading=false;
+      if (themeEditor===editor) {
+        redrawThemePicker();
+        document.getElementById('ozon-strategy-link-search')?.focus({preventScroll:true});
+      }
+    }
+  }
+  async function openThemePicker(key:string,trigger?:HTMLElement) {
+    if (!/^FCRM-\d+$/i.test(key) || themeEditor?.busy) return;
+    const row=trigger?.closest('tr');
+    const editor:ThemeEditor={key:key.toUpperCase(),loading:false,busy:false,error:'',query:'',allComponents:false,collapsed:new Set(),options:[],fromDetails:Boolean(trigger?.closest('#ozon-ext-sidebar-panel')),rowPath:row?.dataset.strategyPath || row?.dataset.detailsRow || ''};
+    themeEditor=editor;
+    if (!state.loaded || !state.issues.some(issue=>issue.key===editor.key)) {
+      await loadThemePicker(editor);
+      return;
+    }
+    editor.options=themeCandidates(editor.key,false);
+    redrawThemePicker();
+    document.getElementById('ozon-strategy-link-search')?.focus({preventScroll:true});
+  }
+  function closeThemePicker() {
+    if (themeEditor?.busy) return;
+    const editor=themeEditor;
+    themeEditor=null;
+    redrawThemePicker();
+    if (editor) {
+      const scope=editor.fromDetails ? '#ozon-ext-sidebar-panel ' : '';
+      const triggers=[...document.querySelectorAll<HTMLElement>(scope+'[data-theme-picker-key="' + editor.key + '"]')];
+      const trigger=editor.rowPath ? triggers.find(item=>{const row=item.closest('tr');return (row?.dataset.strategyPath || row?.dataset.detailsRow)===editor.rowPath;}) : triggers[0];
+      (trigger || triggers[0])?.focus({preventScroll:true});
+    }
+  }
+  function themePickerHtml() {
+    const editor=themeEditor;
+    if (!editor) return '';
+    const nodes=buildGraph(false,false,true).nodes;
+    const currentComponents:any[]=state.issues.find(issue=>issue.key===editor.key)?.fields?.components || [];
+    const linkedThemesHtml = () => {
+      const current = editor && nodes.get(editor.key);
+      const linked = new Map<string,any>();
+      (current?.links || []).forEach((link:any) => {
+        const inward=Boolean(link.inwardIssue), target=inward ? link.inwardIssue : link.outwardIssue;
+        const direction=inward ? link.type?.inward : link.type?.outward;
+        if (!target?.key || !/задача проекта|project task/i.test(String(direction || ''))) return;
+        const existing=nodes.get(target.key), fields=target.fields || {};
+        linked.set(target.key, {...(existing || {key:target.key,summary:fields.summary || '',status:fields.status?.name || '',category:fields.status?.statusCategory?.key || ''}), linkId:link.id || ''});
+      });
+      const entries=[...linked.values()].sort((a:any,b:any) => collator.compare(a.summary || a.key,b.summary || b.key));
+      return '<div class="ozon-strategy-linked-themes"><strong>Установленные связи «Задача проекта»</strong>' + (entries.length ? '<div class="ozon-strategy-linked-list">' + entries.map((item:any) => '<div class="ozon-strategy-linked-item"><div><a class="ozon-mono" href="https://jit.o3.ru/browse/' + encodeURIComponent(item.key) + '" target="_blank" rel="noopener noreferrer">' + escape(item.key) + '</a>' + (item.status ? ' ' + renderBadge(escape(item.status),item.category === 'done' ? 'done' : item.category === 'indeterminate' ? 'progress' : 'todo') : '') + '<button type="button" class="ozon-strategy-unlink" data-theme-picker-action="unlink" data-key="' + escape(item.key) + '" data-id="' + escape(item.linkId) + '" aria-label="Удалить связь с ' + escape(item.key) + '" title="Удалить связь" ' + (editor.busy ? 'disabled' : '') + '>✕</button></div><div class="ozon-strategy-linked-title">' + escape(item.summary || 'Название недоступно') + '</div></div>').join('') + '</div>' : '<p>Связей пока нет</p>') + '</div>';
+    };
+    const themeOptionsHtml = () => {
+      const options:any[] = editor?.options || [];
+      const byKey=new Map<string,any>(options.map((item:any) => [item.key,item]));
+      const query=String(editor?.query || '').trim().toLowerCase();
+      const visible=new Set<string>();
+      const pending=options.filter(item => !query || (item.key + ' ' + item.summary).toLowerCase().includes(query)).map(item => item.key);
+      while (pending.length) { const key=pending.pop()!; if (visible.has(key)) continue; visible.add(key); (byKey.get(key)?.parents || []).forEach((parent:string) => { if (byKey.has(parent)) pending.push(parent); }); }
+      const children=new Map<string,string[]>();
+      const roots:string[]=[];
+      options.forEach(item => { if (!visible.has(item.key)) return; const parents=[...(item.parents || [])].filter((key:any) => key !== item.key && visible.has(key) && byKey.has(key)); if (!parents.length) roots.push(item.key); parents.forEach((parent:any) => { if (!children.has(parent)) children.set(parent,[]); children.get(parent)!.push(item.key); }); });
+      const covered=new Set<string>();
+      const cover=(key:string) => { const stack=[key]; while(stack.length) { const current=stack.pop()!; if(covered.has(current)) continue; covered.add(current); stack.push(...(children.get(current) || [])); } };
+      roots.forEach(cover); options.forEach(item => { if(visible.has(item.key) && !covered.has(item.key)) { roots.push(item.key); cover(item.key); } });
+      let result='';
+      const renderTree=(root:string) => { const stack=[{key:root,depth:0,ancestors:new Set<string>()}]; while(stack.length) { const entry=stack.pop()!; if(entry.ancestors.has(entry.key)) continue; const item=byKey.get(entry.key); if (!item) continue; const descendants=(children.get(entry.key) || []).filter(key => !entry.ancestors.has(key)); const open=Boolean(query) || !editor.collapsed?.has(entry.key); const indent=Math.min(entry.depth,8)*14; result += '<div class="ozon-strategy-theme-row" style="margin-left:' + indent + 'px;width:calc(100% - ' + indent + 'px)">' + (descendants.length ? '<button type="button" class="ozon-strategy-theme-toggle" data-theme-picker-action="toggle" data-key="' + escape(item.key) + '" aria-expanded="' + open + '" aria-label="' + (open ? 'Свернуть ' : 'Развернуть ') + escape(item.key) + '">' + (open ? '▾' : '▸') + '</button>' : '<span class="ozon-strategy-theme-toggle-space"></span>') + '<button type="button" class="ozon-ext-combo-item ozon-strategy-theme-option" data-theme-picker-action="save" data-theme-picker-match="' + (!query || (item.key + ' ' + item.summary).toLowerCase().includes(query)) + '" data-key="' + escape(item.key) + '" ' + (editor.busy ? 'disabled' : '') + '><span class="ozon-strategy-theme-meta"><span class="ozon-mono">' + escape(item.key) + '</span>' + renderBadge(escape(item.status),item.category === 'done' ? 'done' : item.category === 'indeterminate' ? 'progress' : 'todo') + '</span><span class="ozon-strategy-theme-title">' + escape(item.summary) + '</span><span class="ozon-strategy-theme-components">' + escape(item.components) + '</span></button></div>'; if(open) { const ancestors=new Set(entry.ancestors); ancestors.add(entry.key); descendants.slice().reverse().forEach(key => stack.push({key,depth:entry.depth+1,ancestors})); } } };
+      roots.forEach(renderTree);
+      return result || '<div class="ozon-ext-toolbar-empty">Тематики не найдены</div>';
+    };
+    const unavailable=!state.loaded || !state.issues.some(issue=>issue.key===editor.key);
+    const header='<div class="ozon-dev-editor-head"><strong>Связать с тематикой · ' + escape(editor.key) + '</strong><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-theme-picker-action="close" aria-label="Закрыть"' + (editor.busy ? ' disabled' : '') + '>✕</button></div>';
+    const error=editor.error ? '<p class="ozon-dev-error" role="alert">' + escape(editor.error) + '</p>' : '';
+    const progress=groupingUi?.progressHtml(editor.loading ? 'Загружаем тематики…' : 'Обновляем связь…') || '<p role="status">Загрузка…</p>';
+    const content=linkedThemesHtml() + '<div class="ozon-strategy-theme-scope"><span>' + (currentComponents.length ? 'Компоненты задачи: ' + escape(currentComponents.map((item) => item.name).filter(Boolean).join(', ')) : 'У задачи не указан компонент') + '</span><button type="button" class="ozon-ext-btn ' + (editor.allComponents ? '' : 'ozon-ext-btn-surface') + '" data-theme-picker-action="scope" aria-pressed="' + Boolean(editor.allComponents) + '"' + (editor.busy ? ' disabled' : '') + '>Все компоненты</button></div><input id="ozon-strategy-link-search" class="ozon-strategy-theme-search" type="search" dir="ltr" aria-label="Поиск тематики" placeholder="Поиск по ключу или названию…" value="' + escape(editor.query || '') + '"' + (editor.busy ? ' disabled' : '') + '><div class="ozon-dev-editor-options ozon-strategy-editor-options ozon-strategy-theme-list">' + themeOptionsHtml() + '</div>';
+    return '<aside id="ozon-theme-picker-panel" class="ozon-dev-editor ozon-ext-combo-popover" role="dialog" aria-label="Связать с тематикой" aria-busy="' + (editor.loading || editor.busy) + '">' + header + error + (editor.loading ? progress : unavailable ? '<button type="button" class="ozon-ext-btn" data-theme-picker-action="retry">Повторить</button>' : (editor.busy ? progress : '') + content) + '</aside>';
+  }
+  function bindThemePicker(root:HTMLElement) {
+    root.querySelectorAll<HTMLElement>('[data-theme-picker-key]').forEach(trigger=>trigger.addEventListener('click',event=>{
+      event.stopPropagation();
+      void openThemePicker(trigger.dataset.themePickerKey || '',trigger);
+    }));
+    const panel=root.querySelector<HTMLElement>('#ozon-theme-picker-panel');
+    if (!panel) return;
+    panel.addEventListener('keydown',event=>{
+      if(event.key==='Escape' && !themeEditor?.busy){ event.preventDefault();event.stopPropagation();closeThemePicker(); }
+    });
+    const search=panel.querySelector<HTMLInputElement>('#ozon-strategy-link-search');
+    search?.addEventListener('keydown',event=>{
+      if(event.key!=='Enter') return;
+      const options=[...panel.querySelectorAll<HTMLButtonElement>('[data-theme-picker-action="save"][data-theme-picker-match="true"]')];
+      if (options[0] && !options[0].disabled && new Set(options.map(option=>option.dataset.key)).size===1) {event.preventDefault();options[0].click();}
+    });
+    search?.addEventListener('input',()=>{
+      if(!themeEditor || themeEditor.busy)return;
+      themeEditor.query=search.value;
+      const start=search.selectionStart, end=search.selectionEnd;
+      redrawThemePicker();
+      const next=root.querySelector<HTMLInputElement>('#ozon-strategy-link-search');
+      next?.focus({preventScroll:true});
+      if(next && start!==null && end!==null)next.setSelectionRange(start,end);
+    });
+    panel.querySelectorAll<HTMLButtonElement>('[data-theme-picker-action]').forEach(button=>button.addEventListener('click',async event=>{
+      event.stopPropagation();
+      const editor=themeEditor, action=button.dataset.themePickerAction, key=button.dataset.key || '';
+      if(!editor || editor.busy)return;
+      if(action==='close'){closeThemePicker();return;}
+      if(action==='retry'){await loadThemePicker(editor);return;}
+      if(editor.loading)return;
+      if(action==='scope'){
+        editor.allComponents=!editor.allComponents;
+        editor.options=themeCandidates(editor.key,editor.allComponents);
+        editor.collapsed.clear();
+        redrawThemePicker();
+        root.querySelector<HTMLElement>('[data-theme-picker-action="scope"]')?.focus({preventScroll:true});
+        return;
+      }
+      if(action==='toggle'){
+        if(editor.collapsed.has(key))editor.collapsed.delete(key);else editor.collapsed.add(key);
+        redrawThemePicker();
+        [...root.querySelectorAll<HTMLElement>('[data-theme-picker-action="toggle"]')].find(option=>option.dataset.key===key)?.focus({preventScroll:true});
+        return;
+      }
+      if(action!=='save' && action!=='unlink')return;
+      editor.busy=true;editor.error='';redrawThemePicker();
+      try {
+        if(action==='save'){
+          await linkTheme(editor.key,key);
+          editor.busy=false;
+          closeThemePicker();
+          return;
+        }
+        await unlinkTheme(editor.key,key,button.dataset.id || '');
+        editor.options=themeCandidates(editor.key,editor.allComponents);
+      } catch(error:any){editor.error=error.message;}
+      finally{editor.busy=false;if(themeEditor===editor)redrawThemePicker();}
+    }));
   }
   let epicSearchSerial=0, epicSearchTimer:any=null;
   async function searchEpic(editor:any) {
@@ -535,18 +688,6 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
       treeDepth=value==='manual' ? null : value==='all' ? Infinity : Number(value);
       state.expanded.clear();state.filterCollapsed.clear();onRender();
     });
-    root.querySelectorAll<HTMLDetailsElement>('.ozon-strategy-copy-menu').forEach(menu => {
-      menu.addEventListener('toggle', () => {
-        if (!menu.open) return;
-        root.querySelectorAll<HTMLDetailsElement>('.ozon-strategy-copy-menu[open]').forEach(other => { if (other !== menu) other.open=false; });
-        const trigger=menu.querySelector<HTMLElement>('summary'), options=menu.querySelector<HTMLElement>('.ozon-strategy-copy-options');
-        if (!trigger || !options) return;
-        const rect=trigger.getBoundingClientRect(), width=options.offsetWidth, height=options.offsetHeight;
-        options.style.left=Math.max(8,Math.min(rect.left,window.innerWidth-width-8))+'px';
-        options.style.top=Math.max(8,rect.bottom+height+4 <= window.innerHeight ? rect.bottom+4 : rect.top-height-4)+'px';
-      });
-    });
-    root.querySelector('.ozon-strategy-scroll')?.addEventListener('scroll', () => root.querySelectorAll<HTMLDetailsElement>('.ozon-strategy-copy-menu[open]').forEach(menu => { menu.open=false; }), {passive:true});
     const search = root.querySelector<HTMLInputElement>('#ozon-strategy-search');
     search?.addEventListener('input', () => { state.search=search.value; state.filterCollapsed.clear(); clearTimeout(searchTimer); searchTimer=setTimeout(() => { const current=document.getElementById('ozon-strategy-search') as HTMLInputElement | null; if (!current || current.value !== state.search) return; const focused=document.activeElement === current, start=current.selectionStart, end=current.selectionEnd; onRender(); const next=document.getElementById('ozon-strategy-search') as HTMLInputElement | null; if (focused && next) { next.focus({preventScroll:true}); if (start !== null && end !== null) next.setSelectionRange(start,end); } if (exactIssueKey()) document.querySelector('.ozon-strategy-exact-match')?.scrollIntoView({block:'nearest',inline:'nearest'}); }, 180); });
     const componentPopover = root.querySelector<HTMLElement>('.ozon-strategy-component-popover');
@@ -627,7 +768,6 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
       outsideBound=true;
       document.addEventListener('pointerdown', event => {
         const target = event.target as Element;
-        if (!target?.closest('.ozon-strategy-copy-menu')) document.querySelectorAll<HTMLDetailsElement>('.ozon-strategy-copy-menu[open]').forEach(menu => { menu.open=false; });
         if ((!state.componentOpen && !state.issueTypeOpen && !state.labelOpen && !state.sortOpen) || target?.closest('.ozon-ext-toolbar-combo')) return;
         state.componentOpen=state.issueTypeOpen=state.labelOpen=state.sortOpen=false;
         document.querySelectorAll('.ozon-strategy-filters .ozon-ext-toolbar-popover:not(.ozon-depth-options)').forEach(popover => popover.remove());
@@ -669,8 +809,6 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
     root.querySelector<HTMLInputElement>('#ozon-strategy-sprint-search')?.addEventListener('input', event => { const input=event.target as HTMLInputElement; const pos=input.selectionStart; if (!state.editor || state.editor.kind !== 'sprint') return; state.editor.query=input.value; onRender(); const next=document.getElementById('ozon-strategy-sprint-search') as HTMLInputElement | null; next?.focus({preventScroll:true}); if (next && pos !== null) next.setSelectionRange(pos,pos); });
     root.querySelector<HTMLInputElement>('#ozon-strategy-component-editor-search')?.addEventListener('input', event => { const input=event.target as HTMLInputElement; const pos=input.selectionStart; if (!state.editor || state.editor.kind !== 'component') return; state.editor.query=input.value; onRender(); const next=document.getElementById('ozon-strategy-component-editor-search') as HTMLInputElement | null; next?.focus({preventScroll:true}); if (next && pos !== null) next.setSelectionRange(pos,pos); });
     root.querySelector<HTMLInputElement>('#ozon-strategy-epic-search')?.addEventListener('input', event => { const input=event.target as HTMLInputElement, editor=state.editor; if (!editor || editor.kind !== 'epic') return; editor.query=input.value; ++epicSearchSerial; clearTimeout(epicSearchTimer); epicSearchTimer=setTimeout(() => searchEpic(editor),300); });
-    root.querySelector<HTMLInputElement>('#ozon-strategy-link-search')?.addEventListener('keydown', event => { if (event.key !== 'Enter') return; const options=[...root.querySelectorAll<HTMLButtonElement>('[data-strategy-action="save-link"][data-strategy-match="true"]')]; const keys=new Set(options.map(option => option.dataset.key)); if (keys.size === 1 && options[0] && !options[0].disabled) { event.preventDefault(); options[0].click(); } });
-    root.querySelector<HTMLInputElement>('#ozon-strategy-link-search')?.addEventListener('input', event => { const input=event.target as HTMLInputElement; const pos=input.selectionStart; state.editor.query=input.value; onRender(); const next=document.getElementById('ozon-strategy-link-search') as HTMLInputElement | null; next?.focus({preventScroll:true}); if (next && pos !== null) next.setSelectionRange(pos,pos); });
     const createPicker = root.querySelector<HTMLDetailsElement>('.ozon-strategy-create-picker');
     if (createPicker) {
       const search = createPicker.querySelector<HTMLInputElement>('input[type="search"]')!;
@@ -727,11 +865,6 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
       if (button.dataset.strategyAction === 'toggle') { toggle(button); return; }
       if (button.dataset.strategyAction === 'close-editor') { if (!state.editor?.busy) state.editor=null; onRender(); return; }
       if (button.dataset.strategyAction === 'create') { const editor={kind:'create',key:'',loading:true,busy:false,error:'',options:[] as any[],summary:'',componentId:''}; state.editor=editor; onRender(); try { editor.options=await actions.components(); } catch(error:any) { editor.error=error.message; } finally { editor.loading=false; if (state.editor===editor) { onRender(); document.getElementById('ozon-strategy-create-name')?.focus({preventScroll:true}); } } return; }
-      if (button.dataset.strategyAction === 'link') { const key=button.dataset.key || ''; state.editor={kind:'link',key,loading:false,busy:false,error:'',query:'',allComponents:false,collapsed:new Set<string>(),options:themeCandidates(key,false)}; onRender(); return; }
-      if (button.dataset.strategyAction === 'theme-scope') { const editor=state.editor; if (!editor || editor.kind !== 'link') return; editor.allComponents=!editor.allComponents; editor.options=themeCandidates(editor.key,editor.allComponents); editor.collapsed=new Set<string>(); onRender(); return; }
-      if (button.dataset.strategyAction === 'theme-toggle') { const editor=state.editor; if (!editor || editor.kind !== 'link') return; const key=button.dataset.key || ''; editor.collapsed ||= new Set<string>(); editor.collapsed.has(key) ? editor.collapsed.delete(key) : editor.collapsed.add(key); onRender(); return; }
-      if (button.dataset.strategyAction === 'save-link') { const editor=state.editor; if (!editor || editor.busy) return; editor.busy=true; editor.error=''; onRender(); try { await linkTheme(editor.key,button.dataset.key || ''); if (state.editor===editor) state.editor=null; } catch(error:any) { editor.error=error.message; } finally { editor.busy=false; onRender(); } return; }
-      if (button.dataset.strategyAction === 'unlink-theme') { const editor=state.editor; if (!editor || editor.busy) return; editor.busy=true; editor.error=''; onRender(); try { await unlinkTheme(editor.key,button.dataset.key || '',button.dataset.id || ''); if (state.editor===editor) editor.options=themeCandidates(editor.key,Boolean(editor.allComponents)); } catch(error:any) { editor.error=error.message; } finally { editor.busy=false; onRender(); } return; }
       if (button.dataset.strategyAction === 'edit-sprint') { const issue=state.issues.find(item => item.key === button.dataset.key); if (!issue || /^(epic|эпик)$/i.test(issue.fields?.issuetype?.name || '')) return; const editor={kind:'sprint',key:button.dataset.key || '',loading:true,busy:false,error:'',query:'',options:[] as any[]}; state.editor=editor; onRender(); try { editor.options=await loadEditableSprints(); } catch(error:any) { editor.error=error.message; } finally { editor.loading=false; if (state.editor===editor) onRender(); } return; }
       if (button.dataset.strategyAction === 'save-sprint') { const editor=state.editor; if (!editor || editor.busy) return; const id=button.dataset.id || ''; const sprint=id ? editor.options.find((sp:any) => String(sp.id) === id) : null; if (id && !sprint) return; editor.busy=true; editor.error=''; onRender(); try { await saveSprint(editor.key,sprint); if (state.editor===editor) state.editor=null; } catch(error:any) { editor.error=error.message; } finally { editor.busy=false; onRender(); } return; }
       if (button.dataset.strategyAction === 'edit-component') { const editor={kind:'component',key:button.dataset.key || '',loading:true,busy:false,error:'',query:'',options:[] as any[]}; state.editor=editor; onRender(); try { editor.options=await actions.components(); } catch(error:any) { editor.error=error.message; } finally { editor.loading=false; if (state.editor===editor) onRender(); } return; }
@@ -744,12 +877,8 @@ export function createStrategicDashboard(onRender: () => void, renderBadge: (lab
       }
       if (button.dataset.strategyAction === 'save-priority') { const editor=state.editor; if (!editor || editor.busy) return; const option=editor.options[Number(button.dataset.index)]; if (!option) return; editor.busy=true; onRender(); try { const priority=await priorityService.save(editor.key,option.value); const issue=state.issues.find(item => item.key===editor.key); if (issue) { issue.fields.priority=priority; invalidateGraph(); } state.editor=null; } catch(error:any) { editor.error=error.message; } finally { editor.busy=false; onRender(); } return; }
       if (button.dataset.strategyAction === 'remove-label') { button.setAttribute('disabled',''); try { await changeLabel(button.dataset.key || '',button.dataset.label || '','remove'); } catch(error:any) { state.editor={kind:'labels',key:button.dataset.key || '',error:error.message,busy:false,loading:false,options:[]}; } onRender(); return; }
-      if (button.dataset.strategyAction === 'copy' || button.dataset.strategyAction === 'copy-key') {
-        const key = button.dataset.key || ''; const issue = state.issues.find(item => item.key === key); const url = 'https://jit.o3.ru/browse/' + key;
-        try { const title=issue?.fields?.summary || ''; const text=button.dataset.strategyAction === 'copy-key' ? key : '[' + key + '](' + url + ') ' + title; if (button.dataset.strategyAction === 'copy' && window.ClipboardItem && navigator.clipboard.write) { try { await navigator.clipboard.write([new ClipboardItem({'text/plain':new Blob([text],{type:'text/plain'}),'text/html':new Blob(['<a href="' + url + '">' + escape(key) + '</a> ' + escape(title)],{type:'text/html'})})]); } catch (_) { await navigator.clipboard.writeText(text); } } else await navigator.clipboard.writeText(text); button.title = 'Скопировано'; button.closest('details')?.removeAttribute('open'); actions?.notify?.('Скопировано'); }
-        catch (_) { button.title = 'Не удалось скопировать'; }
-      }
     }));
   }
-  return {html, bind, load, planningFields:() => ({sprint:sprintField,epic:epicField,epicName:epicNameField}), rememberEpic:(key:string, fields:any) => { if (key) epicMetadata.set(key,{summary:fields.summary || key,status:fields.status?.name || '',category:fields.status?.statusCategory?.key || ''}); }, prepareFilters, getState:() => state, buildGraph, invalidateGraph, linkTheme, unlinkTheme, saveEpic, saveComponent, loadEditableSprints, saveSprint};
+  const copyReferences=()=>new Map<string,string>(state.issues.map(issue=>[issue.key,issue.fields?.summary || issue.key]));
+  return {html, bind, load, openThemePicker, themePickerHtml, bindThemePicker, copyReferences, planningFields:() => ({sprint:sprintField,epic:epicField,epicName:epicNameField}), rememberEpic:(key:string, fields:any) => { if (key) epicMetadata.set(key,{summary:fields.summary || key,status:fields.status?.name || '',category:fields.status?.statusCategory?.key || ''}); }, prepareFilters, getState:() => state, buildGraph, invalidateGraph, linkTheme, unlinkTheme, saveEpic, saveComponent, loadEditableSprints, saveSprint};
 }

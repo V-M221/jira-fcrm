@@ -20,10 +20,19 @@ export function createJiraPriorityService() {
     return priority;
   }
   function icon(name:string) {
-    const text = String(name || 'Не указан');
-    const high = /highest|blocker|critical|крит|блок|наивыс/i.test(text), raised = high || /high|высок/i.test(text), low = /low|низк/i.test(text);
-    const path = raised ? '<path d="m6 14 6-6 6 6"/>' + (high ? '<path d="m6 19 6-6 6 6"/>' : '') : low ? '<path d="m6 8 6 6 6-6"/>' : '<path d="M5 10h14M5 15h14"/>';
-    return '<span class="ozon-dev-priority" aria-hidden="true" style="color:' + (raised ? '#E5484D' : low ? '#005BFF' : '#D97706') + '"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' + path + '</svg></span>';
+    const text=String(name || 'Не указан');
+    const title='Приоритет: ' + text.replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char] || char));
+    const twiceUp='<path d="m6 14 6-6 6 6m-12 5 6-6 6 6"/>';
+    const onceUp='<path d="m6 14 6-6 6 6"/>';
+    const onceDown='<path d="m6 8 6 6 6-6"/>';
+    const [tone,path,color]=/block|блок/i.test(text) ? ['critical','<circle cx="12" cy="12" r="8"/><path d="M8 12h8"/>','#D92D20']
+      : /highest|critical|крит|наивыс/i.test(text) ? ['critical',twiceUp,'#D92D20']
+      : /high|major|высок|важн/i.test(text) ? ['high',onceUp,'#D55310']
+      : /lowest|triv|миним/i.test(text) ? ['lowest','<path d="m6 6 6 6 6-6m-12 5 6 6 6-6"/>','#596B82']
+      : /low|minor|низк|незнач/i.test(text) ? ['low',onceDown,'#2452B4']
+      : /medium|normal|standard|сред|стандарт|обыч/i.test(text) ? ['normal','<path d="M5 10h14M5 15h14"/>','#A04C08']
+      : ['unknown','<path d="M6 12h12"/>','#596B82'];
+    return '<span class="ozon-dev-priority ozon-priority-icon ozon-priority-' + tone + '" role="img" aria-label="' + title + '" title="' + title + '" style="color:var(--ozon-priority-' + tone + ',' + color + ')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + path + '</svg></span>';
   }
   return {options,save,icon};
 }

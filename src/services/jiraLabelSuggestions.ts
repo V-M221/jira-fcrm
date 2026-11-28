@@ -1,5 +1,5 @@
 // Serialized into the extension and shared by both label editors.
-export function bindJiraLabelSuggestions(input: HTMLInputElement | null, options: {issueId?:string;known?:()=>string[];existing?:string[]} = {}) {
+export function bindJiraLabelSuggestions(input: HTMLInputElement | null, options: {issueId?:string;known?:()=>string[];existing?:string[];progress?:(label:string)=>string} = {}) {
   if (!input || input.dataset.labelSuggestionsBound) return;
   input.dataset.labelSuggestionsBound = '1';
   const popup = document.createElement('div');
@@ -47,10 +47,11 @@ export function bindJiraLabelSuggestions(input: HTMLInputElement | null, options
     close();
   }
 
-  function show(labels:string[],message:string) {
+  function show(labels:string[],message:string,pending=false) {
     const selected=suggestions[active];
     suggestions=labels;
-    status.textContent=message;
+    if (pending && options.progress) status.innerHTML=options.progress(message);
+    else status.textContent=message;
     list.replaceChildren(...labels.map((label,index)=>{
       const option=document.createElement('div');
       option.id=list.id + '-' + index;
@@ -94,7 +95,7 @@ export function bindJiraLabelSuggestions(input: HTMLInputElement | null, options
     const query=input.value.trim();
     if (!query) return;
     const local=matches(options.known?.() || [],query);
-    show(local,'Ищем метки в Jira…');
+    show(local,'Ищем метки в Jira…',true);
     const pending=new AbortController();
     controller=pending;
     timer=setTimeout(async ()=>{

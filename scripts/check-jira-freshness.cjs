@@ -39,6 +39,7 @@ async function renderSprintEditor(fields) {
   };
   const globals = {
     AbortController, planningEditor:null, document:{body:{appendChild(){}},createElement:()=>panel},
+    jiraGroupingUi:{progressHtml:label=>label},
     planningFields:()=>({sprint:'customfield_sprint'}), escapeHtml:String, isEpicIssueType:()=>false,
     readPlanningIssue:async()=>({fields}), extractAnyRealSprintName:value=>value.name,
     sprintIdByName:{}, sprintStateByName:{}, developmentDashboard:{getState:()=>({sprints:[]})},
@@ -55,7 +56,22 @@ async function renderSprintEditor(fields) {
   return {current:controls.get('[data-current]').innerHTML, options:controls.get('[data-list]').innerHTML};
 }
 
+async function pageProgress(total) {
+  const progress = [];
+  const fixture = {issues:[{key:'FCRM-1'},{key:'FCRM-2'}]};
+  if (total !== undefined) fixture.total = total;
+  const result = await vm.runInNewContext(
+    section('  async function fetchPaginatedIssues(', '  function fetchPaginatedAgileIssues(') +
+    "fetchPaginatedIssues('/fixture', 100, (loaded, count) => record(loaded, count));",
+    {fetch:async()=>({ok:true,json:async()=>fixture}),record:(loaded,count)=>progress.push([loaded,count])}
+  );
+  assert.equal(result.issues.length,2);
+  return progress;
+}
+
 (async()=>{
+  assert.deepStrictEqual(await pageProgress(undefined),[[2,null]]);
+  assert.deepStrictEqual(await pageProgress(2),[[2,2]]);
   const closed = {id:71,name:'CS #71',state:'closed'};
   const past = await renderSprintEditor({customfield_sprint:[closed]});
   assert.match(past.current,/^CS #71 .*Прошедший/);
@@ -71,5 +87,5 @@ async function renderSprintEditor(fields) {
   const backlog = await renderSprintEditor({});
   assert.equal(backlog.current,'Бэклог');
   assert.match(backlog.options,/aria-pressed="true"[^>]*>.*Бэклог/);
-  console.log('Fresh Jira values and sprint editor states checked: active, closed and backlog.');
+  console.log('Fresh Jira values checked: sprint editor states and measured vs unknown pagination.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

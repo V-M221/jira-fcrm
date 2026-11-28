@@ -3,6 +3,7 @@ import { installWidgetTheme, themeWidgetColors, WIDGET_THEME_STYLES } from '../u
 import { bindExtensionUpdateMessages, EXTENSION_UPDATE_CACHE_TTL, EXTENSION_UPDATE_MESSAGES, EXTENSION_UPDATE_METADATA_URL } from './extensionUpdate';
 ﻿import {
   completeDeepseekChat,
+  createDeepseekReadinessProbe,
   DEEPSEEK_AUTHS_URL,
   DEEPSEEK_CHAT_MESSAGE_TYPE,
   DEEPSEEK_PROMPT_STORAGE_KEY,
@@ -104,6 +105,9 @@ export function generateBackgroundJs(): string {
 const completeDeepseekChat = ${completeDeepseekChat.toString()};
 const TOKEN_KEY = ${JSON.stringify(DEEPSEEK_TOKEN_STORAGE_KEY)};
 const PROMPT_KEY = ${JSON.stringify(DEEPSEEK_PROMPT_STORAGE_KEY)};
+const checkReadiness = (${createDeepseekReadinessProbe.toString()})(
+  async () => (await chrome.storage.local.get(TOKEN_KEY))[TOKEN_KEY], ${JSON.stringify(DEEPSEEK_AUTHS_URL)}
+);
 
 const defaultPrompt = ${JSON.stringify(DEFAULT_DEEPSEEK_SYSTEM_PROMPT)};
 const designPrompt = ${JSON.stringify(DESIGN_TASK_SYSTEM_PROMPT)};
@@ -114,21 +118,36 @@ const createThreadReferenceRouter = ${createThreadReferenceRouter.toString()};
 async function getPromptCatalog(savedPrompt) {
   const thread = {urls:['https://chatzone.o3t.ru/example/pl/00000000000000000000000000'], issueTypeName:'Задача',componentName:'Пример компонента', themes:[{key:'FCRM-2',title:'Пример тематики'}]};
   const revision = {preview:'Предыдущий черновик',reply:'Сделай короче.'};
+  const channel = {channels:['https://chatzone.o3t.ru/example/channels/sample']};
   const examples = [
-    ['Создать FCRM из треда','thread','FCRM',JSON.stringify(thread)],
-    ['Уточнить черновик из треда','thread','FCRM',JSON.stringify({...thread,clarification:'Уточнить, для кого нужно изменение.',previousDraft:{summary:'Пример темы',description:'Пример описания'}})],
-    ['Улучшить описание','analyze','FCRM-1'],
-    ['Уточнить описание','analyze','FCRM-1','',revision],
-    ['Перепроверить источник','analyze','FCRM-1','',{...revision,reply:'Проверь связь с FCRM-2.'}],
-    ['Подготовить дизайн-задачу FTD','design','FCRM-1'],
-    ['Уточнить дизайн-задачу','design','FCRM-1','',revision],
-    ['Найти похожие задачи FCRM','search_fcrm','FCRM-1','{}'],
-    ['Найти обсуждения в chatZone','search_threads','FCRM-1',JSON.stringify({channels:['https://chatzone.o3t.ru/example/channels/sample']})],
-    ['Уточнить результаты поиска chatZone','search_threads','FCRM-1',JSON.stringify({channels:['https://chatzone.o3t.ru/example/channels/sample'],reply:'Уточнить результаты.',conversation:[]})],
-    ['Проверить и установить тематическую связь','links','FCRM-1'],
+    {title:'Создать FCRM из треда', description:'Готовит черновик по треду и прочитанным источникам. Сравнивает его с кандидатами на дубли FCRM.',
+      buttons:['Создать FCRM из треда','Подготовить черновик'], phase:'После чтения треда, до подтверждения создания', mode:'thread', key:'FCRM', input:thread},
+    {title:'Уточнить черновик из треда', description:'Пересобирает черновик с учётом ответа пользователя и предыдущего текста.',
+      buttons:['Отправить уточнение'], phase:'В мастере, после ответа на вопрос DeepSeek', mode:'thread', key:'FCRM',
+      input:{...thread,continuation:true,clarification:'Уточнить, для кого нужно изменение.',previousDraft:{summary:'Пример темы',description:'Пример описания'}}},
+    {title:'Улучшить описание', description:'Готовит предпросмотр описания и предлагает уместные связи. Сохранение выполняется отдельным действием в Jira.',
+      buttons:['Улучшить','Улучшить описание'], phase:'В карточке задачи, после ввода дополнительного контекста', mode:'analyze'},
+    {title:'Уточнить описание', description:'Редактирует предыдущий черновик по указанным фактам и правкам.',
+      buttons:['Добавить контекст','Обновить черновик'], phase:'После первого предпросмотра описания', mode:'analyze', clarification:revision},
+    {title:'Перепроверить источник', description:'По прямой просьбе проверяет нужную задачу или связь и обновляет предпросмотр.',
+      buttons:['Добавить контекст','Обновить черновик'], phase:'Если в уточнении явно запрошена проверка источника', mode:'analyze',
+      clarification:{...revision,reply:'Проверь связь с FCRM-2.'}},
+    {title:'Подготовить дизайн-задачу FTD', description:'Предлагает название и описание по открытой FCRM-задаче. Создание выполняется после отдельного подтверждения.',
+      buttons:['Дизайн · FTD'], phase:'В меню создания задачи в блоке «В проекте»', mode:'design'},
+    {title:'Уточнить дизайн-задачу', description:'Обновляет черновик FTD по ответу пользователя.',
+      buttons:['Отправить ответ'], phase:'После предпросмотра FTD, до подтверждения создания', mode:'design', clarification:revision},
+    {title:'Найти похожие задачи FCRM', description:'Оценивает смысловое сходство кандидатов, прочитанных в Jira. Правила различения дублей и связанных задач общие с мастером из треда.',
+      buttons:['Искать похожие в FCRM'], phase:'В карточке задачи, после выборки кандидатов Jira', mode:'search_fcrm', input:{}},
+    {title:'Найти обсуждения в chatZone', description:'Ищет похожие сообщения в одном выбранном канале за последние 30 дней.',
+      buttons:['Искать по тредам','Продолжить','Повторить поиск'], phase:'На каждом шаге поиска по выбранным каналам', mode:'search_threads', input:channel},
+    {title:'Уточнить результаты поиска chatZone', description:'Уточняет результаты текущего канала с учётом ответа и предыдущего обсуждения.',
+      buttons:['Ответить'], phase:'После результата текущего канала', mode:'search_threads', input:{...channel,reply:'Уточнить результаты.',conversation:[]}},
+    {title:'Проверить и установить тематическую связь', description:'Проверяет прямую связь «Задача проекта» и при однозначном совпадении создаёт или исправляет её.',
+      buttons:['Сгенерировать связи'], phase:'В карточке задачи, по явной команде проверки тематической связи', mode:'links'},
   ];
-  return Promise.all(examples.map(async ([title, mode, key, input, clarification]) => ({
-    title,...JSON.parse(await completeDeepseekChat(key, mode, null, input || '', mode === 'design' ? designPrompt : savedPrompt, clarification, '', true)),
+  return Promise.all(examples.map(async ({title, description, buttons, phase, mode, key = 'FCRM-1', input, clarification}) => ({
+    title, description, buttons, phase,
+    ...JSON.parse(await completeDeepseekChat(key, mode, null, input ? JSON.stringify(input) : '', mode === 'design' ? designPrompt : savedPrompt, clarification, '', true)),
   })));
 }
 
@@ -138,6 +157,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'o3ds:thread-status') {
     sendResponse({phase: requestId ? threadPhases.get(tabRequest) || null : null});
     return;
+  }
+  if (message?.type === 'o3ds:readiness' && sender.id === chrome.runtime.id) {
+    void checkReadiness(message.refresh === true).then(sendResponse);
+    return true;
   }
   if (message?.type === 'o3ds:prompt-catalog') {
     chrome.storage.local.get(PROMPT_KEY)
@@ -344,6 +367,8 @@ export function generateIssueEnhanceJs(): string {
     error: ''
   };
   let requestSerial = 0;
+  let readiness = null;
+  let readinessPending = false;
 
   function issueKeyFromText(value) {
     const match = String(value || '').toUpperCase().match(/\\b([A-Z][A-Z0-9]+-\\d+)\\b/);
@@ -388,9 +413,10 @@ export function generateIssueEnhanceJs(): string {
       '#o3ds-layer h2{margin:0 0 4px!important;font-size:14px!important;line-height:1.25!important;font-weight:700!important;color:#071026!important;}',
       '#o3ds-layer .o3ds-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px;}#o3ds-layer .o3ds-header .o3ds-key{margin-bottom:0!important;}#o3ds-layer .o3ds-header-close{width:28px!important;height:28px!important;flex:0 0 28px!important;padding:0!important;border:0!important;border-radius:8px!important;background:#f1f5f9!important;color:#334155!important;font-size:16px!important;}',
       '#o3ds-layer .o3ds-key{margin:0 0 12px!important;color:#626F86!important;font-size:12px!important;font-weight:600!important;}',
-      '#o3ds-layer .o3ds-skel{height:12px!important;margin:0 0 8px!important;border-radius:3px!important;background:linear-gradient(90deg,#F4F5F7 25%,#EBECF0 37%,#F4F5F7 63%)!important;background-size:400% 100%!important;animation:o3ds-shimmer 1.2s ease infinite!important;}',
-      '#o3ds-layer .o3ds-skel.short{width:62%!important;}',
-      '@keyframes o3ds-shimmer{0%{background-position:100% 0}100%{background-position:0 0}}',
+      '.o3ds-connection-note{display:inline-flex;align-items:baseline;flex-wrap:wrap;gap:4px 8px;margin:0 0 6px 8px;font-size:12px;color:var(--ozon-fcrm-muted,#475569);vertical-align:middle;}.o3ds-connection-note[hidden]{display:none!important;} .o3ds-connection-note a,.o3ds-connection-refresh{color:var(--ozon-fcrm-link,#005bff);}',
+      '#o3ds-layer .o3ds-connection-note{display:flex;margin:0 0 12px;} .o3ds-connection-refresh,#o3ds-layer .o3ds-connection-refresh{padding:0!important;height:auto!important;border:0;background:none;font:inherit!important;text-decoration:underline;cursor:pointer;}',
+      '#o3ds-layer .o3ds-load-track{width:100%;height:6px;overflow:hidden;border-radius:99px;background:var(--ozon-fcrm-border,#E8EEF7);margin:0 0 12px;} #o3ds-layer .o3ds-load-fill{width:35%;height:100%;border-radius:99px;background:var(--ozon-fcrm-link,#005bff);animation:o3ds-progress 1.35s ease-in-out infinite alternate;}',
+      '@keyframes o3ds-progress{from{transform:translateX(0)}to{transform:translateX(185%)}} @media(prefers-reduced-motion:reduce){#o3ds-layer .o3ds-load-fill{animation:none;}}',
       '#o3ds-layer .o3ds-answer{margin:0 0 12px!important;white-space:pre-wrap!important;word-break:break-word!important;font-family:inherit!important;font-size:14px!important;line-height:1.6!important;color:#172B4D!important;background:#F7F8F9!important;border:1px solid #DFE1E6!important;border-radius:3px!important;padding:10px!important;flex:1 1 auto!important;min-height:0!important;max-height:none!important;overflow:auto!important;}',
       '#o3ds-layer .o3ds-actions{display:flex!important;gap:8px!important;}',
       '#o3ds-layer button{height:32px!important;padding:0 12px!important;border-radius:3px!important;font-size:14px!important;font-weight:600!important;cursor:pointer!important;}',
@@ -427,13 +453,72 @@ export function generateIssueEnhanceJs(): string {
     return svg;
   }
 
+  function readinessMessage() {
+    if (readiness?.reason === 'sign-in') return 'Для действий с ИИ войдите в DeepSeek.';
+    if (readiness?.reason === 'unavailable') return 'Не удалось проверить доступ к DeepSeek.';
+    return readiness?.canRun ? '' : 'Проверяю доступ к DeepSeek…';
+  }
+
+  function updateReadinessNotice(notice) {
+    const [label, open, retry] = notice.children;
+    const text = readinessMessage();
+    notice.hidden = !text;
+    if (label.textContent !== text) label.textContent = text;
+    open.hidden = readiness?.reason !== 'sign-in';
+    retry.hidden = !readiness;
+    retry.disabled = readinessPending;
+  }
+
+  function readinessNotice() {
+    const notice = document.createElement('span');
+    notice.className = 'o3ds-connection-note';
+    const label = document.createElement('span');
+    label.setAttribute('role', 'status');
+    const open = document.createElement('a');
+    open.href = 'https://deepseek.o3t.ru/';
+    open.target = '_blank';
+    open.rel = 'noopener noreferrer';
+    open.textContent = 'Открыть DeepSeek';
+    const retry = actionButton('Повторить проверку', 'o3ds-connection-refresh', () => refreshReadiness(true), false);
+    notice.append(label, open, retry);
+    updateReadinessNotice(notice);
+    return notice;
+  }
+
+  function refreshReadiness(refresh = false) {
+    if (readinessPending || typeof chrome.runtime?.sendMessage !== 'function') return;
+    readinessPending = true;
+    syncButtons();
+    function finish(response) {
+      readinessPending = false;
+      const valid = response && ((response.canRun === true && ['token','session'].includes(response.reason)) ||
+        (response.canRun === false && ['sign-in','unavailable'].includes(response.reason)));
+      readiness = valid ? response : {canRun: false, reason: 'unavailable'};
+      syncButtons();
+    }
+    try {
+      chrome.runtime.sendMessage({type:'o3ds:readiness',refresh}, response => {
+        finish(chrome.runtime.lastError ? undefined : response);
+      });
+    } catch { finish(); }
+  }
+
+  function updateModelButton(button, blocked) {
+    button.disabled = blocked || readinessPending || !readiness?.canRun;
+    button.title = readinessMessage();
+  }
+
   function syncButtons() {
     const busy = session.phase === 'loading' || session.phase === 'applying' || session.phase === 'design-creating';
-    document.querySelectorAll('.o3ds-btn').forEach((node) => {
-      const button = node;
+    document.querySelectorAll('.o3ds-btn').forEach(button => {
       const sameIssue = button.getAttribute('data-issue-key') === session.issueKey;
-      button.disabled = busy && sameIssue;
+      updateModelButton(button, busy && sameIssue);
+      if (!button.title) button.title = 'Улучшить описание через DeepSeek';
     });
+    document.querySelectorAll('#o3ds-layer [data-o3ds-model-action]').forEach(button => {
+      updateModelButton(button, button.dataset.o3dsModelAction === 'blocked');
+    });
+    document.querySelectorAll('.o3ds-connection-note').forEach(updateReadinessNotice);
   }
 
   function openSession(issueKey) {
@@ -450,6 +535,7 @@ export function generateIssueEnhanceJs(): string {
   }
 
   function startDescriptionAnalysis() {
+    if (readinessPending || !readiness?.canRun) return;
     const issueKey = session.issueKey;
     session.phase = 'loading';
     session.error = '';
@@ -486,7 +572,7 @@ export function generateIssueEnhanceJs(): string {
   }
 
   function openDesignSession(issueKey) {
-    if (!issueKey) return;
+    if (!issueKey || readinessPending || !readiness?.canRun) return;
     session.kind = 'design';
     session.reply = '';
     session.issueKey = issueKey;
@@ -598,6 +684,7 @@ export function generateIssueEnhanceJs(): string {
           return;
         }
         if (!response || !response.ok) {
+          refreshReadiness(true);
           reject(new Error((response && response.error) || 'Пустой ответ DeepSeek'));
           return;
         }
@@ -613,6 +700,15 @@ export function generateIssueEnhanceJs(): string {
     button.textContent = label;
     button.disabled = Boolean(disabled);
     button.addEventListener('click', onClick);
+    return button;
+  }
+
+  function modelAction(label, className, onClick, blocked = false) {
+    const button = actionButton(label, className, () => {
+      if (!readinessPending && readiness?.canRun) onClick();
+    }, blocked);
+    button.dataset.o3dsModelAction = blocked ? 'blocked' : 'enabled';
+    updateModelButton(button, blocked);
     return button;
   }
 
@@ -645,6 +741,7 @@ export function generateIssueEnhanceJs(): string {
     close.setAttribute('aria-label', 'Закрыть помощника');
     header.append(heading, close);
     layer.appendChild(header);
+    if (['context','preview','error'].includes(session.phase)) layer.appendChild(readinessNotice());
 
     if (session.phase === 'context') {
       const hint = document.createElement('p');
@@ -669,7 +766,7 @@ export function generateIssueEnhanceJs(): string {
       const actions = document.createElement('div');
       actions.className = 'o3ds-actions';
       actions.append(
-        actionButton('Улучшить описание', 'o3ds-primary', startDescriptionAnalysis, false),
+        modelAction('Улучшить описание', 'o3ds-primary', startDescriptionAnalysis),
         actionButton('Отмена', 'o3ds-subtle', closeSession, false)
       );
       layer.append(hint, label, context, actions);
@@ -684,11 +781,14 @@ export function generateIssueEnhanceJs(): string {
         ? (session.saveIncludesLinks ? 'Сохраняю описание и выбранные связи в Jira…' : 'Сохраняю описание в Jira…')
         : 'Готовлю черновик на основе задачи и нужных источников…';
       layer.appendChild(caption);
-      for (let i = 0; i < 4; i += 1) {
-        const bone = document.createElement('div');
-        bone.className = i === 2 ? 'o3ds-skel short' : 'o3ds-skel';
-        layer.appendChild(bone);
-      }
+      const track = document.createElement('div');
+      track.className = 'o3ds-load-track';
+      track.setAttribute('role', 'progressbar');
+      track.setAttribute('aria-label', caption.textContent);
+      const fill = document.createElement('div');
+      fill.className = 'o3ds-load-fill';
+      track.appendChild(fill);
+      layer.appendChild(track);
       if (session.phase === 'loading') {
         layer.appendChild(actionButton('Отмена', 'o3ds-subtle', closeSession, false));
       }
@@ -706,7 +806,7 @@ export function generateIssueEnhanceJs(): string {
       const actions = document.createElement('div');
       actions.className = 'o3ds-actions';
       actions.append(
-        actionButton('Повторить', 'o3ds-primary', () => session.kind === 'design' ? openDesignSession(session.issueKey) : startDescriptionAnalysis(), false),
+        modelAction('Повторить', 'o3ds-primary', () => session.kind === 'design' ? openDesignSession(session.issueKey) : startDescriptionAnalysis()),
         actionButton('Закрыть', 'o3ds-subtle', closeSession, false)
       );
       if (session.kind === 'description') actions.insertBefore(actionButton('Добавить контекст', 'o3ds-subtle', () => {
@@ -796,7 +896,7 @@ export function generateIssueEnhanceJs(): string {
     reply.style.maxHeight = '180px';
     reply.style.height = '76px';
     reply.value = session.reply || '';
-    const send = actionButton(session.kind === 'design' ? 'Отправить ответ' : 'Обновить черновик', 'o3ds-subtle', async () => {
+    const send = modelAction(session.kind === 'design' ? 'Отправить ответ' : 'Обновить черновик', 'o3ds-subtle', async () => {
       if (!reply.value.trim() || session.phase !== 'preview') return;
       const serial = ++requestSerial;
       session.phase = 'loading';
@@ -824,7 +924,9 @@ export function generateIssueEnhanceJs(): string {
       reply.style.height = '76px';
       reply.style.height = Math.min(reply.scrollHeight, 180) + 'px';
       reply.style.overflowY = reply.scrollHeight > 180 ? 'auto' : 'hidden';
-      send.disabled = !reply.value.trim();
+      const blocked = !reply.value.trim();
+      send.dataset.o3dsModelAction = blocked ? 'blocked' : 'enabled';
+      updateModelButton(send, blocked);
     };
     const actions = document.createElement('div');
     actions.className = 'o3ds-actions';
@@ -938,10 +1040,11 @@ export function generateIssueEnhanceJs(): string {
     button.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      if (session.phase === 'loading' || session.phase === 'applying') return;
+      if (readinessPending || !readiness?.canRun || session.phase === 'loading' || session.phase === 'applying') return;
       openSession(issueKey);
     });
     summaryEl.insertAdjacentElement('afterend', button);
+    if (!summaryEl.closest('#ozon-structure-root')) button.insertAdjacentElement('afterend', readinessNotice());
     syncButtons();
   }
 
@@ -966,6 +1069,13 @@ export function generateIssueEnhanceJs(): string {
 
   ensureStyles();
   scan();
+  refreshReadiness();
+  window.addEventListener?.('focus', () => refreshReadiness(true));
+  window.addEventListener?.('pageshow', () => refreshReadiness());
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshReadiness(true); });
+  chrome.storage?.onChanged?.addListener((changes, area) => {
+    if (area === 'local' && changes.ozon_deepseek_bearer_token) refreshReadiness(true);
+  });
   document.addEventListener('ozon-fcrm-start-design-task', (event) => {
     let detail = event && event.detail;
     if (typeof detail === 'string') { try { detail = JSON.parse(detail); } catch { detail = null; } }

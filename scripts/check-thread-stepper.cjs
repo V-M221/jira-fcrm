@@ -22,7 +22,7 @@ async function checkPreflight(section, element) {
   function fixture(answers, results = [modelDraft]) {
     const inspections = [], modelRequests = [], rendered = [];
     const context = vm.createContext({
-      crypto:webcrypto,window:{setInterval:()=>1,clearInterval(){}},
+      crypto:webcrypto,widgetDeepseek:{canRun:true},window:{setInterval:()=>1,clearInterval(){}},
       requestSnapshot:{urls:['https://chatzone.o3t.ru/o3/pl/'+'b'.repeat(26)]},
       form:element('form'),preflight:{...element('section'),hidden:true},preflightDraft:null,preflightMatches:element('ul'),
       preflightTitle:element('h3'),preflightMessage:element('p'),preflightContinue:element('button'),preflightRetry:element('button'),
@@ -65,6 +65,10 @@ async function checkPreflight(section, element) {
   let resolveJira, startJira;
   const waiting = new Promise(resolve=>{resolveJira=resolve;});
   const inspectStarted = new Promise(resolve=>{startJira=resolve;});
+  const offline = fixture([ready]);
+  offline.context.widgetDeepseek.canRun = false;
+  await offline.run('');
+  assert.equal(offline.modelRequests.length,0);
   const pending = fixture([waiting]);
   const inspect = pending.context.threadWriter.inspect;
   pending.context.threadWriter.inspect = input=>{
@@ -236,7 +240,7 @@ async function checkWizardState(section, element) {
   const link=element('a');
   const summary={value:'Ручное название'}, description={value:'Ручное описание'};
   const context=vm.createContext({
-    ...state,busy:true,pendingWrite:null,created:null,ready:true,loadingLink:false,draft:{summary:'Название модели'},
+    ...state,widgetDeepseek:{canRun:true},busy:true,pendingWrite:null,created:null,ready:true,loadingLink:false,draft:{summary:'Название модели'},
     checkedInput:null,reviewResult:null,step:1,inspectionFailed:false,preflight:element('section'),initialClarification:false,
     preflightDraft:null,exactApprovedKeys:[],confirmedExistingKeys:[],separateIntentId:null,exactOverrideReady:false,
     duplicateLinks:element('div'),duplicateNote:element('p'),followup:element('form'),themeMenu:{hidden:true},issueProposals:element('div'),earlyMatches:element('ul'),
@@ -332,6 +336,7 @@ async function checkDraftPanel() {
   const inspections = [], lookups = [], timer = [];
   const context = vm.createContext({
     URL,document:{createElement:element,createTextNode:text=>({textContent:text}),get activeElement(){return activeElement;}},setTimeout,
+    jiraGroupingUi:{progressHtml:label=>label},
     draft,requestSnapshot:{issueTypeId:'10',componentId:'20'},step:2,summary:{value:draft.summary},normalizedSummary:text=>text.trim(),
     selectedTheme:null,loadingLink:false,busy:false,pendingWrite:null,created:false,
     selectedIssueLinks:new Map(),linkEdits:new Map(),hiddenIssueLinks:new Set(),issueProposals:element('div'),

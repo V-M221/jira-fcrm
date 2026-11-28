@@ -224,7 +224,12 @@ assert.deepEqual(category('Стрим 5','OBPROJECT-1'),['Роузи']);
 assert.deepEqual(category('',''),[]);
 let developmentGroups=['sprint','project','epic'];
 const dashboard = createSprintReportDashboard(()=>{},model,[{id:'1',name:'Test'}],'','',()=> '',type=>type==='Эпик',people,columns,()=>developmentGroups,grouping);
-Object.assign(dashboard.getState(),{report,project:'OBFRONT'});
+Object.assign(dashboard.getState(),{loading:'Загружаем спринты…'});
+assert.match(dashboard.html(),/data-progress-indeterminate[^>]*>.*?role="progressbar" aria-label="Загружаем спринты…"/);
+assert.doesNotMatch(dashboard.html(),/aria-valuenow=/);
+Object.assign(dashboard.getState(),{loading:'Проверяем историю задач: 3 из 4…',loadingProgress:75});
+assert.match(dashboard.html(),/role="progressbar" aria-label="Проверяем историю задач: 3 из 4…" aria-valuenow="75"/);
+Object.assign(dashboard.getState(),{report,project:'OBFRONT',loading:'',loadingProgress:null});
 const html = dashboard.html();
 const groupTable = html => html.match(/<table aria-label="План и факт по группам">.*?<\/table>/)?.[0];
 const groupRows = (table,label) => {
@@ -342,13 +347,28 @@ dashboard.getState().report = {...report,days:[...report.days.slice(0,-1),{...la
 const lastBar = burnBars(dashboard.html()).at(-1);
 assert.equal(lastBar.date,lastDay.date);
 assert.equal(lastBar.y,hitBounds[1],'The axis includes cumulative completed SP even when they exceed both lines');
+assert.match(dashboard.html(),/ozon-report-plot-label-background[^>]*fill="var\(--ozon-fcrm-surface,#fff\)"/);
 assert.ok(lastBar.x + lastBar.width <= hitBounds[0]+hitBounds[2],'The last bar fits inside the plot');
 dashboard.bind(root);
 move(report.days.length);
 assert.equal(tip.querySelector('[data-tip-burned]').textContent,'В «Готово» с начала: 30 SP (за день: +22 SP)');
 assert.equal(tip.querySelector('[data-tip-reopened]').textContent,'Вернули при переоткрытии: 22 SP');
 
+const depthTrigger = (id,values) => {
+  const trigger = Object.assign(new ChartElement(),{dataset:{tableDepth:id}});
+  trigger.nextElementSibling = new ChartElement();
+  trigger.options = values.map(depthValue=>Object.assign(new ChartElement(),{dataset:{depthValue}}));
+  trigger.nextElementSibling.childLists.set('[data-depth-value]',trigger.options);
+  return trigger;
+};
 Object.assign(dashboard.getState(),{report:edge,section:'finish',scopeFilter:'done'});
+const collapsed = dashboard.html();
+assert.match(collapsed,/<button\b(?=[^>]*data-report-group="\[&quot;project:TEST&quot;\]")(?=[^>]*aria-expanded="false")[^>]*>/);
+assert.doesNotMatch(collapsed,/data-key="TEST-7"/,'The report opens at the uppermost grouping level');
+const expandTaskDepth=depthTrigger('report-details',['all']);
+root.childLists.set('[data-table-depth]',[expandTaskDepth]);
+dashboard.bind(root);
+expandTaskDepth.options[0].listeners.get('click')();
 const completedHtml = dashboard.html();
 assert.match(completedHtml,/data-report-target-filter="done"><span>Завершили к закрытию<\/span><strong>8 SP<\/strong><small>2 задачи/);
 assert.match(completedHtml,/5 \+ 6 − 3 \+ 3 = 11 SP/);
@@ -445,7 +465,7 @@ dashboard.bind(root);
 group.setAttribute('aria-expanded','true');
 group.listeners.get('click')();
 assert.match(dashboard.html(),/class="ozon-report-tree"><colgroup>/);
-assert.match(dashboard.html(),/data-report-group="\[&quot;project:OB&quot;,&quot;stream:Стрим 3&quot;\]" aria-expanded="false"/);
+assert.match(dashboard.html(),/<button\b(?=[^>]*data-report-group="\[&quot;project:OB&quot;,&quot;stream:Стрим 3&quot;\]")(?=[^>]*aria-expanded="false")[^>]*>/);
 assert.doesNotMatch(dashboard.html(),/data-key="TEST-1"/);
 group.setAttribute('aria-expanded','false');
 group.listeners.get('click')();
@@ -470,13 +490,6 @@ assert.equal(ob.rows[0].epicKey,'');
 dashboard.updateTask('TEST-1',{assigneeName:'',assignee:null});
 assert.match(dashboard.html(),/title="Не назначен"><span>Не назначен/);
 
-const depthTrigger = (id,values) => {
-  const trigger = Object.assign(new ChartElement(),{dataset:{tableDepth:id}});
-  trigger.nextElementSibling = new ChartElement();
-  trigger.options = values.map(depthValue=>Object.assign(new ChartElement(),{dataset:{depthValue}}));
-  trigger.nextElementSibling.childLists.set('[data-depth-value]',trigger.options);
-  return trigger;
-};
 const detailsDepth = depthTrigger('report-details',['0','all']);
 const rollupDepth = depthTrigger('report-rollup',['2']);
 root.childLists.set('[data-table-depth]',[detailsDepth,rollupDepth]);

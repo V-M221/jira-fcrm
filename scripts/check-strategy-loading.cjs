@@ -143,5 +143,30 @@ vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleK
   events.change();
   assert.doesNotMatch(dashboard.html(),/ozon-strategy-component-group/);
   assert.match(dashboard.html(),/data-strategy-path="FCRM-1\|FCRM-7"/);
-  console.log('Strategy checks passed: skeleton, retry, exact search, component multi-select and grouping.');
+  state.search='';
+  state.componentFilter.clear();
+  state.filterCollapsed.clear();
+  assert.match(dashboard.html(),/data-path="group:themes" aria-expanded="false"/);
+  assert.match(dashboard.html(),/data-path="group:no-theme" aria-expanded="false"/);
+  assert.doesNotMatch(dashboard.html(),/data-strategy-path="FCRM-/);
+
+  // The shared picker can start while the strategy is loading, independently of the active page.
+  issues[7].fields.components=[{name:'Группа B'}];
+  issues[7].fields.labels=['fcrm_umb_epic'];
+  issues[7].fields.status={name:'Готово',statusCategory:{key:'done'}};
+  const pickRenders=[];
+  const view=exportsObj.createStrategicDashboard(()=>{},()=>'', 'test',undefined,undefined,{themePickerChanged:()=>pickRenders.push(view.themePickerHtml())});
+  view.getState().hideDone=true;
+  const freshLoad=view.load();
+  const openPicker=view.openThemePicker('FCRM-7');
+  assert.match(view.themePickerHtml(),/aria-busy="true"/);
+  await Promise.all([freshLoad,openPicker]);
+  const picker=view.themePickerHtml();
+  assert.ok(pickRenders.length>=2);
+  assert.match(picker,/id="ozon-theme-picker-panel"/);
+  assert.match(picker,/id="ozon-strategy-link-search" class="ozon-strategy-theme-search"/);
+  assert.match(picker,/data-theme-picker-action="save"[^>]*data-key="FCRM-8"/);
+  assert.doesNotMatch(picker,/data-theme-picker-action="save"[^>]*data-key="(?:FCRM-1|FCRM-7)"/);
+  assert.equal(view.copyReferences().get('FCRM-7'),'Задача 7');
+  console.log('Strategy checks passed: skeleton, retry, upper level, exact search, component multi-select, shared theme picker and grouping.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

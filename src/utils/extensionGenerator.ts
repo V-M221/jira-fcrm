@@ -16,7 +16,7 @@ import { createExtensionUpdateNotice, EXTENSION_UPDATE_INTERVAL, EXTENSION_UPDAT
 import { createJiraDraftLinkClient } from '../services/deepseek';
 import { createFcrmThreadWriter } from '../services/fcrmThreadWriter';
 
-export const EXTENSION_VERSION = '3.5.201';
+export const EXTENSION_VERSION = '3.5.202';
 
 export function fcrmReviewRowClass(key:string, status:string):string {
   if (!/^FCRM-\d+$/i.test(key)) return '';
@@ -277,7 +277,38 @@ body.ozon-native-board-visible > :is(.ozon-component-editor,#ozon-thread-sidebar
 .ozon-ext-search-select.compact .ozon-ext-search-select-popover { width:280px !important; min-width:250px !important; }
 .ozon-ext-search-select-option { display:flex !important; width:100%; border:0; background:transparent; text-align:left; }
 .ozon-ext-search-select-empty { padding:8px 10px; color:#64748b; font-size:11px; }
-.ozon-ext-load-progress { min-width:220px; flex:1; max-width:520px; }
+.ozon-ext-load-progress { width:100%;min-width:0;flex:1;max-width:520px; }
+.ozon-ext-load-line {display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.ozon-ext-load-progress [data-load-progress-label] {font-size:11px;color:var(--ozon-fcrm-muted,#52647d)}
+.ozon-ext-load-progress [data-load-progress-value] {color:var(--ozon-fcrm-link,#005bff)}
+.ozon-ext-load-progress[data-progress-indeterminate] .ozon-ext-load-progress-fill {width:32%;animation:ozon-ext-progress-slide 1.35s ease-in-out infinite;transition:none}
+ @keyframes ozon-ext-progress-slide {from{transform:translateX(-100%)}to{transform:translateX(315%)}}
+ @media(prefers-reduced-motion:reduce){.ozon-ext-load-progress-fill,.ozon-ext-load-progress[data-progress-indeterminate] .ozon-ext-load-progress-fill {animation:none;transition:none}}
+:is(#ozon-structure-root,#ozon-thread-sidebar) [data-o3ds-connection] {max-width:100%;display:flex;flex:none;align-items:center;flex-wrap:wrap;gap:5px 8px;color:var(--ozon-fcrm-muted,#52647d);font-size:11px}
+:is(#ozon-structure-root,#ozon-thread-sidebar) [data-o3ds-connection][hidden] {display:none!important}
+:is(#ozon-structure-root,#ozon-thread-sidebar) [data-o3ds-connection] a {color:var(--ozon-fcrm-link,#005bff);text-decoration:underline}
+:is(#ozon-structure-root,#ozon-thread-sidebar) [data-o3ds-connection] button {height:26px;white-space:nowrap}
+#ozon-structure-root #ozon-o3ds-connection-note {padding:4px 12px;border-bottom:1px solid var(--ozon-border);background:var(--ozon-fcrm-raised,#f8fafc)}
+#ozon-structure-root [data-o3ds-blocked]:disabled {opacity:.55;cursor:not-allowed}
+#ozon-prompt-catalog .ozon-prompt-use {display:grid;gap:4px;margin:6px 0 2px;color:var(--ozon-fcrm-muted,#52647d);font-weight:500;font-size:11px;line-height:1.45}
+#ozon-prompt-catalog .ozon-prompt-use p {margin:0}
+.ozon-table-tree-toggle {width:19px;height:19px;display:inline-grid;place-items:center;min-width:19px;box-sizing:border-box;padding:0;border:0;border-radius:5px;background:transparent;color:var(--ozon-fcrm-link,#005bff);cursor:pointer;vertical-align:middle;flex:none}
+.ozon-table-tree-toggle:hover {background:var(--ozon-fcrm-accent-surface,#e5f0ff)}
+.ozon-table-tree-toggle:focus-visible {outline:2px solid var(--ozon-fcrm-focus,#005bff);outline-offset:-1px}
+.ozon-table-tree-toggle[aria-expanded="true"] svg {transform:rotate(90deg)}
+.ozon-table-tree-spacer {width:19px;min-width:19px;display:inline-block;flex:none}
+.ozon-ext-copy-menu {position:fixed;inset:auto;margin:0;padding:4px;border:1px solid var(--ozon-border);border-radius:8px;background:var(--ozon-fcrm-raised,#fff);color:var(--ozon-fcrm-text,#14233a);box-shadow:0 8px 20px #07102633;}
+.ozon-ext-copy-menu:popover-open {display:grid;}
+.ozon-ext-copy-menu > button {justify-content:flex-start;}
+.ozon-ext-copy-ref[data-copy-feedback='done'] {color:var(--ozon-fcrm-success-text,#207449);}
+.ozon-ext-copy-ref[data-copy-feedback='error'] {color:var(--ozon-fcrm-danger-text,#b42318);}
+.ozon-copy-feedback-live {position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
+#ozon-structure-root {--ozon-priority-critical:#bf252c;--ozon-priority-high:#b34a16;--ozon-priority-normal:#895310;--ozon-priority-low:#2860a9;--ozon-priority-lowest:#586a81;--ozon-priority-unknown:#586a81;}
+html[data-ozon-fcrm-theme="dark"] #ozon-structure-root {--ozon-priority-critical:#ff9ca1;--ozon-priority-high:#ffb27d;--ozon-priority-normal:#ffd19a;--ozon-priority-low:#8bb4ff;--ozon-priority-lowest:#b5c4d8;--ozon-priority-unknown:#b5c4d8;}
+#ozon-structure-root .ozon-strategy-theme-search {background:var(--ozon-fcrm-input,#fff)!important;color:var(--ozon-fcrm-text,#18253b)!important;border-color:var(--ozon-fcrm-muted-border,#a7b8cd)!important;}
+#ozon-structure-root .ozon-strategy-theme-search::placeholder {color:var(--ozon-fcrm-muted,#52647d);opacity:1;}
+#ozon-structure-root .ozon-sb-theme-attribute {display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;margin:0 0 7px;padding:8px 10px;border:1px solid var(--ozon-border);border-radius:8px;background:var(--ozon-fcrm-raised,#f8fafc);}
+#ozon-structure-root .ozon-sb-theme-attribute a {color:var(--ozon-fcrm-link,#005bff);text-decoration:underline;overflow-wrap:anywhere;}
 .ozon-ext-load-progress-track { height:6px; margin-top:6px; overflow:hidden; border-radius:99px; background:#E8EEF7; }
 .ozon-ext-load-progress-fill { height:100%; width:var(--load-progress,5%); border-radius:99px; background:linear-gradient(90deg,#005BFF,#60A5FA); transition:width .35s ease; }
 .ozon-ext-sprint-progress-cell { padding:5px 12px 7px !important; }
@@ -823,27 +854,27 @@ button.ozon-report-trend-bars:hover,.ozon-report-trend-bars:focus-visible {backg
 .ozon-report-chart {margin-bottom:8px}
 .ozon-report-project-charts {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:12px}
 .ozon-report-project-charts>.ozon-report-chart {min-width:0;margin:0;padding:9px 10px 3px;border:1px solid #e4ecf6;border-radius:9px}
-.ozon-report-chart h3 {margin:0 0 6px;font-size:13px;color:#071026}
+#ozon-structure-root :is(.ozon-report h2,.ozon-report h3,#ozon-prompt-catalog h2,#ozon-prompt-catalog h3) {color:var(--ozon-fcrm-text,#18253b)!important;}
+.ozon-report-chart h3 {margin:0 0 6px;font-size:13px;}
 .ozon-report-graph {overflow-x:auto;position:relative}.ozon-report-graph svg {display:block;width:100%;min-width:640px;max-height:204px}
 .ozon-report-chart.is-project svg {min-width:370px;max-height:300px}
-@media(max-width:900px){.ozon-report-project-charts {grid-template-columns:minmax(0,1fr)}}
+ @media(max-width:900px){.ozon-report-project-charts {grid-template-columns:minmax(0,1fr)}}
 .ozon-report-graph-hit {cursor:crosshair}
-.ozon-report-tooltip {position:absolute;z-index:2;top:6px;min-width:145px;padding:8px 10px;border-radius:8px;background:#14223b;color:#fff;box-shadow:0 3px 12px #0f172a30;pointer-events:none;font-size:11.5px;line-height:1.45}
+.ozon-report-tooltip {position:absolute;z-index:2;top:6px;min-width:145px;padding:8px 10px;border:1px solid var(--ozon-fcrm-border,#dbe4f0);border-radius:8px;background:var(--ozon-fcrm-raised,#fff);color:var(--ozon-fcrm-text,#18253b);box-shadow:0 3px 12px #0f172a30;pointer-events:none;font-size:11.5px;line-height:1.45}
 .ozon-report-tooltip:not([hidden]) {display:grid;gap:2px}
 .ozon-report-tooltip>span:empty {display:none}
-.ozon-report-grid line {stroke:#dbe4f0;stroke-width:1;vector-effect:non-scaling-stroke}
-.ozon-report-grid .ozon-report-grid-day {stroke:#edf2f8}.ozon-report-grid .ozon-report-grid-day.is-major {stroke:#dbe4f0}
-.ozon-report-grid text,.ozon-report-axis-title {fill:#52647d;font-size:14px}
-.ozon-report-axis {fill:none;stroke:#97a9bf;stroke-width:1;vector-effect:non-scaling-stroke}.ozon-report-axis-title {font-weight:600;font-size:13px}
-.ozon-report-scope-dot {fill:#7b5ab8}.ozon-report-remaining-dot {fill:#005bff}
-.ozon-report-plot-label {font-size:13px;font-weight:550;stroke:#fff;stroke-width:2px;stroke-linejoin:round;paint-order:stroke}
-.ozon-report-plot-label.scope {fill:#614396}.ozon-report-plot-label.remaining {fill:#0048cb}.ozon-report-plot-label.shared {fill:#334155}
+.ozon-report-grid line {stroke:var(--ozon-fcrm-border,#dbe4f0);stroke-opacity:.75;stroke-width:1;vector-effect:non-scaling-stroke}
+.ozon-report-grid .ozon-report-grid-day {stroke-opacity:.32}.ozon-report-grid .ozon-report-grid-day.is-major {stroke-opacity:.58}
+.ozon-report-grid text,.ozon-report-axis-title {fill:var(--ozon-fcrm-muted,#52647d);font-size:14px}
+.ozon-report-axis {fill:none;stroke:var(--ozon-fcrm-muted-border,#97a9bf);stroke-width:1;vector-effect:non-scaling-stroke}.ozon-report-axis-title {font-weight:600;font-size:13px}
+.ozon-report-scope-dot {fill:var(--ozon-fcrm-violet-text,#7954ae)}.ozon-report-remaining-dot {fill:var(--ozon-fcrm-link,#005bff)}
+.ozon-report-plot-label {font-size:13px;font-weight:650;fill:var(--ozon-fcrm-text,#233853);stroke:none;paint-order:normal;}
 .ozon-report-line-scope,.ozon-report-line-remaining,.ozon-report-line-selected {fill:none;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}
-.ozon-report-line-scope {stroke:#7b5ab8;stroke-width:1.25;stroke-dasharray:5 4}.ozon-report-line-remaining {stroke:#005bff;stroke-width:1.5}.ozon-report-line-selected {stroke:#a9c3e9;stroke-width:1}
-.ozon-report-burn-bar {fill:#6cb99b}.ozon-report-burn-bar.is-selected {fill:#368563}
-.ozon-report-burn-delta {fill:#064b35;font-size:12px;font-weight:700;stroke:#fff;stroke-width:2px;stroke-linejoin:round;paint-order:stroke;pointer-events:none}
-.ozon-report-legend {color:#40536e;font-size:12px}.ozon-report-legend>span::before {content:'';display:inline-block;width:18px;border-top:1.5px solid #005bff;vertical-align:middle;margin-right:6px}.ozon-report-legend>span:nth-child(2)::before {border-top:1.25px dashed #7b5ab8}.ozon-report-legend>small {color:#64748b}
-.ozon-report-legend>.ozon-report-burn-legend::before {width:12px;height:8px;border:0;border-radius:2px;background:#6cb99b}
+.ozon-report-line-scope {stroke:var(--ozon-fcrm-violet-text,#7954ae);stroke-width:1.4;stroke-dasharray:5 4}.ozon-report-line-remaining {stroke:var(--ozon-fcrm-link,#005bff);stroke-width:1.7}.ozon-report-line-selected {stroke:var(--ozon-fcrm-muted-border,#97a9bf);stroke-width:1}
+.ozon-report-burn-bar {fill:var(--ozon-fcrm-success-text,#66af95);fill-opacity:.78}.ozon-report-burn-bar.is-selected {fill-opacity:1}
+.ozon-report-burn-delta {fill:var(--ozon-fcrm-text,#233853);font-size:12px;font-weight:700;stroke:none;paint-order:normal;pointer-events:none}.ozon-report-burn-delta.is-inside {fill:rgb(9 36 26)}
+.ozon-report-legend {color:var(--ozon-fcrm-muted,#40536e);font-size:12px}.ozon-report-legend>span::before {content:"";display:inline-block;width:18px;border-top:1.7px solid var(--ozon-fcrm-link,#005bff);vertical-align:middle;margin-right:6px}.ozon-report-legend>span:nth-child(2)::before {border-top:1.4px dashed var(--ozon-fcrm-violet-text,#7954ae)}.ozon-report-legend>small {color:var(--ozon-fcrm-muted,#64748b)}
+.ozon-report-legend>.ozon-report-burn-legend::before {width:12px;height:8px;border:0;border-radius:2px;background:var(--ozon-fcrm-success-text,#66af95)}
 .ozon-report-daybar,.ozon-report-tools {margin:8px 0 12px}.ozon-report-tools input {width:min(280px,100%)}.ozon-report-filter {display:flex;align-items:center;gap:6px}
 .ozon-report-journal {margin-top:16px}
 .ozon-report-journal h3 {margin:0;font-size:13px}
@@ -2334,8 +2365,9 @@ export function generateContentScriptJs(
   const jiraGroupingUi = (${createJiraGroupingUi.toString()})();
   const jiraPeople = (${createJiraPeopleUi.toString()})();
   jiraPeople.bind(document,showSaveToast);
-  const bindLabelSuggestions = (${bindJiraLabelSuggestions.toString()});
-  const strategicDashboard = (${createStrategicDashboard.toString()})(() => { if (activeDashboardView === 'strategy') renderStructure(); }, renderBadge, ${JSON.stringify(EXTENSION_VERSION)}, jiraPriorityService, CONFIG.sprintFieldId, { boardId:CONFIG.rapidViewId, components:()=>loadIssueCreateComponents(CONFIG.projectKey), create:(summary,componentId)=>createIssueFromSidebar({kind:'epic',projectKey:CONFIG.projectKey,summary,componentId}), link:(source,target)=>createIssueLinkInJira(source,target,'projectTask',true,true), notify:(message)=>{ const update=showLinksSnackbar(message); update(message); }, details:openSharedFcrmDetails, issueTypeBadge:getIssueTypeBadgeHtml, bindLabelSuggestions },jiraGroupingUi,reviewRowClass);
+  const makeLabelSuggestions = (${bindJiraLabelSuggestions.toString()});
+  const bindLabelSuggestions = (input,options) => makeLabelSuggestions(input,{...options,progress:jiraGroupingUi.progressHtml});
+  const strategicDashboard = (${createStrategicDashboard.toString()})(() => { if (activeDashboardView === 'strategy') renderStructure(); }, renderBadge, ${JSON.stringify(EXTENSION_VERSION)}, jiraPriorityService, CONFIG.sprintFieldId, { boardId:CONFIG.rapidViewId, components:()=>loadIssueCreateComponents(CONFIG.projectKey), create:(summary,componentId)=>createIssueFromSidebar({kind:'epic',projectKey:CONFIG.projectKey,summary,componentId}), link:(source,target)=>createIssueLinkInJira(source,target,'projectTask',true,true), notify:(message)=>{ const update=showLinksSnackbar(message); update(message); }, details:openSharedFcrmDetails, issueTypeBadge:getIssueTypeBadgeHtml, bindLabelSuggestions, themePickerChanged:renderStructure, themeLinkChanged:key=>{ if (isSidebarOpen && selectedTaskKey === key) void reloadSingleTaskFromJira(key,true); } },jiraGroupingUi,reviewRowClass);
   async function openSharedFcrmDetails(link, button) {
     if (!/^FCRM-[0-9]+$/i.test(link.key)) return;
     const source = getSidebarSource(button);
@@ -2428,7 +2460,7 @@ export function generateContentScriptJs(
   async function runThreadChannelStep(key, reply = '', retryIndex = -1) {
     const state = getTicketSearchState(key, 'threads');
     const previous = retryIndex >= 0 ? state.history[retryIndex] : null;
-    if (state.loading || (retryIndex >= 0 && (!previous || (!previous.error && !previous.errors.length))) || (retryIndex < 0 && !state.queue[state.index])) return;
+    if (!widgetDeepseek.canRun || state.loading || (retryIndex >= 0 && (!previous || (!previous.error && !previous.errors.length))) || (retryIndex < 0 && !state.queue[state.index])) return;
     const channel = previous ? previous.channel : state.queue[state.index];
     if (previous) reply = previous.reply || '';
     const conversation = state.history.filter((step, index) => step.channel === channel && (retryIndex < 0 || index < retryIndex) && !step.error && !step.errors.length).map(step => ({ reply: step.reply, response: step.response }));
@@ -2506,7 +2538,7 @@ export function generateContentScriptJs(
       if (kind === 'fcrm' || !state.queue.length) body += '<button type="button" class="ozon-ext-btn" data-ticket-search-run="' + kind + '" data-issue-key="' + escapeHtml(key) + '"' + (state.loading ? ' disabled' : '') + '>' + button + '</button>';
       if (kind === 'threads') body += renderThreadSearchHistory(key, state);
       if (state.loading) {
-        body += '<div role="status" aria-label="Поиск выполняется" style="padding-top:10px;">' + [90, 65, 80].map(width => '<div class="ozon-ext-skeleton" style="display:block;height:18px;margin:10px 0;width:' + width + '%;"></div>').join('') + '</div>';
+        body += jiraGroupingUi.progressHtml('Ищу похожие задачи…');
       } else {
         if (state.error) body += '<div role="alert" style="margin-top:10px;color:#b42318;">' + escapeHtml(state.error) + '</div>';
         if (state.items) {
@@ -2595,7 +2627,7 @@ export function generateContentScriptJs(
       '</span><h3 tabindex="-1">' + title + '</h3></div><p data-thread-step-summary hidden></p><div data-thread-step-body' + (number === 1 ? '' : ' hidden') + '>';
     const stepEnd = '</div></li>';
     panel.innerHTML = '<div data-thread-width role="separator" tabindex="0" aria-label="Ширина панели" aria-orientation="vertical">⋮</div><header class="ozon-thread-head ozon-ext-sidebar-header"><h2 id="ozon-thread-title" tabindex="-1">Создать FCRM из треда</h2><button type="button" data-thread-close class="ozon-ext-btn ozon-ext-btn-surface">Закрыть</button></header>' +
-      '<div class="ozon-ext-sidebar-body"><p data-thread-status role="status" tabindex="-1">Загружаю типы задач и компоненты FCRM…</p><ol class="ozon-thread-steps" aria-label="Этапы создания задачи">' +
+      '<div class="ozon-ext-sidebar-body"><p data-o3ds-connection role="status" hidden></p><div data-thread-status role="status" tabindex="-1">Загружаю типы задач и компоненты FCRM…</div><ol class="ozon-thread-steps" aria-label="Этапы создания задачи">' +
       stepStart(1,'Исходные данные') +
       '<form data-thread-source><label class="ozon-ext-field-label">Ссылки на треды chatZone<textarea name="urls" rows="3" required aria-describedby="ozon-thread-url-hint" placeholder="https://chatzone.o3t.ru/o3/pl/…"></textarea></label>' +
       '<small id="ozon-thread-url-hint">До 10 ссылок, каждая с новой строки.</small>' +
@@ -2796,7 +2828,8 @@ export function generateContentScriptJs(
     }
 
     function say(text, tone = busy ? 'progress' : 'info') {
-      status.textContent = text;
+      if (tone === 'progress') status.innerHTML = jiraGroupingUi.progressHtml(text);
+      else status.textContent = text;
       status.dataset.tone = tone;
     }
     function focus(target) { if (!panel.hidden && target) target.focus(); }
@@ -2829,9 +2862,9 @@ export function generateContentScriptJs(
       returnToBoard.hidden = !terminal && state !== 'uncertain';
       returnToBoard.disabled = busy;
       footer.hidden = returnToBoard.hidden;
-      submit.disabled = busy || !ready;
+      submit.disabled = busy || !ready || !widgetDeepseek.canRun;
       if (preflight) for (const button of [preflightContinue,preflightRetry,preflightBack]) button.disabled = busy;
-      continueButton.disabled = busy || Boolean(pendingWrite && !created) || !reply.value.trim();
+      continueButton.disabled = busy || !widgetDeepseek.canRun || Boolean(pendingWrite && !created) || !reply.value.trim();
       inspect.hidden = !draft || initialClarification;
       inspect.disabled = locked || loadingLink || !draftReady();
       createActions.hidden = !['ready','possible-duplicate','existing'].includes(state);
@@ -2939,7 +2972,9 @@ export function generateContentScriptJs(
       finalDescription.open = false;
       showSources();
     };
+    panel.updateDeepseekControls = updateControls;
     document.body.appendChild(panel);
+    paintDeepseekReadiness();
     bindPanelWidth();
     setStep(1, false);
     updateControls();
@@ -3432,7 +3467,7 @@ export function generateContentScriptJs(
       }
       const currentDraft = draft;
       loadingLink = true;
-      linkStatus.textContent = 'Проверяю задачу ' + key + '…';
+      linkStatus.innerHTML = jiraGroupingUi.progressHtml('Проверяю задачу ' + key + '…');
       updateControls();
       try {
         const target = await threadWriter.resolveLinkTarget(key);
@@ -3467,7 +3502,7 @@ export function generateContentScriptJs(
       clearEarlyDuplicates();
       const serial = earlySerial;
       earlyDuplicates.hidden = false;
-      earlyStatus.textContent = 'Проверяю совпадения в Jira…';
+      earlyStatus.innerHTML = jiraGroupingUi.progressHtml('Проверяю совпадения в Jira…');
       earlyMatches.replaceChildren();
       earlyTimer = window.setTimeout(async () => {
         try {
@@ -3689,7 +3724,7 @@ export function generateContentScriptJs(
 
 
     async function requestDraft(clarification) {
-      if (busy || !requestSnapshot || pendingWrite || created) return;
+      if (busy || !widgetDeepseek.canRun || !requestSnapshot || pendingWrite || created) return;
       const previousDraft = draft && readDraft();
       const keepSummary = previousDraft && previousDraft.summary !== draft.summary;
       const keepDescription = previousDraft && previousDraft.description !== draft.description;
@@ -3995,7 +4030,7 @@ export function generateContentScriptJs(
     [summary, description, reply].forEach(field => field.addEventListener('input', () => { confirmDuplicate.hidden = true; duplicateLinks.hidden = true; updateControls(); }));
     async function loadFields() {
       retryFields.hidden = true;
-      say('Загружаю типы задач и компоненты FCRM…');
+      say('Загружаю типы задач и компоненты FCRM…','progress');
       try {
         const [types, components] = await Promise.all([loadIssueCreateMeta('FCRM'), loadIssueCreateComponents('FCRM')]);
         const availableTypes = types.filter(type => !type.subtask && !/sub.?task|подзадач/i.test(type.name));
@@ -4095,8 +4130,14 @@ export function generateContentScriptJs(
     }) : task);
   }
   let isInitialBoardLoading = false;
-  let initialLoadProgress = 4;
   let initialLoadStage = 'Подключаемся к Jira';
+  let initialLoadAmount = null;
+  function setBoardLoading(label, loaded, total) {
+    const known = Number.isFinite(total) && total > 0;
+    initialLoadAmount = known ? 100 * Math.min(loaded,total) / total : null;
+    initialLoadStage = known ? label + ': ' + loaded + ' из ' + total :
+      Number.isFinite(loaded) ? label + ' · получено ' + loaded : label;
+  }
   let groupByComponentInsideSprint = true;
   const productGroupingStorage = 'ozon-product-grouping-v1';
   let productGroupingOrder = (() => { try { const saved = JSON.parse(localStorage.getItem(productGroupingStorage) || 'null'); if (Array.isArray(saved) && saved.every((x) => ['sprint', 'component'].includes(x)) && new Set(saved).size === saved.length) return saved; } catch (_) {} return ['sprint', 'component']; })();
@@ -5012,26 +5053,8 @@ export function generateContentScriptJs(
    * Стандартные SVG-иконки приоритетов Jira (Blocker, Highest/Critical, High/Major, Medium/Стандартный, Low/Minor, Lowest/Trivial)
    * Никаких эмодзи!
    */
-  function getJiraPriorityIconSvg(priorityName) {
-    const p = String(priorityName || 'Medium').trim();
-    const low = p.toLowerCase();
-    if (low.includes('block') || low.includes('блок')) {
-      return '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;vertical-align:middle;" title="Приоритет: ' + escapeHtml(p) + '"><circle cx="8" cy="8" r="6.5" fill="#DC2626"/><rect x="4.2" y="7" width="7.6" height="2" rx="1" fill="#FFFFFF"/></svg>';
-    }
-    if (low.includes('crit') || low.includes('highest') || low.includes('крит') || low.includes('наивысш')) {
-      return '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;vertical-align:middle;" title="Приоритет: ' + escapeHtml(p) + '"><path d="M3 7.5L8 2.5L13 7.5" stroke="#DC2626" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 12.5L8 7.5L13 12.5" stroke="#DC2626" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-    }
-    if (low.includes('high') || low.includes('major') || low.includes('высок') || low.includes('важн')) {
-      return '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;vertical-align:middle;" title="Приоритет: ' + escapeHtml(p) + '"><path d="M3 10.5L8 5.5L13 10.5" stroke="#EA580C" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-    }
-    if (low.includes('lowest') || low.includes('triv') || low.includes('миним') || low.includes('трив')) {
-      return '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;vertical-align:middle;" title="Приоритет: ' + escapeHtml(p) + '"><path d="M3 3.5L8 8.5L13 3.5" stroke="#64748B" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 8.5L8 13.5L13 8.5" stroke="#64748B" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-    }
-    if (low.includes('low') || low.includes('minor') || low.includes('низк') || low.includes('незнач')) {
-      return '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;vertical-align:middle;" title="Приоритет: ' + escapeHtml(p) + '"><path d="M3 5.5L8 10.5L13 5.5" stroke="#2563EB" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-    }
-    // Medium / Стандартный / Средний (две горизонтальные полосы Jira Medium)
-    return '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;vertical-align:middle;" title="Приоритет: ' + escapeHtml(p) + '"><path d="M3 6H13" stroke="#D97706" stroke-width="2.2" stroke-linecap="round"/><path d="M3 10H13" stroke="#D97706" stroke-width="2.2" stroke-linecap="round"/></svg>';
+  function getJiraPriorityIconSvg(name) {
+    return jiraPriorityService.icon(name);
   }
 
   /**
@@ -6927,8 +6950,7 @@ export function generateContentScriptJs(
 
         spStartAt += vals.length;
         if (isInitialBoardLoading && Number(spData.total) > 0) {
-          initialLoadProgress = Math.max(initialLoadProgress, Math.min(31, 15 + Math.round((spStartAt / Number(spData.total)) * 16)));
-          initialLoadStage = 'Загружаю спринты: ' + Math.min(spStartAt, Number(spData.total)) + ' из ' + Number(spData.total);
+          setBoardLoading('Загружаю спринты',Math.min(spStartAt,Number(spData.total)),Number(spData.total));
           renderStructure();
         }
         if (spData.isLast === true || vals.length < (spData.maxResults || 50)) {
@@ -7426,7 +7448,8 @@ export function generateContentScriptJs(
           author: enriched?.author || jiraPeople.fromJira(target.fields?.reporter || target.fields?.creator),
           createdAt: (enriched && enriched.createdAt) || '—',
           linkType: String((lnk.type && lnk.type.name) || ''),
-          linkDirection: activeDirDesc
+          linkDirection: activeDirDesc,
+          isTheme: Array.isArray(target.fields?.labels) && target.fields.labels.includes('fcrm_umb_epic')
         };
 
         if (/задача проекта|project task/i.test(activeDirDesc)) {
@@ -7495,9 +7518,10 @@ export function generateContentScriptJs(
     try {
       const first = await page(0, Math.min(100, limit));
       const total = Math.min(first.total ?? first.issues.length, limit);
+      const measuredTotal = Number.isFinite(first.total) && first.total > 0 ? total : null;
       const step = first.issues.length;
       issues.push(...first.issues.slice(0, total));
-      onProgress?.(issues.length, total);
+      onProgress?.(issues.length, measuredTotal);
       if (!step && total) return { ok: false, issues, total };
       for (let start = step; start < total; start += 3 * step) {
         const pages = [];
@@ -7505,7 +7529,7 @@ export function generateContentScriptJs(
           pages.push(page(offset, Math.min(step, total - offset)));
         }
         for (const data of await Promise.all(pages)) issues.push(...data.issues.slice(0, total - issues.length));
-        onProgress?.(issues.length, total);
+        onProgress?.(issues.length, measuredTotal);
       }
       return { ok: issues.length === total, issues, total };
     } catch {
@@ -7715,18 +7739,15 @@ export function generateContentScriptJs(
     const sprintJqlClauses = { ACTIVE:'sprint in openSprints()', FUTURE:'sprint in futureSprints()', BACKLOG:'sprint is EMPTY', CLOSED:'sprint in closedSprints()', open_future:'(sprint in openSprints() OR sprint in futureSprints())', open_future_backlog:'(sprint in openSprints() OR sprint in futureSprints() OR sprint is EMPTY)', all:'' };
     const sprintJql = sprintJqlClauses[requestedSprintMode] ?? sprintJqlClauses.open_future_backlog;
     const issueJql = 'project = ' + CONFIG.projectKey + (sprintJql ? ' AND ' + sprintJql : '') + ' ORDER BY updated DESC';
-    initialLoadProgress = 4;
-    initialLoadStage = 'Подключаемся к Jira…';
+    setBoardLoading('Подключаемся к Jira…');
     renderStructure();
 
     try {
       await discoverJiraFieldsAndComponents();
-      initialLoadProgress = 15;
-      initialLoadStage = 'Загружаю список спринтов…';
+      setBoardLoading('Загружаю список спринтов…');
       renderStructure();
       await Promise.all([loadBoardSprintsAndEpics(), loadUmbEpicTasksFromJira()]);
-      initialLoadProgress = 32;
-      initialLoadStage = 'Получаю задачи выбранных спринтов…';
+      setBoardLoading('Получаю задачи выбранных спринтов…');
       renderStructure();
 
       const fieldsParam = getBoardFieldsParam();
@@ -7754,14 +7775,7 @@ export function generateContentScriptJs(
         activeAndFutureSprintIds.slice(0, 20).map(async (spId) => {
           const spRes = await fetchPaginatedAgileIssues(
             '/rest/agile/1.0/board/' + CONFIG.rapidViewId + '/sprint/' + spId + '/issue?jql=' + encodeURIComponent('project = ' + CONFIG.projectKey) + '&fields=' + fieldsParam,
-            1000,
-            (loaded, total) => {
-              if (total > 0) {
-                initialLoadProgress = Math.max(initialLoadProgress, 32 + Math.round((loaded / total) * 20));
-                initialLoadStage = 'Получаю задачи спринтов: ' + loaded + ' из ' + total;
-                renderStructure();
-              }
-            }
+            1000
           );
           if (spRes.ok) {
             addUniqueIssues(spRes.issues, false);
@@ -7769,8 +7783,7 @@ export function generateContentScriptJs(
         })
       );
 
-      initialLoadProgress = Math.max(initialLoadProgress, 54);
-      initialLoadStage = 'Загружаю задачи FCRM…';
+      setBoardLoading('Загружаю задачи FCRM…');
       renderStructure();
 
       // При первом открытии запрашиваем только актуальные спринты и бэклог;
@@ -7780,8 +7793,7 @@ export function generateContentScriptJs(
         fieldsParam,
         3000,
         (loaded, totalCount) => {
-          initialLoadProgress = totalCount ? Math.min(90, Math.max(initialLoadProgress, 54 + Math.round((loaded / totalCount) * 36))) : Math.max(initialLoadProgress, 60);
-          initialLoadStage = 'Загружаю задачи FCRM: ' + loaded + ' из ' + (totalCount || loaded);
+          setBoardLoading('Загружаю задачи FCRM',loaded,totalCount);
           statusMessage = initialLoadStage;
           renderStructure();
         }
@@ -7795,8 +7807,7 @@ export function generateContentScriptJs(
           '/rest/agile/1.0/board/' + CONFIG.rapidViewId + '/issue?jql=' + encodeURIComponent(issueJql) + '&fields=' + fieldsParam,
           2500,
           (loaded, total) => {
-            initialLoadProgress = total ? Math.min(90, Math.max(initialLoadProgress, 54 + Math.round((loaded / total) * 36))) : initialLoadProgress;
-            initialLoadStage = 'Загружаю задачи FCRM: ' + loaded + ' из ' + (total || loaded);
+            setBoardLoading('Загружаю задачи FCRM',loaded,total);
             renderStructure();
           }
         );
@@ -7805,8 +7816,7 @@ export function generateContentScriptJs(
             '/rest/agile/1.0/board/' + CONFIG.rapidViewId + '/backlog?jql=' + encodeURIComponent('project = ' + CONFIG.projectKey + ' ORDER BY updated DESC') + '&fields=' + fieldsParam,
             2500,
             (loaded, total) => {
-              initialLoadProgress = total ? Math.min(90, Math.max(initialLoadProgress, 54 + Math.round((loaded / total) * 36))) : initialLoadProgress;
-              initialLoadStage = 'Загружаю задачи FCRM: ' + loaded + ' из ' + (total || loaded);
+              setBoardLoading('Загружаю задачи FCRM',loaded,total);
               renderStructure();
             }
           );
@@ -7823,8 +7833,7 @@ export function generateContentScriptJs(
       allSprintIssuesLoaded = requestedSprintMode === 'all';
       loadedSprintMode = requestedSprintMode;
       if (rawIssues.length === 0) {
-        initialLoadProgress = 100;
-        initialLoadStage = 'Загрузка завершена';
+        setBoardLoading('Загрузка завершена');
         isInitialBoardLoading = false;
         tasks = []; productDashboardLoaded = true;
         statusMessage = 'По выбранным условиям задачи не найдены';
@@ -7832,19 +7841,16 @@ export function generateContentScriptJs(
         return;
       }
 
-      initialLoadProgress = 94;
-      initialLoadStage = 'Обрабатываю данные задач…';
+      setBoardLoading('Обрабатываю данные задач…');
       renderStructure();
       tasks = applyLocalOverridesToTasks(await normalizeAndEnrichJiraIssues(rawIssues), requestRevision);
       productDashboardLoaded = true;
-      initialLoadProgress = 100;
-      initialLoadStage = 'Загрузка завершена';
+      setBoardLoading('Загрузка завершена');
       isInitialBoardLoading = false;
       statusMessage = 'Спринт → Компонент (' + tasks.length + ' задач FCRM)';
       renderStructure();
     } catch (e) {
-      initialLoadProgress = 100;
-      initialLoadStage = 'Не удалось загрузить задачи FCRM';
+      setBoardLoading('Не удалось загрузить задачи FCRM');
       isInitialBoardLoading = false;
       statusMessage = 'Не удалось загрузить задачи FCRM. Повторите попытку.';
       renderStructure();
@@ -8399,10 +8405,11 @@ export function generateContentScriptJs(
           <div class="ozon-ext-cell-singleline">
             \${
               totalLinks > 0
-                ? \`<button type="button" class="ozon-ext-inner-ctrl" data-action="toggle-subrow" data-key="\${escapeHtml(task.key)}" title="Развернуть/свернуть связанные задачи (\${totalLinks})" style="border:none;background:transparent;color:#005BFF;font-weight:700;cursor:pointer;padding:0;width:16px;min-width:16px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;line-height:1;flex-shrink:0;">\${isSubExpanded ? '▼' : '▶'}</button>\`
-                : '<span style="display:inline-block;width:16px;min-width:16px;flex-shrink:0;"></span>'
+                ? jiraGroupingUi.treeToggle(isSubExpanded,task.key,'data-action="toggle-subrow" data-key="' + escapeHtml(task.key) + '"','ozon-ext-inner-ctrl')
+                : '<span class="ozon-table-tree-spacer" aria-hidden="true"></span>'
             }
             <a href="/browse/\${escapeHtml(task.key)}" target="_blank" class="ozon-ext-inner-ctrl ozon-mono" onclick="event.stopPropagation();" style="color:#005BFF;font-weight:700;font-size:11px;text-decoration:none;flex-shrink:0;">\${escapeHtml(task.key)}</a>
+            \${jiraGroupingUi.themeButton(task.key)}
             \${getIssueTypeBadgeHtml(task.issueTypeName, task.issueTypeIconUrl)}
             <button type="button" class="ozon-dev-priority-edit ozon-ext-inner-ctrl" data-priority-key="\${escapeHtml(task.key)}" title="Изменить приоритет: \${escapeHtml(task.priority || 'Не указан')}" aria-label="Изменить приоритет \${escapeHtml(task.key)}">\${getJiraPriorityIconSvg(task.priority)}</button>
             \${hasNoAssignee ? getMissingAssigneeWarnSvg() : ''}
@@ -8520,10 +8527,7 @@ export function generateContentScriptJs(
           <td colspan="\${columnOrder.length}">
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
               <span class="ozon-ext-spinner"></span>
-              <div class="ozon-ext-load-progress">
-                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;color:#334155;font-size:11px;"><span>\${escapeHtml(initialLoadStage || statusMessage || 'Загрузка спринтов и задач FCRM из Jira...')}</span><strong style="color:#005BFF;">\${initialLoadProgress}%</strong></div>
-                <div class="ozon-ext-load-progress-track"><div class="ozon-ext-load-progress-fill" style="--load-progress:\${initialLoadProgress}%"></div></div>
-              </div>
+              \${renderBoardLoadingProgress()}
             </div>
           </td>
         </tr>
@@ -8582,7 +8586,7 @@ export function generateContentScriptJs(
           const defaultExpanded = treeLevelApplied && (tableTreeLevel === 'tasks' || tableTreeLevel === 'links' || (tableTreeLevel === 'components' && depth === 0));
           const expanded = Object.prototype.hasOwnProperty.call(productExpandedGroups, key) ? productExpandedGroups[key] : (defaultExpanded || (!treeLevelApplied && Boolean(searchQuery.trim())));
           const heading = field === 'sprint' ? escapeHtml(name) + ' ' + (getSprintStateBadgeHtml(name) || renderBadge('Бэклог','todo')) : '<span style="color:#64748B;font-weight:500">Компонент:</span> ' + escapeHtml(name);
-          const row = '<tr class="ozon-ext-product-group ozon-tree-depth-' + (depth % 2) + ' ' + (field === 'sprint' ? 'ozon-ext-sprint-row' : 'ozon-ext-comp-group-row') + '" data-group-key="' + escapeHtml(key) + '"><td colspan="' + columnOrder.length + '"><div style="display:flex;align-items:center;gap:8px;padding-left:' + (depth * 20) + 'px"><span style="color:#005BFF">' + (expanded ? '▾' : '▸') + '</span><strong>' + heading + '</strong><span class="ozon-ext-group-total">' + groupItems.length + ' задач</span>' + renderStatusSummary(groupItems) + '</div></td></tr>';
+          const row = '<tr class="ozon-ext-product-group ozon-tree-depth-' + (depth % 2) + ' ' + (field === 'sprint' ? 'ozon-ext-sprint-row' : 'ozon-ext-comp-group-row') + '" data-group-key="' + escapeHtml(key) + '"><td colspan="' + columnOrder.length + '"><div style="display:flex;align-items:center;gap:8px;padding-left:' + (depth * 20) + 'px">' + jiraGroupingUi.treeToggle(expanded,name,'id="ozon-product-group-' + encodeURIComponent(key) + '"') + '<strong>' + heading + '</strong><span class="ozon-ext-group-total">' + groupItems.length + ' задач</span>' + renderStatusSummary(groupItems) + '</div></td></tr>';
           return row + (expanded ? renderGroups(groupItems, depth + 1, [...path, [field,name]]) : '');
         }).join('');
       };
@@ -8599,7 +8603,7 @@ export function generateContentScriptJs(
           <td colspan="\${columnOrder.length}">
             <div style="display:flex;align-items:center;justify-content:space-between;">
               <div style="display:flex;align-items:center;gap:8px;">
-                <span style="color:#005BFF;font-size:10px;">\${collapsed ? "▸" : "▾"}</span>
+                \${jiraGroupingUi.treeToggle(!collapsed,sprintName,'id="ozon-product-sprint-' + encodeURIComponent(sprintName) + '"')}
                 <span style="color:#071026;font-weight:700;font-size:12px;">\${escapeHtml(sprintName)}</span>
                 \${getSprintStateBadgeHtml(sprintName) || renderBadge("Бэклог", "todo")}
                 <span class="ozon-ext-group-total">\${groupItems.length} задач</span>
@@ -8643,7 +8647,7 @@ export function generateContentScriptJs(
                 <td colspan="\${columnOrder.length}">
                   <div style="display:flex;align-items:center;justify-content:space-between;">
                     <div style="display:flex;align-items:center;gap:7px;">
-                      <span style="color:#005BFF;font-size:9.5px;">\${isCompCollapsed ? "▸" : "▾"}</span>
+                      \${jiraGroupingUi.treeToggle(!isCompCollapsed,compName,'id="ozon-product-component-' + encodeURIComponent(compKey) + '"')}
                       <span style="color:#64748B;font-size:11px;font-weight:500;">Компонент:</span>
                       <strong style="color:#071026;font-size:11px;font-weight:700;">\${escapeHtml(compName)}</strong>
                       <span class="ozon-ext-group-total">\${compItems.length} задач</span>
@@ -8750,7 +8754,7 @@ export function generateContentScriptJs(
             <div style="display:flex;align-items:center;gap:8px;">
               <span class="ozon-ext-spinner"></span>
               <strong class="ozon-mono" style="color:#005BFF;font-size:13px;">\${escapeHtml(task.key)}</strong>
-              <span style="color:#64748B;font-size:11.5px;">Загрузка описания, приоритета и связей из Jira...</span>
+              \${jiraGroupingUi.progressHtml('Загружаю описание, приоритет и связи Jira…')}
             </div>
             <div style="display:flex;align-items:center;gap:5px;">
               \${nativeBoardButton()}
@@ -8862,7 +8866,7 @@ export function generateContentScriptJs(
     const obprojectEpicHtml = !obprojectSourceKey
       ? '<span style="color:#94A3B8;">—</span>'
       : currentObprojectEpic && currentObprojectEpic.loading && !currentObprojectEpic.key
-        ? '<span style="color:#64748B;">Загружаю эпик OBPROJECT…</span>'
+        ? jiraGroupingUi.progressHtml('Загружаю эпик OBPROJECT…')
         : currentObprojectEpic && currentObprojectEpic.key
           ? '<a href="/browse/' + encodeURIComponent(currentObprojectEpic.key) + '" target="_blank" class="ozon-mono" style="color:#005BFF;font-weight:700;text-decoration:none;">' + escapeHtml(currentObprojectEpic.key) + '</a><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">' + escapeHtml(currentObprojectEpic.summary || currentObprojectEpic.key) + '</span>' + (currentObprojectEpic.status ? getStatusBadgeHtml(currentObprojectEpic.status) : '')
           : '<span style="color:#64748B;">' + (currentObprojectEpic && currentObprojectEpic.error ? 'Не удалось загрузить эпик OBPROJECT' : 'Не указан') + '</span>';
@@ -8916,6 +8920,9 @@ export function generateContentScriptJs(
     const sbComboItemStyle = 'padding:5px 8px;margin-bottom:2px;border-radius:6px;line-height:1.35;min-height:24px;display:flex;align-items:center;gap:6px;cursor:pointer;';
 
     const visiblePtLinks = (task.projectTaskLinks || []).filter((lnk) => !isCanceledStatus(lnk.status));
+    const themes = visiblePtLinks.filter(link => /^FCRM-\\d+$/.test(link.key) && (link.isTheme || umbCatalog.some(theme => theme.key === link.key) || /тематика[:\\s]/i.test(link.summary || '')));
+    const themeKeys = new Set(themes.map(theme => theme.key));
+    const projectLinks = visiblePtLinks.filter(link => !themeKeys.has(link.key));
     const visibleIpLinks = (task.inProjectLinks || []).filter((lnk) => !isCanceledStatus(lnk.status));
     const visibleOtherLinks = task.otherLinks || [];
 
@@ -8934,7 +8941,7 @@ export function generateContentScriptJs(
           '<label>Название<input id="ozon-create-issue-summary" type="text" value="' + escapeHtml(issueCreateDraft.summary || '') + '" placeholder="Введите название" autocomplete="off" /></label>' +
           (issueCreateDraft.kind === 'epic' ? '' : '<label>Описание<textarea id="ozon-create-issue-description" rows="4" placeholder="Введите описание задачи">' + escapeHtml(issueCreateDraft.description || '') + '</textarea></label>') +
           '<div><label>Компонент <span style="color:#64748B;font-weight:400;">' + (selected ? '· ' + escapeHtml(selected.name) : '') + '</span></label><input id="ozon-create-issue-component-search" type="search" value="' + escapeHtml(issueCreateDraft.componentQuery || '') + '" placeholder="Поиск компонента проекта ' + escapeHtml(issueCreateDraft.projectKey) + '..." autocomplete="off" /><div class="ozon-ext-create-components">' +
-            (issueCreateLoading ? '<div style="padding:10px;color:#64748B;font-size:12px;">Загружаю список компонентов…</div>' : '') +
+            (issueCreateLoading ? jiraGroupingUi.progressHtml('Загружаю компоненты…') : '') +
             (favoriteComponents.length ? '<div class="ozon-ext-create-caption">Быстрый доступ</div>' + favoriteComponents.map(renderComponent).join('') : '') +
             (otherComponents.length ? '<div class="ozon-ext-create-caption">Все компоненты</div>' + otherComponents.map(renderComponent).join('') : '') +
             (!filtered.length ? '<div style="padding:10px;color:#64748B;font-size:12px;">Компоненты не найдены</div>' : '') +
@@ -8970,7 +8977,6 @@ export function generateContentScriptJs(
             <a href="/browse/\${escapeHtml(task.key)}" target="_blank" class="ozon-mono" style="color:#005BFF;font-weight:700;font-size:13px;text-decoration:none;flex-shrink:0;">
               \${escapeHtml(task.key)}
             </a>
-            <button type="button" class="ozon-ext-btn ozon-ext-btn-surface" id="ozon-copy-task-link" title="Копировать ссылку и название" aria-label="Копировать ссылку и название" style="width:26px;height:26px;padding:4px;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></svg></button>
             <span style="color:#64748B;font-size:10px;white-space:nowrap;" title="Создана: \${escapeHtml(task.createdAt || '—')}">Создана: \${escapeHtml(task.createdAt || '—')}</span>
             <span class="ozon-person-line ozon-sb-author"><span>Автор</span>\${jiraPeople.badge(task.author)}\${jiraPeople.copyButton(task.author)}</span>
             \${getIssueTypeBadgeHtml(currentIssueType, task.issueTypeIconUrl)}
@@ -8995,6 +9001,7 @@ export function generateContentScriptJs(
         <div class="ozon-ext-sidebar-body">
 <div class="ozon-ext-workflow"><div class="ozon-ext-workflow-current"><span class="ozon-ext-workflow-label">Статус</span>\${getStatusBadgeHtml(task.status)}</div>
 \${taskTransitions.length ? '<span class="ozon-ext-workflow-label">Перевести в:</span>' : ''}\${transitionsChipsHtml}</div>
+          \${/^FCRM-\\d+$/.test(task.key) ? '<section class="ozon-sb-theme-attribute" aria-label="Тематика"><strong>Тематика</strong>' + (themes.length ? themes.map(theme => '<a href="/browse/' + encodeURIComponent(theme.key) + '" data-issue-copy-title="' + escapeHtml(theme.summary || '') + '">' + escapeHtml(theme.summary || theme.key) + ' · ' + escapeHtml(theme.key) + '</a>').join('') : '<span>Не выбрана</span>') + jiraGroupingUi.themeButton(task.key) + '</section>' : ''}
           <!-- АККОРДЕОН 2: ПАРАМЕТРЫ ЗАДАЧИ -->
           <div class="ozon-ext-section-card" id="ozon-sb-params-card">
             <div class="ozon-ext-section-head \${isParamsCollapsed ? 'collapsed' : ''}" data-action="toggle-sb-section" data-sec="params">
@@ -9184,8 +9191,8 @@ export function generateContentScriptJs(
             <div class="ozon-ext-section-head \${isPtCollapsed ? 'collapsed' : ''}" data-action="toggle-sb-section" data-sec="pt">
               <div style="display:flex;align-items:center;gap:6px;">
                 <span style="color:#005BFF;font-size:10px;">\${isPtCollapsed ? '▾' : '▾'}</span>
-                <span>Связи: «Задача проекта» (\${visiblePtLinks.length})</span>
-                \${visiblePtLinks.length === 0 ? getMissingProjectTaskWarnSvg() : ''}
+                <span>Связи: «Задача проекта» (\${projectLinks.length})</span>
+                
                 \${isLinksBlockLoading ? miniBlockSpinnerHtml : ''}
               </div>
               <div style="display:flex;align-items:center;gap:6px;">
@@ -9202,8 +9209,8 @@ export function generateContentScriptJs(
               !isPtCollapsed
                 ? \`<div>
                     \${
-                      visiblePtLinks.length > 0
-                        ? visiblePtLinks
+                      projectLinks.length > 0
+                        ? projectLinks
                             .map((lnk, ptIdx) => {
                               const gMeta = getLinkedProjectGroupMeta(lnk.key, true);
                               return \`
@@ -9401,7 +9408,7 @@ export function generateContentScriptJs(
                                                     <span class="ozon-ip-field"><span class="ozon-ip-field-value">\${escapeHtml(realSprintVal.replace(/\\s*\\((Активный|Будущий|Прошедший)\\)$/, ""))}</span>\${getSprintStateBadgeHtml(realSprintVal)}</span>
                                                     <span class="ozon-ext-search-select-caret" aria-hidden="true"></span>
                                                   </button>
-                                                  \${sbIpSprintOpenIdx === lIdx ? '<div class="ozon-ext-combo-popover" style="width:100%;min-width:240px;max-height:280px;overflow:auto;"><input type="search" id="ozon-sb-ip-sprint-search" placeholder="Поиск спринта..." value="' + escapeHtml(sbIpSprintSearchQuery) + '" autocomplete="off" />' + (ipSprintLoadProgress[lnk.key] ? '<div class="ozon-ext-sprint-load">Загружаю...<div class="ozon-ext-sprint-load-track"><div class="ozon-ext-sprint-load-fill" style="--sprint-load:' + ipSprintLoadProgress[lnk.key] + '%"></div></div></div>' : '') + (filteredLinkSprints.length ? filteredLinkSprints.map(sp => '<div class="ozon-ext-combo-item ' + (sp === realSprintVal ? 'active' : '') + '" data-action="pick-ip-sprint" data-link-idx="' + lIdx + '" data-link-key="' + escapeHtml(lnk.key) + '" data-sprint="' + escapeHtml(sp) + '"><span>' + escapeHtml(sp.replace(/\\s*\\((Активный|Будущий|Прошедший)\\)$/, '')) + '</span>' + getSprintStateBadgeHtml(sp) + '</div>').join('') : '<div style="padding:6px 8px;color:#64748b;font-size:11px">Спринты не найдены</div>') + '</div>' : ''}
+                                                  \${sbIpSprintOpenIdx === lIdx ? '<div class="ozon-ext-combo-popover" style="width:100%;min-width:240px;max-height:280px;overflow:auto;"><input type="search" id="ozon-sb-ip-sprint-search" placeholder="Поиск спринта..." value="' + escapeHtml(sbIpSprintSearchQuery) + '" autocomplete="off" />' + (ipSprintLoadProgress[lnk.key] ? jiraGroupingUi.progressHtml('Загружаю спринты…') : '') + (filteredLinkSprints.length ? filteredLinkSprints.map(sp => '<div class="ozon-ext-combo-item ' + (sp === realSprintVal ? 'active' : '') + '" data-action="pick-ip-sprint" data-link-idx="' + lIdx + '" data-link-key="' + escapeHtml(lnk.key) + '" data-sprint="' + escapeHtml(sp) + '"><span>' + escapeHtml(sp.replace(/\\s*\\((Активный|Будущий|Прошедший)\\)$/, '')) + '</span>' + getSprintStateBadgeHtml(sp) + '</div>').join('') : '<div style="padding:6px 8px;color:#64748b;font-size:11px">Спринты не найдены</div>') + '</div>' : ''}
                                                 </div>
                                               </div>
                                             </div>
@@ -9649,25 +9656,81 @@ export function generateContentScriptJs(
       [...(task.projectTaskLinks || []),...(task.inProjectLinks || []),...(task.otherLinks || [])].forEach(link => references.set(link.key,link.summary));
     });
     if (activeDashboardView === 'development') developmentDashboard.copyReferences().forEach((title,key) => references.set(key,title));
+    if (activeDashboardView === 'strategy') strategicDashboard.copyReferences().forEach((title,key) => references.set(key,title));
     root.querySelectorAll('a[href*="/browse/"]').forEach(anchor => {
       const match = /[/]browse[/]([A-Z][A-Z0-9]*-[0-9]+)/i.exec(anchor.getAttribute('href') || '');
-      if (!match || anchor.closest('.ozon-strategy-key') || anchor.nextElementSibling?.classList.contains('ozon-ext-copy-ref') || anchor.parentElement.querySelector('#ozon-copy-task-link')) return;
+      if (!match || anchor.nextElementSibling?.classList.contains('ozon-ext-copy-ref')) return;
       const key = match[1].toUpperCase();
-      const title = references.get(key) || anchor.getAttribute('title') || anchor.textContent.replace(key,'').trim();
-      const button = document.createElement('button'); button.type = 'button'; button.className = 'ozon-ext-copy-ref'; button.title = 'Копировать ссылку и название'; button.setAttribute('aria-label','Копировать ' + key);
+      const title = anchor.dataset.issueCopyTitle || references.get(key) || anchor.getAttribute('title') || anchor.textContent.replace(key,'').trim();
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'ozon-ext-copy-ref'; button.title = 'Копировать ' + key; button.setAttribute('aria-label',button.title); button.setAttribute('aria-expanded','false');
       button.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V3H3v13h5"/></svg>';
-      button.addEventListener('click',async event => {
-        event.preventDefault(); event.stopPropagation(); const url = 'https://jit.o3.ru/browse/' + key;
-        const text = '[' + key + '](' + url + ') ' + (title || '');
-        try {
-          if (window.ClipboardItem && navigator.clipboard.write) {
-            try { await navigator.clipboard.write([new ClipboardItem({'text/plain':new Blob([text],{type:'text/plain'}),'text/html':new Blob(['<a href="' + url + '">' + key + '</a> ' + escapeHtml(title || '')],{type:'text/html'})})]); }
-            catch (_) { await navigator.clipboard.writeText(text); }
-          } else await navigator.clipboard.writeText(text);
-          showSaveToast('✓ Ссылка и название скопированы');
-        } catch (_) { showSaveToast('Не удалось скопировать ссылку: проверьте доступ к буферу обмена'); }
+      const icon = button.innerHTML;
+      let feedbackTimer;
+      function showCopyFeedback(message, copied) {
+        let live = root.querySelector('[data-copy-feedback-live]');
+        if (!live) {
+          live = document.createElement('span');
+          live.className = 'ozon-copy-feedback-live';
+          live.setAttribute('data-copy-feedback-live','');
+          live.setAttribute('role','status');
+          root.appendChild(live);
+        }
+        live.textContent = message;
+        button.dataset.copyFeedback = copied ? 'done' : 'error';
+        button.title = message;
+        button.textContent = copied ? '✓' : '!';
+        clearTimeout(feedbackTimer);
+        feedbackTimer = setTimeout(() => {
+          button.removeAttribute('data-copy-feedback');
+          button.title = 'Копировать ' + key;
+          button.innerHTML = icon;
+        },1400);
+      }
+      const menu = document.createElement('div');
+      menu.className = 'ozon-ext-copy-menu';
+      menu.setAttribute('popover','auto');
+      menu.setAttribute('role','group');
+      menu.setAttribute('aria-label','Как копировать ' + key);
+      const link = 'https://jit.o3.ru/browse/' + key;
+      for (const [label,onlyKey] of [['Ссылка и название',false],['Только ключ',true]]) {
+        const option = document.createElement('button');
+        option.type = 'button';
+        option.className = 'ozon-ext-btn ozon-ext-btn-surface';
+        option.textContent = label;
+        option.addEventListener('click',async event => {
+          event.stopPropagation();
+          menu.hidePopover();
+          button.focus({preventScroll:true});
+          const text = onlyKey ? key : '[' + key + '](' + link + ')' + (title ? ' ' + title : '');
+          try {
+            if (!onlyKey && window.ClipboardItem && navigator.clipboard.write) {
+              const rich = '<a href="' + link + '">' + key + '</a>' + (title ? ' ' + escapeHtml(title) : '');
+              try { await navigator.clipboard.write([new ClipboardItem({'text/plain':new Blob([text],{type:'text/plain'}),'text/html':new Blob([rich],{type:'text/html'})})]); }
+              catch (_) { await navigator.clipboard.writeText(text); }
+            } else await navigator.clipboard.writeText(text);
+            showCopyFeedback(onlyKey ? 'Ключ скопирован' : 'Ссылка и название скопированы',true);
+          } catch (_) { showCopyFeedback('Не удалось скопировать: проверьте доступ к буферу обмена',false); }
+        });
+        menu.appendChild(option);
+      }
+      button.addEventListener('click',event => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (menu.matches(':popover-open')) { menu.hidePopover(); return; }
+        const rect = button.getBoundingClientRect();
+        menu.showPopover();
+        menu.style.left = Math.max(4,Math.min(rect.left,innerWidth-menu.offsetWidth-4)) + 'px';
+        menu.style.top = Math.max(4,rect.bottom + menu.offsetHeight + 8 < innerHeight ? rect.bottom + 4 : rect.top - menu.offsetHeight - 4) + 'px';
+        menu.firstElementChild.focus({preventScroll:true});
       });
-      anchor.after(button);
+      menu.addEventListener('toggle', () => button.setAttribute('aria-expanded',String(menu.matches(':popover-open'))));
+      menu.addEventListener('keydown',event => {
+        if (event.key !== 'Escape') return;
+        event.stopPropagation();
+        menu.hidePopover();
+        button.focus({preventScroll:true});
+      });
+      anchor.after(button,menu);
     });
   }
 
@@ -9836,14 +9899,92 @@ export function generateContentScriptJs(
     }).finally(() => { nativeFullscreenRequest = null; });
   }
 
+  const widgetDeepseek = {canRun:false,reason:'checking',checking:false,request:0};
+  const deepseekBoardActions = '#ozon-thread-create,[data-ticket-search-run],[data-thread-search-next],[data-thread-search-retry],[data-thread-search-answer],[data-action="generate-links"]';
+
+  function paintDeepseekReadiness() {
+    document.querySelectorAll('[data-o3ds-connection]').forEach(status => {
+      status.hidden = widgetDeepseek.canRun;
+      if (widgetDeepseek.canRun || status.dataset.reason === widgetDeepseek.reason) return;
+      status.dataset.reason = widgetDeepseek.reason;
+      const message = widgetDeepseek.reason === 'checking' ? 'Проверяю вход в DeepSeek…' :
+        widgetDeepseek.reason === 'sign-in' ? 'Войдите в DeepSeek.' : 'Не удалось проверить вход в DeepSeek.';
+      status.replaceChildren(document.createTextNode(message));
+      if (widgetDeepseek.reason === 'checking') return;
+      const open = document.createElement('a');
+      open.href = 'https://deepseek.o3t.ru/';
+      open.target = '_blank';
+      open.rel = 'noopener noreferrer';
+      open.textContent = 'Открыть DeepSeek';
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'ozon-ext-btn ozon-ext-btn-surface';
+      retry.textContent = 'Проверить статус';
+      retry.onclick = () => refreshDeepseekReadiness(true);
+      status.append(open,retry);
+    });
+    document.querySelectorAll(deepseekBoardActions).forEach(button => {
+      const canOpenDraft = button.id === 'ozon-thread-create' && document.getElementById('ozon-thread-sidebar');
+      if (widgetDeepseek.canRun || canOpenDraft) {
+        if (button.hasAttribute('data-o3ds-blocked')) {
+          button.removeAttribute('data-o3ds-blocked');
+          button.removeAttribute('aria-describedby');
+          button.disabled = false;
+        }
+        if (button.hasAttribute('data-thread-search-answer')) {
+          const search = getTicketSearchState(button.dataset.issueKey,'threads');
+          button.disabled = search.loading || !search.reply.trim();
+        }
+      } else if (!button.disabled) {
+        button.disabled = true;
+        button.setAttribute('data-o3ds-blocked','');
+        button.setAttribute('aria-describedby','ozon-o3ds-connection-note');
+      }
+    });
+    document.getElementById('ozon-thread-sidebar')?.updateDeepseekControls?.();
+  }
+
+  function refreshDeepseekReadiness(refresh = false) {
+    if (widgetDeepseek.checking) return;
+    widgetDeepseek.checking = true;
+    const attempt = ++widgetDeepseek.request;
+    const finish = response => {
+      if (!widgetDeepseek.checking || attempt !== widgetDeepseek.request) return;
+      clearTimeout(timeout);
+      widgetDeepseek.checking = false;
+      widgetDeepseek.canRun = response?.canRun === true;
+      widgetDeepseek.reason = ['session','token','sign-in','unavailable'].includes(response?.reason) ? response.reason : 'unavailable';
+      paintDeepseekReadiness();
+    };
+    const timeout = setTimeout(() => finish(null),8000);
+    if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) { finish(null); return; }
+    try {
+      chrome.runtime.sendMessage({type:'o3ds:readiness',refresh}, response => {
+        const failed = chrome.runtime.lastError;
+        finish(failed ? null : response);
+      });
+    } catch (_) { finish(null); }
+  }
+  window.addEventListener('focus', () => refreshDeepseekReadiness(true));
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') refreshDeepseekReadiness(true);
+  });
+
   function renderDashboardNavigation() {
     const tabs = [['product','Продуктовый бэклог'],['development','Команды разработки'],['strategy','Стратегическое планирование'],['report','Отчёт по спринту'],['prompts','Промпты']];
     return '<div class="ozon-ext-view-tabs">' + nativeBoardButton() + '<nav role="tablist" aria-label="Представление">' + tabs.map(([view,label]) => '<button type="button" role="tab" id="ozon-tab-' + view + '" data-dashboard-view="' + view + '" aria-selected="' + (activeDashboardView === view) + '">' + label + '</button>').join('') + '</nav>' + widgetTheme.control() +
-      '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface ozon-ext-fullscreen-toggle" data-toggle-fullscreen aria-controls="ozon-structure-root" aria-label="' + fullscreenButtonLabel(dashboardFullscreen) + '" title="' + fullscreenButtonLabel(dashboardFullscreen) + (dashboardFullscreen ? ' (Esc)' : '') + '">' + fullscreenButtonContent(dashboardFullscreen) + '</button></div>';
+      '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface ozon-ext-fullscreen-toggle" data-toggle-fullscreen aria-controls="ozon-structure-root" aria-label="' + fullscreenButtonLabel(dashboardFullscreen) + '" title="' + fullscreenButtonLabel(dashboardFullscreen) + (dashboardFullscreen ? ' (Esc)' : '') + '">' + fullscreenButtonContent(dashboardFullscreen) + '</button></div><div id="ozon-o3ds-connection-note" data-o3ds-connection role="status" hidden></div>';
   }
 
   function bindDashboardNavigation(root) {
+    const mountedPicker = root.querySelector('#ozon-theme-picker-panel');
+    if (mountedPicker) mountedPicker.remove();
+    const picker = strategicDashboard.themePickerHtml();
+    if (picker) root.insertAdjacentHTML('beforeend',picker);
+    strategicDashboard.bindThemePicker(root);
     extensionUpdate.bind(root);
+    paintDeepseekReadiness();
+    if (widgetDeepseek.reason === 'checking') refreshDeepseekReadiness();
     root.querySelector('[data-toggle-fullscreen]')?.addEventListener('click', () => {
       setDashboardFullscreen(root, !dashboardFullscreen);
     });
@@ -9888,6 +10029,10 @@ export function generateContentScriptJs(
   }
 
 
+  function renderBoardLoadingProgress() {
+    return jiraGroupingUi.progressHtml(initialLoadStage || statusMessage || 'Загружаю спринты и задачи FCRM…',initialLoadAmount);
+  }
+
   const promptCatalog = {loading:false,entries:null,error:false};
 
   function renderPromptCatalog(root) {
@@ -9901,7 +10046,7 @@ export function generateContentScriptJs(
     const panel = root.querySelector('#ozon-prompt-catalog');
     const status = panel.querySelector('[role="status"]');
     const entries = panel.querySelector('[data-prompt-entries]');
-    if (promptCatalog.loading) { status.textContent = 'Загружаю промпты…'; return; }
+    if (promptCatalog.loading) { status.innerHTML = jiraGroupingUi.progressHtml('Загружаю промпты…'); return; }
     if (promptCatalog.error) {
       status.textContent = 'Промпты расширения недоступны.';
       const retry = document.createElement('button');
@@ -9921,6 +10066,16 @@ export function generateContentScriptJs(
       const details = document.createElement('details');
       const title = document.createElement('summary');
       title.textContent = entry.title;
+      const usage = document.createElement('span');
+      usage.className = 'ozon-prompt-use';
+      const path = Array.isArray(entry.buttons) ? entry.buttons.filter(button => typeof button === 'string' && button.trim()).join(' → ') : '';
+      for (const label of [entry.description,path ? 'Действия · ' + path : '',entry.phase]) {
+        if (typeof label !== 'string' || !label.trim()) continue;
+        const line = document.createElement('span');
+        line.textContent = label;
+        usage.appendChild(line);
+      }
+      if (usage.childElementCount) title.appendChild(usage);
       details.appendChild(title);
       for (const [label,text] of [['Системный промпт',entry.system],['Шаблон запроса',entry.user]]) {
         if (!text) continue;
@@ -9990,6 +10145,7 @@ export function generateContentScriptJs(
       root.innerHTML = renderDashboardNavigation() + sprintReport.html();
       bindDashboardNavigation(root);
       sprintReport.bind(root);
+      decorateIssueCopyButtons(root);
       const scroll = root.querySelector('.ozon-report-scroll');
       const tree = root.querySelector('.ozon-report-tree-wrap');
       const rollup = root.querySelector('.ozon-report-rollup-wrap');
@@ -10080,7 +10236,7 @@ export function generateContentScriptJs(
     const typeIcons = new Map(projectIssueTypesList.map(type => [type.name,type.iconUrl]));
     const issueTypeFilterOptions = [{ value: 'all', label: 'Тип запроса: Все' }, ...Array.from(new Set([...typeIcons.keys(), ...(productDashboardLoaded ? tasks.map(task => task.issueTypeName || 'Задача') : [])])).sort((a,b) => a.localeCompare(b, 'ru')).map(name => ({ value: name, label: name, iconUrl:typeIcons.get(name) }))];
     const treeLevelOptions = [
-      ...(productGroupingOrder.length ? [{ value: 'sprints', label: (productGroupingOrder[0] === 'sprint' ? 'Спринты' : 'Компоненты') }] : []),
+      ...(productGroupingOrder.length ? [{ value: 'sprints', label: 'Верхний уровень' }] : []),
       ...(productGroupingOrder.length > 1 ? [{ value: 'components', label: (productGroupingOrder[1] === 'sprint' ? 'Спринты' : 'Компоненты') }] : []),
       { value: 'tasks', label: 'Задачи' },
       { value: 'links', label: 'Связанные задачи' }
@@ -10384,7 +10540,7 @@ export function generateContentScriptJs(
         const key = button.getAttribute('data-issue-key');
         const kind = button.getAttribute('data-ticket-search-run');
         const state = getTicketSearchState(key, kind);
-        if (state.loading) return;
+        if (state.loading || !widgetDeepseek.canRun) return;
         state.error = '';
         if (kind === 'threads') {
           try {
@@ -10520,7 +10676,7 @@ export function generateContentScriptJs(
         const state = getTicketSearchState(key, 'threads');
         state.reply = input.value;
         const button = root.querySelector('[data-thread-search-answer][data-issue-key="' + key + '"]');
-        if (button) button.disabled = state.loading || !state.reply.trim();
+        if (button) button.disabled = !widgetDeepseek.canRun || state.loading || !state.reply.trim();
       });
     });
     root.querySelectorAll('[data-thread-search-answer]').forEach(button => {
@@ -11421,16 +11577,7 @@ export function generateContentScriptJs(
       });
     });
 
-    document.getElementById('ozon-copy-task-link')?.addEventListener('click', async () => {
-      const url = 'https://jit.o3.ru/browse/' + encodeURIComponent(task.key);
-      const text = '[' + task.key + '](' + url + ') ' + task.summary;
-      try {
-        await navigator.clipboard.writeText(text);
-        showSaveToast('✓ Ссылка и название скопированы');
-      } catch (_) {
-        showSaveToast('Не удалось скопировать ссылку: доступ к буферу обмена запрещён');
-      }
-    });
+
 
     root.querySelectorAll('[data-action="move-other-to-ip"]').forEach((button) => {
       button.addEventListener('click', async (event) => {
@@ -12426,7 +12573,7 @@ export function generateContentScriptJs(
       panel.className = 'ozon-component-editor ozon-priority-editor'; panel.setAttribute('role', 'dialog');
       panel.setAttribute('aria-label', 'Приоритет задачи ' + key);
       panel.style.cssText = 'position:fixed;z-index:2147483646;right:0;top:0;bottom:0;height:100vh;width:min(500px,100vw);background:#fff;box-shadow:-8px 0 24px #0f172a22;padding:20px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;font:13px Arial,sans-serif;color:#071026';
-      panel.innerHTML = '<div class="component-editor-head"><strong>Приоритет задачи · ' + escapeHtml(key) + '</strong><button type="button" class="component-editor-close" data-close aria-label="Закрыть">✕</button></div><div role="status">Загружаем приоритеты…</div>';
+      panel.innerHTML = '<div class="component-editor-head"><strong>Приоритет задачи · ' + escapeHtml(key) + '</strong><button type="button" class="component-editor-close" data-close aria-label="Закрыть">✕</button></div><div role="status">' + jiraGroupingUi.progressHtml('Загружаем приоритеты…') + '</div>';
       document.body.appendChild(panel);
       const controller=new AbortController();
       const close = (restore=true) => {
@@ -12465,6 +12612,9 @@ export function generateContentScriptJs(
           if (!selected || isCurrent(selected) || panel.dataset.busy==='true') return;
           panel.dataset.busy='true';
           [saveButton,cancelButton,closeButton,...choices].forEach(item=>{item.disabled=true;});
+          const feedback = panel.querySelector('[data-error]');
+          feedback.setAttribute('role','status');
+          feedback.innerHTML = jiraGroupingUi.progressHtml('Сохраняю приоритет…');
           try {
             const priority = await jiraPriorityService.save(key, selected.value);
             tasks = tasks.map(task => { const updated = task.key === key ? Object.assign({}, task, {priority:priority.name}) : task; const next = Object.assign({}, updated); ['projectTaskLinks','inProjectLinks','otherLinks'].forEach(field => { if (Array.isArray(updated[field])) next[field] = updated[field].map(link => link.key === key ? Object.assign({}, link, {priority:priority.name}) : link); }); return next; });
@@ -12476,7 +12626,7 @@ export function generateContentScriptJs(
             renderStructure(); showSaveToast('Приоритет ' + key + ' сохранён');
           } catch (error) {
             delete panel.dataset.busy;
-            if (panel.isConnected) {panel.querySelector('[data-error]').textContent=error.message || 'Не удалось изменить приоритет';[saveButton,cancelButton,closeButton,...choices].forEach(item=>{item.disabled=false;});}
+            if (panel.isConnected) {feedback.setAttribute('role','alert');feedback.textContent=error.message || 'Не удалось изменить приоритет';[saveButton,cancelButton,closeButton,...choices].forEach(item=>{item.disabled=false;});}
           }
         });
       } catch (error) { if (panel.isConnected) panel.querySelector('[role="status"]').textContent = error.message || 'Не удалось загрузить приоритет'; }
@@ -12500,7 +12650,7 @@ export function generateContentScriptJs(
       panel.setAttribute('aria-label', 'Компоненты задачи ' + key);
       panel.className = 'ozon-component-editor';
       panel.style.cssText = 'position:fixed;z-index:2147483646;right:0;top:0;left:auto;bottom:0;height:100vh;width:min(500px,100vw);background:#fff;box-shadow:-8px 0 24px #0f172a22;padding:20px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;font:13px Arial,sans-serif;color:#071026;';
-      panel.innerHTML = '<div class="component-editor-head"><strong>Компоненты задачи · ' + escapeHtml(key) + '</strong><button type="button" class="component-editor-close" data-close aria-label="Закрыть">✕</button></div><div role="status">Загружаем компоненты…</div>';
+      panel.innerHTML = '<div class="component-editor-head"><strong>Компоненты задачи · ' + escapeHtml(key) + '</strong><button type="button" class="component-editor-close" data-close aria-label="Закрыть">✕</button></div><div role="status">' + jiraGroupingUi.progressHtml('Загружаем компоненты…') + '</div>';
       document.body.appendChild(panel);
       panel.addEventListener('pointerdown', (event) => event.stopPropagation());
       panel.addEventListener('click', (event) => event.stopPropagation());
@@ -12568,6 +12718,9 @@ export function generateContentScriptJs(
         panel.querySelector('[data-close]').onclick = panel.querySelector('[data-cancel]').onclick = () => panel.remove();
         panel.querySelector('[data-save]').onclick = async (event) => {
           const save = event.currentTarget; save.disabled = true;
+          const feedback = panel.querySelector('[data-error]');
+          feedback.setAttribute('role','status');
+          feedback.innerHTML = jiraGroupingUi.progressHtml('Сохраняю компоненты…');
           try {
             const chosen = allOptions.filter((c) => selected.has(String(c.id || c.name)));
             const response = await fetch('/rest/api/2/issue/' + encodeURIComponent(key), {method:'PUT',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({fields:{components:chosen.map((c) => c.id ? {id:String(c.id)} : {name:c.name})}})});
@@ -12584,7 +12737,7 @@ export function generateContentScriptJs(
             const strategyIssue = strategicDashboard.getState().issues.find((item) => item.key === key); if (strategyIssue?.fields) { strategyIssue.fields.components = actual; strategicDashboard.invalidateGraph(); }
             developmentDashboard.getState().groups.forEach((group) => group.issues.forEach((item) => { if (item.key === key) { item.component = component; item.componentNames = names; item.componentId = actual[0]?.id || ''; } if (item.epicKey === key) item.epicComponent = component; (item.links || []).forEach((link) => { if (link.key === key) link.component = component; }); }));
             panel.remove(); renderStructure(); showSaveToast('Компоненты ' + key + ' сохранены');
-          } catch (error) { panel.querySelector('[data-error]').textContent = error.message || 'Ошибка сохранения'; save.disabled = false; }
+          } catch (error) { feedback.setAttribute('role','alert'); feedback.textContent = error.message || 'Ошибка сохранения'; save.disabled = false; }
         };
         renderOptions();
       } catch (error) { if (panel.isConnected) panel.querySelector('[role="status"]').textContent = error.message || 'Не удалось загрузить компоненты'; }
@@ -12811,7 +12964,7 @@ export function generateContentScriptJs(
       panel.setAttribute('role','dialog');
       panel.setAttribute('aria-label',title + ' · ' + key);
       panel.style.cssText = 'position:fixed;z-index:2147483646;right:0;top:0;bottom:0;width:min(500px,100vw);background:#fff;box-shadow:-8px 0 24px #0f172a22;padding:20px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box';
-      panel.innerHTML = '<div class="component-editor-head"><strong>' + title + ' · ' + escapeHtml(key) + '</strong><button type="button" class="component-editor-close" data-close aria-label="Закрыть">✕</button></div><div data-context class="component-editor-context" hidden></div><div class="ozon-sprint-current"><span>' + currentLabel + '</span><strong data-current>Загрузка…</strong></div><div class="component-editor-search"><input type="search" data-search placeholder="' + placeholder + '" aria-label="' + searchLabel + '" style="padding-left:10px" disabled></div><div data-message role="status"></div><div data-list class="component-editor-list"></div><div class="component-editor-footer"><button type="button" data-cancel class="component-editor-button">Отмена</button></div>';
+      panel.innerHTML = '<div class="component-editor-head"><strong>' + title + ' · ' + escapeHtml(key) + '</strong><button type="button" class="component-editor-close" data-close aria-label="Закрыть">✕</button></div><div data-context class="component-editor-context" hidden></div><div class="ozon-sprint-current"><span>' + currentLabel + '</span><strong data-current>—</strong></div><div class="component-editor-search"><input type="search" data-search placeholder="' + placeholder + '" aria-label="' + searchLabel + '" style="padding-left:10px" disabled></div><div data-message role="status"></div><div data-list class="component-editor-list"></div><div class="component-editor-footer"><button type="button" data-cancel class="component-editor-button">Отмена</button></div>';
       document.body.appendChild(panel);
       const closeButton = panel.querySelector('[data-close]');
       const search = panel.querySelector('[data-search]');
@@ -12822,7 +12975,15 @@ export function generateContentScriptJs(
       const empty = {id:'', name:isSprint ? 'Бэклог' : isAssignee ? 'Не назначен' : 'Без эпика'};
       let options = [], displayed = [], current = null, timer, searchController, busy = false;
       const lifetime = new AbortController();
-      const setMessage = (text,error=false) => { message.setAttribute('role',error ? 'alert' : 'status'); message.textContent = text; };
+      const setMessage = (text,error=false) => {
+        message.setAttribute('role',error ? 'alert' : 'status');
+        message.textContent = text;
+      };
+      const setPending = text => {
+        message.setAttribute('role','status');
+        message.innerHTML = jiraGroupingUi.progressHtml(text);
+      };
+      setPending('Читаю поля задачи…');
       const close = (restoreFocus = true) => {
         if (busy) return;
         clearTimeout(timer);
@@ -12856,7 +13017,7 @@ export function generateContentScriptJs(
         const controller = new AbortController();
         searchController = controller;
         list.replaceChildren();
-        setMessage(searchStatus);
+        setPending(searchStatus);
         try {
           const query = search.value.trim();
           const found = isAssignee
@@ -12879,7 +13040,7 @@ export function generateContentScriptJs(
         clearTimeout(timer);
         searchController?.abort();
         list.replaceChildren();
-        setMessage(searchStatus);
+        setPending(searchStatus);
         timer = setTimeout(loadSearchOptions,220);
       });
       search.addEventListener('keydown', event => {
@@ -12896,7 +13057,7 @@ export function generateContentScriptJs(
         busy = true;
         panel.dataset.busy = 'true';
         search.disabled = closeButton.disabled = true;
-        setMessage('Сохраняем в Jira…');
+        setPending('Сохраняем в Jira…');
         renderOptions();
         try {
           const notice = await savePlanningField(key,kind,option,fields);
@@ -12933,7 +13094,7 @@ export function generateContentScriptJs(
             current = sprint ? {...sprint,name:sprint.name || 'Спринт #' + sprint.id} : empty;
             const stateBadge = getSprintStateBadgeHtml(current.name, (current.state || '').toUpperCase());
             currentCell.innerHTML = escapeHtml(current.name) + (stateBadge ? ' ' + stateBadge : '');
-            setMessage('Загружаем спринты…');
+            setPending('Загружаем спринты…');
             const found = await planningSprintOptions(key,issue,sprint);
             if (!panel.isConnected) return;
             const editableCurrent = current.id && /^(active|future)$/.test(current.state);
