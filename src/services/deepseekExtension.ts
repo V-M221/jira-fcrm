@@ -1,4 +1,5 @@
 import { answerMarkup } from '../utils/answerMarkup';
+import { installWidgetTheme, themeWidgetColors, WIDGET_THEME_STYLES } from '../utils/widgetTheme';
 import { bindExtensionUpdateMessages, EXTENSION_UPDATE_CACHE_TTL, EXTENSION_UPDATE_MESSAGES, EXTENSION_UPDATE_METADATA_URL } from './extensionUpdate';
 ﻿import {
   completeDeepseekChat,
@@ -319,6 +320,7 @@ export function generateIssueEnhanceJs(): string {
   }
   if (location.origin === 'https://confluence.o3.ru' || location.origin === 'https://confluence.o3t.ru') return;
 
+  const widgetTheme = (${installWidgetTheme.toString()})(window, document);
   const formatAnswer = ${answerMarkup.toString()};
   const parseJiraDraft = ${parseJiraDraft.toString()};
   const saveJiraDraft = ${saveJiraDraft.toString()};
@@ -374,7 +376,7 @@ export function generateIssueEnhanceJs(): string {
     if (document.getElementById('o3ds-styles')) return;
     const style = document.createElement('style');
     style.id = 'o3ds-styles';
-    style.textContent = [
+    style.textContent = (${themeWidgetColors.toString()})([
       '.o3ds-btn{display:inline-flex!important;align-items:center!important;gap:5px!important;height:28px!important;margin:0 0 0 8px!important;padding:0 10px!important;border:1px solid #005BFF!important;border-radius:7px!important;background:#E5F0FF!important;color:#005BFF!important;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif!important;font-size:12px!important;font-weight:700!important;line-height:1!important;letter-spacing:0!important;cursor:pointer!important;vertical-align:middle!important;box-shadow:0 1px 2px rgba(7,16,38,.08)!important;text-decoration:none!important;}',
       '.o3ds-btn:hover{background:#d5e7ff!important;border-color:#004bd1!important;}',
       '.o3ds-btn:disabled{opacity:.55!important;cursor:default!important;}',
@@ -413,7 +415,7 @@ export function generateIssueEnhanceJs(): string {
       '@media(max-width:800px){body:has(#ozon-structure-root #ozon-ext-sidebar-panel) > #o3ds-layer{width:min(480px,100vw)!important;}}',
       '#o3ds-layer textarea{box-sizing:border-box;width:100%;min-height:76px!important;padding:10px;resize:vertical;border:1px solid #D7E0EC;border-radius:8px;font:inherit;margin-bottom:8px;background:#fff;color:#071026;}#o3ds-layer textarea:focus{outline:none;border-color:#005BFF;box-shadow:0 0 0 3px rgba(0,91,255,.12)}',
       '#o3ds-layer .o3ds-actions{flex-wrap:wrap;}'
-    ].join('');
+    ].join('')) + ${JSON.stringify(WIDGET_THEME_STYLES)};
     document.documentElement.appendChild(style);
   }
 
@@ -641,7 +643,11 @@ export function generateIssueEnhanceJs(): string {
     heading.append(title, keyLine);
     const close = actionButton('✕', 'o3ds-header-close', closeSession, session.phase === 'applying');
     close.setAttribute('aria-label', 'Закрыть помощника');
-    header.append(heading, close);
+    const tools = document.createElement('div');
+    tools.className = 'ozon-theme-tools';
+    tools.innerHTML = widgetTheme.control();
+    tools.appendChild(close);
+    header.append(heading, tools);
     layer.appendChild(header);
 
     if (session.phase === 'context') {

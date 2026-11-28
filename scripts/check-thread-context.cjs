@@ -22,6 +22,7 @@ function tabReceiver(script, origin, get, requests) {
   const listeners = [];
   vm.runInNewContext(script,{
     chrome:{runtime:runtime(listeners)},location:new URL(origin),URL,AbortSignal,
+    window:{localStorage:{getItem:()=>null}},
     document:{getElementById:key=>key==='o3ds-styles' ? {} : null,querySelectorAll:()=>[],addEventListener(){}},
     MutationObserver:class {observe(){}},
     fetch:async (input, options) => {

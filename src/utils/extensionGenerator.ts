@@ -2,6 +2,7 @@ import { createJiraPriorityService } from '../services/jiraPriority';
 import { ExtensionConfig, FcrmTask, LinkedIssueItem } from '../types/jira';
 import { structuredAnswer } from './structuredAnswer';
 import { answerMarkup } from './answerMarkup';
+import { installWidgetTheme, themeWidgetColors, WIDGET_THEME_STYLES } from './widgetTheme';
 import { createDevelopmentDashboard, createDevelopmentPointColumns, renderJiraBadge } from '../services/developmentDashboard';
 import { createSprintReportModel } from '../services/sprintReportModel';
 import { createSprintReportDashboard } from '../services/sprintReportDashboard';
@@ -15,7 +16,7 @@ import { createExtensionUpdateNotice, EXTENSION_UPDATE_INTERVAL, EXTENSION_UPDAT
 import { createJiraDraftLinkClient } from '../services/deepseek';
 import { createFcrmThreadWriter } from '../services/fcrmThreadWriter';
 
-export const EXTENSION_VERSION = '3.5.199';
+export const EXTENSION_VERSION = '3.5.200';
 
 export function fcrmReviewRowClass(key:string, status:string):string {
   if (!/^FCRM-\d+$/i.test(key)) return '';
@@ -63,7 +64,7 @@ export function generateManifestJson(config: ExtensionConfig): string {
 }
 
 export function generateStylesCss(config: ExtensionConfig): string {
-  return `/* ============================================================================
+  return themeWidgetColors(`/* ============================================================================
    Ozon Bank Design System — Jira Structure Extension for jit.o3.ru (v3.2)
    Target ONLY: https://jit.o3.ru/secure/RapidBoard.jspa?rapidView=${config.rapidViewId}&projectKey=${config.projectKey}
    ============================================================================ */
@@ -2233,7 +2234,7 @@ button.ozon-report-trend-bars:hover,.ozon-report-trend-bars:focus-visible {backg
 #ozon-structure-root tr.ozon-fcrm-review:is(:hover,.ozon-details-source) > td,
 #ozon-structure-root div.ozon-fcrm-review:hover { background-color:#ffead0!important; }
 
-`;
+`) + WIDGET_THEME_STYLES;
 }
 
 export function generateContentScriptJs(
@@ -2299,6 +2300,7 @@ export function generateContentScriptJs(
       document.head.appendChild(styleEl);
     }
   }
+  const widgetTheme = (${installWidgetTheme.toString()})(window, document);
   ensureGoogleFontsLoaded();
 
   const STORAGE_KEY_COL_WIDTHS = 'ozon_fcrm_col_widths_v31';
@@ -2575,7 +2577,7 @@ export function generateContentScriptJs(
     const stepStart = (number,title) => '<li data-thread-step="' + number + '"><div class="ozon-thread-step-heading"><span class="ozon-thread-step-marker" aria-hidden="true">' + number +
       '</span><h3 tabindex="-1">' + title + '</h3></div><p data-thread-step-summary hidden></p><div data-thread-step-body' + (number === 1 ? '' : ' hidden') + '>';
     const stepEnd = '</div></li>';
-    panel.innerHTML = '<div data-thread-width role="separator" tabindex="0" aria-label="Ширина панели" aria-orientation="vertical">⋮</div><header class="ozon-thread-head ozon-ext-sidebar-header"><h2 id="ozon-thread-title" tabindex="-1">Создать FCRM из треда</h2><button type="button" data-thread-close class="ozon-ext-btn ozon-ext-btn-surface">Закрыть</button></header>' +
+    panel.innerHTML = '<div data-thread-width role="separator" tabindex="0" aria-label="Ширина панели" aria-orientation="vertical">⋮</div><header class="ozon-thread-head ozon-ext-sidebar-header"><h2 id="ozon-thread-title" tabindex="-1">Создать FCRM из треда</h2><div class="ozon-theme-tools">' + widgetTheme.control() + '<button type="button" data-thread-close class="ozon-ext-btn ozon-ext-btn-surface">Закрыть</button></div></header>' +
       '<div class="ozon-ext-sidebar-body"><p data-thread-status role="status" tabindex="-1">Загружаю типы задач и компоненты FCRM…</p><ol class="ozon-thread-steps" aria-label="Этапы создания задачи">' +
       stepStart(1,'Исходные данные') +
       '<form data-thread-source><label class="ozon-ext-field-label">Ссылки на треды chatZone<textarea name="urls" rows="3" required aria-describedby="ozon-thread-url-hint" placeholder="https://chatzone.o3t.ru/o3/pl/…"></textarea></label>' +
@@ -9823,7 +9825,7 @@ export function generateContentScriptJs(
 
   function renderDashboardNavigation() {
     const tabs = [['product','Продуктовый бэклог'],['development','Команды разработки'],['strategy','Стратегическое планирование'],['report','Отчёт по спринту'],['prompts','Промпты']];
-    return '<div class="ozon-ext-view-tabs">' + nativeBoardButton() + '<nav role="tablist" aria-label="Представление">' + tabs.map(([view,label]) => '<button type="button" role="tab" id="ozon-tab-' + view + '" data-dashboard-view="' + view + '" aria-selected="' + (activeDashboardView === view) + '">' + label + '</button>').join('') + '</nav>' +
+    return '<div class="ozon-ext-view-tabs">' + nativeBoardButton() + '<nav role="tablist" aria-label="Представление">' + tabs.map(([view,label]) => '<button type="button" role="tab" id="ozon-tab-' + view + '" data-dashboard-view="' + view + '" aria-selected="' + (activeDashboardView === view) + '">' + label + '</button>').join('') + '</nav>' + widgetTheme.control() +
       '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface ozon-ext-fullscreen-toggle" data-toggle-fullscreen aria-controls="ozon-structure-root" aria-label="' + fullscreenButtonLabel(dashboardFullscreen) + '" title="' + fullscreenButtonLabel(dashboardFullscreen) + (dashboardFullscreen ? ' (Esc)' : '') + '">' + fullscreenButtonContent(dashboardFullscreen) + '</button></div>';
   }
 
@@ -10178,7 +10180,7 @@ export function generateContentScriptJs(
       .map((colId) => {
         const w = Number(colWidths[colId]) || 130;
         const meta = colId === 'task' ? { label: 'Задача (' + [...productGroupingOrder.map((field) => field === 'sprint' ? 'Спринт' : 'Компонент'), 'Задача'].join(' → ') + ')', accent: false } : (COLUMN_META[colId] || { label: colId, accent: false });
-        return \`<th data-col="\${escapeHtml(colId)}" draggable="true" title="Перетащите заголовок для изменения порядка столбцов" style="width:\${w}px;min-width:\${w}px;max-width:\${w}px;cursor:grab;\${meta.accent ? 'color:#005BFF !important;' : ''}">\${escapeHtml(meta.label)}<div class="ozon-ext-col-resizer" data-col="\${escapeHtml(colId)}"></div></th>\`;
+        return \`<th data-col="\${escapeHtml(colId)}" draggable="true" title="Перетащите заголовок для изменения порядка столбцов" style="width:\${w}px;min-width:\${w}px;max-width:\${w}px;cursor:grab;\${meta.accent ? 'color:var(--ozon-fcrm-link,#005BFF) !important;' : ''}">\${escapeHtml(meta.label)}<div class="ozon-ext-col-resizer" data-col="\${escapeHtml(colId)}"></div></th>\`;
       })
       .join('');
 
@@ -12990,7 +12992,7 @@ export function generateContentScriptJs(
         if (node.hasAttribute('title')) { issueTooltipTitles.push([node,node.getAttribute('title')]); node.removeAttribute('title'); }
       }
       issueTooltipTarget = target;
-      if (!issueTooltip) { issueTooltip = document.createElement('div'); issueTooltip.setAttribute('role','tooltip'); issueTooltip.style.cssText = 'position:fixed;z-index:2147483647;max-width:min(420px,90vw);padding:10px 12px;background:#071026;color:white;border-radius:8px;font:12px/1.45 sans-serif;box-shadow:0 4px 16px #07102633;white-space:pre-wrap;overflow-wrap:anywhere;pointer-events:none;'; document.body.appendChild(issueTooltip); }
+      if (!issueTooltip) { issueTooltip = document.createElement('div'); issueTooltip.className = 'ozon-issue-tooltip'; issueTooltip.setAttribute('role','tooltip'); issueTooltip.style.cssText = 'position:fixed;z-index:2147483647;max-width:min(420px,90vw);padding:10px 12px;background:#071026;color:white;border-radius:8px;font:12px/1.45 sans-serif;box-shadow:0 4px 16px #07102633;white-space:pre-wrap;overflow-wrap:anywhere;pointer-events:none;'; document.body.appendChild(issueTooltip); }
       const rect = target.getBoundingClientRect();
       issueTooltip.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - Math.min(420, window.innerWidth - 16))) + 'px';
       issueTooltip.style.top = Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - 140)) + 'px';

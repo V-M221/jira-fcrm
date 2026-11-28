@@ -56,6 +56,7 @@ const compiled = ts.transpileModule(source, {
 const module = { exports: {} };
 const structuredAnswer = loadTranspiledModule(await readFile('src/utils/structuredAnswer.ts', 'utf8'));
 const answerMarkup = loadTranspiledModule(await readFile('src/utils/answerMarkup.ts', 'utf8'));
+const widgetTheme = loadTranspiledModule(await readFile('src/utils/widgetTheme.ts', 'utf8'));
 const taskDetailsSidebar = loadTranspiledModule(await readFile('src/services/taskDetailsSidebar.ts', 'utf8'));
 const developmentDashboard = loadTranspiledModule(await readFile('src/services/developmentDashboard.ts', 'utf8'));
 const jiraPriority = loadTranspiledModule(await readFile('src/services/jiraPriority.ts', 'utf8'));
@@ -71,6 +72,7 @@ const fcrmThreadWriter = loadTranspiledModule(await readFile('src/services/fcrmT
 new Function('exports', 'require', 'module', compiled)(module.exports, (specifier) => {
   if (specifier === './structuredAnswer') return structuredAnswer;
   if (specifier === './answerMarkup') return answerMarkup;
+  if (specifier === './widgetTheme') return widgetTheme;
   if (specifier === '../services/taskDetailsSidebar') return taskDetailsSidebar;
   if (specifier === '../services/developmentDashboard') return developmentDashboard;
   if (specifier === '../services/jiraPriority') return jiraPriority;
@@ -101,6 +103,7 @@ const deepseekExtension = loadTranspiledModule(deepseekExtensionSource, (specifi
   if (specifier === './deepseek') return deepseek;
   if (specifier === './extensionUpdate') return extensionUpdate;
   if (specifier === '../utils/answerMarkup') return answerMarkup;
+  if (specifier === '../utils/widgetTheme') return widgetTheme;
   if (specifier === '../utils/structuredAnswer') return structuredAnswer;
   throw new Error(`Unexpected extension build dependency: ${specifier}`);
 });
