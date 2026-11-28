@@ -15,7 +15,7 @@ import { createExtensionUpdateNotice, EXTENSION_UPDATE_INTERVAL, EXTENSION_UPDAT
 import { createJiraDraftLinkClient } from '../services/deepseek';
 import { createFcrmThreadWriter } from '../services/fcrmThreadWriter';
 
-export const EXTENSION_VERSION = '3.5.198';
+export const EXTENSION_VERSION = '3.5.199';
 
 export function fcrmReviewRowClass(key:string, status:string):string {
   if (!/^FCRM-\d+$/i.test(key)) return '';
@@ -500,9 +500,26 @@ body.ozon-native-board-visible > :is(.ozon-component-editor,#ozon-thread-sidebar
 #ozon-thread-sidebar [data-thread-preflight-message] {margin:0;}
 #ozon-thread-sidebar [data-thread-preflight-matches] {padding-left:16px;margin:8px 0 12px;}
 #ozon-thread-sidebar [data-thread-preflight-matches] small {display:block;margin:2px 0 6px;}
-#ozon-thread-sidebar .ozon-thread-proposal {display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:start;gap:8px;margin:0;padding:10px 0;border-bottom:1px solid #e2e8f0;}
-#ozon-thread-sidebar .ozon-thread-proposal select {min-height:30px;max-width:100%;font-family:var(--ozon-font-sans);}
+#ozon-thread-sidebar [data-thread-related] .ozon-thread-section-body {container-type:inline-size;}
+#ozon-thread-sidebar .ozon-thread-proposal {display:grid;grid-template-columns:auto minmax(0,1fr) minmax(184px,auto);align-items:start;gap:8px;margin:0;padding:10px 0;border-bottom:1px solid #e2e8f0;}
+#ozon-thread-sidebar .ozon-thread-proposal-actions {display:grid;grid-template-columns:minmax(0,176px) auto;gap:8px;align-items:center;justify-content:end;min-width:0;}
+#ozon-thread-sidebar .ozon-thread-proposal-actions button {height:30px;}
+#ozon-thread-sidebar .ozon-thread-link-note {display:block;margin:2px 0 0;}
+#ozon-thread-sidebar [data-thread-link-status]:empty {display:none;}
+#ozon-thread-sidebar [data-thread-link-status]:not(:empty) {display:block;margin-top:4px;}
+#ozon-thread-sidebar .ozon-thread-proposal select {min-width:0;min-height:30px;max-width:100%;color:var(--ozon-navy);font:500 11.5px/1.35 var(--ozon-font-sans)!important;border:1px solid #dce3eb!important;background-color:#fff!important;border-radius:10px!important;}
 #ozon-thread-sidebar .ozon-thread-proposal > span {min-width:0;overflow-wrap:anywhere;}
+#ozon-thread-sidebar .ozon-thread-proposal .ozon-thread-proposal-actions select:hover {border-color:#b8c4d0!important;}
+#ozon-thread-sidebar .ozon-thread-proposal .ozon-thread-proposal-actions select:focus-visible {border-color:#005bff!important;}
+#ozon-thread-sidebar .ozon-thread-proposal > span a {white-space:nowrap;}
+@supports (appearance:base-select) {
+  #ozon-thread-sidebar .ozon-thread-proposal-actions select,
+  #ozon-thread-sidebar .ozon-thread-proposal-actions select::picker(select) {appearance:base-select;}
+  #ozon-thread-sidebar .ozon-thread-proposal-actions select::picker(select) {margin:4px 0;padding:4px;border:1px solid var(--ozon-border);border-radius:8px;background:#fff;box-shadow:0 8px 18px #07102622;max-height:220px;overflow:auto;}
+  #ozon-thread-sidebar .ozon-thread-proposal-actions select::picker-icon {color:#64748b;}
+  #ozon-thread-sidebar .ozon-thread-proposal-actions option {padding:6px 8px;border-radius:6px;white-space:normal;font:inherit;}
+  #ozon-thread-sidebar .ozon-thread-proposal-actions option:is(:hover,:checked) {background:#e5f2ff;color:#005bff;}
+}
 #ozon-thread-sidebar .ozon-thread-link-add {display:flex;gap:8px;align-items:center;margin-top:8px;}
 #ozon-thread-sidebar .ozon-thread-link-add button {flex-shrink:0;}
 #ozon-thread-sidebar [data-thread-early-duplicates] {gap:6px;}
@@ -510,7 +527,7 @@ body.ozon-native-board-visible > :is(.ozon-component-editor,#ozon-thread-sidebar
 #ozon-thread-sidebar [data-thread-early-duplicates] li {padding:10px 12px;border:1px solid #d7e0ec;border-radius:8px;margin-bottom:6px;}
 #ozon-thread-sidebar [data-thread-early-duplicates] small {display:block;}
 #ozon-thread-sidebar [data-thread-early-duplicates] p {margin:0;}
-@media (max-width:540px) {#ozon-thread-sidebar .ozon-thread-proposal {grid-template-columns:auto minmax(0,1fr);}#ozon-thread-sidebar .ozon-thread-proposal select {grid-column:2;}#ozon-thread-sidebar .ozon-thread-proposal button {grid-column:2;justify-self:start;}}
+@container (max-width:520px) {#ozon-thread-sidebar .ozon-thread-proposal {grid-template-columns:auto minmax(0,1fr);}#ozon-thread-sidebar .ozon-thread-proposal-actions {grid-column:2;grid-template-columns:minmax(0,1fr) auto;justify-content:stretch;}}
 #ozon-thread-sidebar .ozon-thread-proposal input {width:16px;height:16px;margin:4px 0 0;flex:0 0 auto;accent-color:#005bff;}
 #ozon-thread-sidebar .ozon-thread-proposal small {display:block;}
 #ozon-thread-sidebar [data-thread-result] {padding:16px;border:1px solid #d7e0ec;border-radius:10px;background:#f8fafc;}
@@ -2584,7 +2601,7 @@ export function generateContentScriptJs(
       '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-theme-clear hidden>Без тематики</button></div>' +
       '<div id="ozon-thread-theme-menu" data-thread-theme-menu hidden><label class="ozon-ext-field-label">Поиск по названию или ключу<input type="search" name="draftThemeSearch" autocomplete="off"></label>' +
       '<p data-thread-theme-status role="status"></p><div data-thread-theme-results role="group" aria-label="Подходящие тематики"></div></div></div>' +
-      '<div class="ozon-ext-section-card" data-thread-related role="group" aria-labelledby="ozon-thread-links-title"><h3 class="ozon-ext-section-head" id="ozon-thread-links-title">Связи с задачами Jira</h3><div class="ozon-thread-section-body"><div data-thread-linked-sources></div><div class="ozon-thread-link-add"><input name="linkKey" aria-label="Ключ или ссылка Jira" placeholder="Ключ или ссылка Jira"><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-thread-link-add>Добавить связь</button></div><small data-thread-link-status role="status"></small><div data-thread-issue-proposals></div></div></div></section>' +
+      '<div class="ozon-ext-section-card" data-thread-related role="group" aria-labelledby="ozon-thread-links-title"><h3 class="ozon-ext-section-head" id="ozon-thread-links-title">Связи с задачами Jira <small class="ozon-thread-link-note">Необязательно</small></h3><div class="ozon-thread-section-body"><div data-thread-linked-sources></div><div class="ozon-thread-link-add"><input name="linkKey" type="text" aria-label="Ключ или ссылка Jira" placeholder="Ключ или ссылка Jira"><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-thread-link-add>Добавить связь</button></div><small data-thread-link-status role="status"></small><div data-thread-issue-proposals></div></div></div></section>' +
       '<section data-thread-early-duplicates hidden><h3>Возможные дубли</h3><p data-thread-early-status role="status"></p><ul></ul></section>' +
       '<form data-thread-followup hidden><div data-thread-question hidden><h3 data-thread-question-heading></h3>' +
       '<p id="ozon-thread-question-text" data-thread-question-text></p><p id="ozon-thread-question-reason" data-thread-question-reason hidden></p>' +
@@ -2697,6 +2714,8 @@ export function generateContentScriptJs(
     let resetFields = () => {};
     let selectedTheme = null;
     const selectedIssueLinks = new Map();
+    const linkKindLabels = new Map();
+    const linkKindsByKey = new Map();
     const linkEdits = new Map();
     const hiddenIssueLinks = new Set();
     let loadingLink = false;
@@ -3176,7 +3195,7 @@ export function generateContentScriptJs(
       return proposals;
     }
     function issueLinkKind(kind) {
-      return {development:'В проекте',related:'Связанная задача',duplicate:'Дубликат'}[kind] || 'Связь';
+      return ({development:'В проекте',related:'Связанная задача',duplicate:'Дубликат'})[kind] || linkKindLabels.get(kind) || 'Связь Jira';
     }
     function renderDraftLinks() {
       linkedSources.replaceChildren();
@@ -3214,14 +3233,29 @@ export function generateContentScriptJs(
         }
         const type = document.createElement('select');
         type.setAttribute('aria-label','Тип связи с ' + item.key);
-        const kinds = item.key.startsWith('FCRM-') ? ['related','duplicate'] : ['related','development'];
-        for (const kind of kinds) {
-          const option = document.createElement('option');
-          option.value = kind;
-          option.textContent = issueLinkKind(kind);
-          type.appendChild(option);
+        const builtIn = item.key.startsWith('FCRM-') ? ['related','duplicate'] : ['related','development'];
+        function showKinds(choices) {
+          const current = type.value || item.kind;
+          const options = new Map(builtIn.map(kind => [kind,issueLinkKind(kind)]));
+          for (const {kind,label} of choices) { options.set(kind,label); linkKindLabels.set(kind,label); }
+          if (!options.has(current)) options.set(current,issueLinkKind(current));
+          const nodes = [...options].map(([kind,label]) => {
+            const option = document.createElement('option');
+            option.value = kind;
+            option.textContent = label;
+            return option;
+          });
+          type.replaceChildren(...nodes);
+          type.value = current;
         }
-        type.value = item.kind;
+        showKinds([]);
+        if (typeof threadWriter.listLinkKinds === 'function') {
+          if (!linkKindsByKey.has(item.key)) linkKindsByKey.set(item.key,threadWriter.listLinkKinds(item.key).catch(() => {
+            linkKindsByKey.delete(item.key);
+            return [];
+          }));
+          linkKindsByKey.get(item.key).then(choices => { if (choices.length && type.isConnected) showKinds(choices); });
+        }
         type.addEventListener('change', () => {
           if (busy || pendingWrite || created) return;
           const edited = {...item,kind:type.value};
@@ -3248,13 +3282,11 @@ export function generateContentScriptJs(
           renderDraftLinks();
           focus(linkField);
         };
-        row.append(check,text,type,remove);
+        const actions = document.createElement('span');
+        actions.className = 'ozon-thread-proposal-actions';
+        actions.append(type,remove);
+        row.append(check,text,actions);
         issueProposals.appendChild(row);
-      }
-      if (!issueProposals.childElementCount) {
-        const note = document.createElement('p');
-        note.textContent = 'Добавьте связь по ключу или ссылке на задачу Jira.';
-        issueProposals.appendChild(note);
       }
       updateControls();
     }
@@ -3307,6 +3339,16 @@ export function generateContentScriptJs(
       }
     }
 
+    function combineDuplicates(checked, suggested) {
+      if (!['ready','possible-duplicate'].includes(checked?.state) || !Array.isArray(suggested) || !suggested.length) return checked;
+      const matches = new Map(checked.issues.map(item => [item.key,item]));
+      for (const item of suggested) {
+        const jira = matches.get(item.key);
+        const reason = [jira?.reason, 'DeepSeek: ' + item.reason].filter(Boolean).join(' · ');
+        matches.set(item.key,{...item,...jira,reason});
+      }
+      return {state:'possible-duplicate',issues:[...matches.values()],jiraDuplicateKeys:checked.issues.map(item => item.key)};
+    }
     function clearEarlyDuplicates() {
       earlySerial += 1;
       window.clearTimeout(earlyTimer);
@@ -3323,10 +3365,10 @@ export function generateContentScriptJs(
       earlyTimer = window.setTimeout(async () => {
         try {
           const input = {urls:result.urls,mentionedIssueKeys:result.mentionedIssueKeys,summary:result.summary ? normalizedSummary(summary.value) : ''};
-          const checked = prior || await threadWriter.inspect(input);
+          const checked = prior || combineDuplicates(await threadWriter.inspect(input),result.duplicates);
           if (serial !== earlySerial || step !== 2) return;
           earlyStatus.textContent = ({
-            ready:'Совпадений по треду, упоминаниям и названию не найдено.',
+            ready:result.duplicateSearch === 'unavailable' ? 'Поиск похожих задач для DeepSeek недоступен. Jira не нашла совпадений по треду, упоминаниям и названию.' : 'Среди проверенных задач возможные дубли не найдены.',
             existing:'По этому треду уже есть задача. Откройте её в Jira.',
             'possible-duplicate':'Проверьте совпадения. Их можно включить в связи новой задачи.',
             uncertain:'Jira ещё проверяет результат предыдущей записи.'
@@ -3414,10 +3456,13 @@ export function generateContentScriptJs(
       const questionReason = typeof result?.questionReason === 'string' ? result.questionReason.trim().slice(0,180) : '';
       const themeReason = typeof result?.themeReason === 'string' ? result.themeReason.trim().slice(0,240) : '';
       const sourceUrls = Array.isArray(result?.urls) && result.urls.length > 0 && result.urls.length <= requestSnapshot.urls.length && result.urls.every(url => typeof url === 'string') ? result.urls : requestSnapshot.urls;
+      const duplicates = Array.isArray(result?.duplicates) ? result.duplicates.slice(0,8).filter(item => /^FCRM-\\d+$/.test(item?.key) && typeof item.title === 'string' && typeof item.reason === 'string' && item.reason.trim()).map(item => ({key:item.key,title:item.title.slice(0,255),reason:item.reason.trim().slice(0,240)})) : [];
+      const foundThemes = Array.isArray(result?.themes) ? result.themes.slice(0,25).filter(item => /^FCRM-\\d+$/.test(item?.key) && typeof item.title === 'string') : [];
+      const duplicateSearch = result?.duplicateSearch;
       const mentions = Array.isArray(result?.mentionedIssueKeys) ? result.mentionedIssueKeys.filter(key => /^FCRM-\\d+$/.test(key)).slice(0,12) : [];
       if (result?.status === 'clarification') {
         const detail = typeof result.message === 'string' ? result.message.trim().slice(0,500) : '';
-        return {question:detail || 'Какие детали нужно учесть в черновике?', questionReason, sources:result.sources, urls:sourceUrls, mentionedIssueKeys:mentions};
+        return {question:detail || 'Какие детали нужно учесть в черновике?', questionReason, sources:result.sources, urls:sourceUrls, mentionedIssueKeys:mentions, duplicates, duplicateSearch};
       }
       if (result?.status !== 'draft' || typeof result.summary !== 'string' || !result.summary.trim() || typeof result.description !== 'string' || !result.description.trim()) {
         throw new Error('DeepSeek вернул неполный черновик. Повторите запрос.');
@@ -3431,6 +3476,7 @@ export function generateContentScriptJs(
         themeReason,
         sources:result.sources,
         links:parseProposals(result.links),
+        duplicates, duplicateSearch, themeSearch:result.themeSearch, foundThemes,
         mentionedIssueKeys:mentions,
         urls:sourceUrls
       };
@@ -3457,7 +3503,14 @@ export function generateContentScriptJs(
         summary.value = keepSummary ? previousDraft.summary : result.summary;
         description.value = keepDescription ? previousDraft.description : result.description;
         if (description.hidden) renderDescription(descriptionView, description.value);
-        if (!themeOverridden) setTheme(themes.find(item => item.key === result.themeKey) || null, false, result.themeReason);
+        if (!themeOverridden) {
+          const candidate = [...(result.foundThemes || []), ...themes].find(item => item.key === result.themeKey);
+          setTheme(candidate || null, false, result.themeReason);
+          if (!candidate) {
+            themeReason.textContent = result.themeSearch === 'unavailable' ? 'Поиск по контексту Jira недоступен. Тематику можно указать вручную.' : 'DeepSeek не подтвердил подходящую тематику. Её можно указать вручную.';
+            themeReason.hidden = false;
+          }
+        }
         review.hidden = false;
         fitSummary();
         renderDraftLinks();
@@ -3493,6 +3546,7 @@ export function generateContentScriptJs(
       } catch (_) {
         checked = {state:'unavailable',issues:[]};
       }
+      checked = combineDuplicates(checked,result.duplicates);
       if (checked.state === 'ready') return acceptPreflight(checked);
       const existing = checked.state === 'existing';
       const possible = checked.state === 'possible-duplicate';
@@ -3521,7 +3575,8 @@ export function generateContentScriptJs(
         }
         preflightMatches.appendChild(item);
       }
-      say(existing ? 'Jira нашла задачу с этим тредом.' : possible ? 'Jira нашла возможные совпадения.' : 'Проверку Jira нужно повторить.', existing ? 'success' : 'warning');
+      const possibleStatus = checked.jiraDuplicateKeys ? 'DeepSeek нашёл похожие задачи в Jira.' : 'Jira нашла возможные совпадения.';
+      say(existing ? 'Jira нашла задачу с этим тредом.' : possible ? possibleStatus : 'Проверку Jira нужно повторить.', existing ? 'success' : 'warning');
       return preflightTitle;
     }
 
@@ -3602,7 +3657,7 @@ export function generateContentScriptJs(
     function writeInput() {
       return {
         ...readDraft(), urls:draft.urls, issueTypeId:requestSnapshot.issueTypeId,
-        componentId:requestSnapshot.componentId, mentionedIssueKeys:draft.mentionedIssueKeys,
+        componentId:requestSnapshot.componentId, mentionedIssueKeys:draft.mentionedIssueKeys, suggestedDuplicates:draft.duplicates, duplicateSearch:draft.duplicateSearch,
         issueLinks:[...selectedIssueLinks.values()].map(({key,kind}) => ({key,kind}))
       };
     }
@@ -3661,7 +3716,7 @@ export function generateContentScriptJs(
       say('Проверяю возможные дубли в Jira…');
       updateControls();
       try {
-        const result = await threadWriter.inspect(checkedInput);
+        const result = combineDuplicates(await threadWriter.inspect(checkedInput),checkedInput.suggestedDuplicates);
         if (!['ready','existing','possible-duplicate','uncertain'].includes(result?.state) ||
             !Array.isArray(result?.issues) ||
             (['existing','possible-duplicate'].includes(result.state) && !result.issues.some(issue => /^FCRM-\\d+$/.test(issue.key)))) {
@@ -3690,9 +3745,9 @@ export function generateContentScriptJs(
         }
         if (result.state === 'uncertain') pendingWrite = checkedInput;
         const messages = {
-          ready:'Совпадений не найдено. Задачу можно создать.',
+          ready:checkedInput.duplicateSearch === 'unavailable' ? 'Поиск похожих задач для DeepSeek недоступен. Jira не нашла точных совпадений.' : 'Среди проверенных задач совпадений не найдено. Задачу можно создать.',
           existing:result.issues.length > 1 ? 'В Jira найдены задачи с этими источниками.' : 'В Jira найдена задача с теми же источниками.',
-          'possible-duplicate':'В Jira найдены возможные дубли.',
+          'possible-duplicate':'Найдены возможные дубли.',
           uncertain:'Результат предыдущего создания требует проверки.'
         };
         say(messages[result.state], result.state === 'possible-duplicate' || result.state === 'uncertain' ? 'warning' : 'success');
@@ -3725,7 +3780,7 @@ export function generateContentScriptJs(
         for (const item of outcomes) {
           if (!item || item.confirmed !== confirmed || typeof item.key !== 'string') continue;
           const row = document.createElement('li');
-          const type = {source:'Тред chatZone',theme:'Тематика',development:'В проекте',related:'Связанная задача',duplicate:'Дубликат'}[item.kind];
+          const type = {source:'Тред chatZone',theme:'Тематика'}[item.kind] || issueLinkKind(item.kind);
           row.append(document.createTextNode((type || 'Связь') + ' · '),linkFor(item.key,item.key));
           row.dataset.confirmed = String(confirmed);
           list.appendChild(row);
@@ -3760,7 +3815,7 @@ export function generateContentScriptJs(
         const expected = acceptDuplicates ? 'possible-duplicate' : 'ready';
         if (created || pendingWrite || reviewResult?.state !== expected || !checkedInput) return;
         pendingWrite = acceptDuplicates ? {
-          ...checkedInput, confirmedDuplicateKeys:reviewResult.issues.map(issue => issue.key)
+          ...checkedInput, confirmedDuplicateKeys:reviewResult.jiraDuplicateKeys || reviewResult.issues.map(issue => issue.key)
         } : checkedInput;
       }
       if (!pendingWrite) return;

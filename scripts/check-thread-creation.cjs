@@ -65,7 +65,7 @@ async function checkDrafts() {
       assert.equal(options.redirect,'manual');
     }
     if (url.hostname === 'jit.o3.ru') {
-      assert.equal(url.searchParams.get('fields'),'summary,description,comment,issuelinks');
+      assert.equal(url.searchParams.get('fields'),'summary,description,comment,issuelinks,labels');
       const key = path.split('/').at(-1);
       if (key === 'FCRM-77') return json({},403);
       if (key === 'FCRM-78') return json({},401);
@@ -120,13 +120,16 @@ async function checkDrafts() {
   });
   const run = (preview = false) => completeDeepseekChat('FCRM','thread',null,input,'ignored',undefined,'',preview);
   const prompt = JSON.parse(await run(true));
-  assert.match(prompt.system,/fcrm-thread\/3/);
+  assert.match(prompt.system,/fcrm-thread\/4/);
   assert.equal(calls.length,0);
   const result = JSON.parse(await run());
   assert.equal(result.status,'draft');
   assert.deepEqual(result.urls,[threadUrl]);
   assert.deepEqual(result.mentionedIssueKeys,['FCRM-42','FCRM-77','FCRM-78']);
   assert.equal(result.themeReason,answer.themeReason);
+  assert.equal(result.duplicateSearch,'unavailable');
+  assert.equal(result.themeSearch,'unavailable');
+  assert.deepEqual(result.duplicates,[]);
   assert.deepEqual(result.links,[
     {key:'FCRM-42',title:'Задача FCRM-42',kind:'related',reason:answer.links[0].reason},
     {key:'OB-45',title:'Задача OB-45',kind:'development',reason:answer.links[1].reason},
@@ -166,7 +169,8 @@ async function checkDrafts() {
 
   getMode = 'poll';
   answerForRun = {status:'clarification',question:'Где разместить кнопку?',questionReason:'Без этого нельзя описать карту действий.'};
-  assert.deepEqual(JSON.parse(await run()),{status:'clarification',message:'Где разместить кнопку?',questionReason:'Без этого нельзя описать карту действий.',sources:result.sources,urls:result.urls,mentionedIssueKeys:result.mentionedIssueKeys});
+  assert.deepEqual(JSON.parse(await run()),{status:'clarification',message:'Где разместить кнопку?',questionReason:'Без этого нельзя описать карту действий.',sources:result.sources,urls:result.urls,mentionedIssueKeys:result.mentionedIssueKeys,
+    duplicates:[],duplicateSearch:'unavailable',themeSearch:'unavailable',themes:[]});
   assert.equal(taskPolls,3);
   assert.equal(outputReads,2);
 
@@ -221,8 +225,14 @@ async function checkWrites() {
       const path = url.pathname;
       requests.push({path, method: options.method || 'GET'});
       const jql = url.searchParams.get('jql') || '';
-      if (path.endsWith('/search') && jql.includes('key in (')) return json({total:mentioned.length,issues:mentioned});
-      if (path.endsWith('/search') && jql.includes('summary ~')) return json({total:sameTitle.length,issues:sameTitle});
+      if (path.endsWith('/search') && jql.includes('key in (')) {
+        assert.equal(url.searchParams.get('fields'),'summary,project,labels');
+        return json({total:mentioned.length,issues:mentioned});
+      }
+      if (path.endsWith('/search') && jql.includes('summary ~')) {
+        assert.equal(url.searchParams.get('fields'),'summary,labels');
+        return json({total:sameTitle.length,issues:sameTitle});
+      }
       if (path.endsWith('/search')) return json({total:current && searchReady ? 1 : 0,issues:current && searchReady ? [current] : []});
       if (path.includes('/createmeta/')) return json({total:createMeta.length,values:createMeta});
       if (path.endsWith('/FCRM/components')) return json([{id:'20'}]);
@@ -278,8 +288,8 @@ async function checkWrites() {
   function assertOnlyReadOperationsSince(before) {
     assert.ok(requests.slice(before).every(request=>request.method === 'GET' && !request.path.endsWith('/remotelink')));
   }
-  function issue(key, summary) {
-    return {key,fields:{project:{key:'FCRM'},summary}};
+  function issue(key, summary, labels = []) {
+    return {key,fields:{project:{key:'FCRM'},summary,labels}};
   }
   async function inspect(expectedState, inspectInput = input) {
     const before = requests.length;
@@ -292,9 +302,11 @@ async function checkWrites() {
     return result.issues;
   }
   assert.equal((await inspect('ready')).length,0);
-  const mentions = {...input,mentionedIssueKeys:['FCRM-42']};
-  mentioned = [issue('FCRM-42','Reported by the source thread')];
-  sameTitle = [issue('FCRM-43',input.summary.toUpperCase()),issue('FCRM-44',input.summary + ' sibling')];
+  const mentions = {...input,mentionedIssueKeys:['FCRM-42','FCRM-55']};
+  const themeLabel = 'fcrm_umb_epic';
+  mentioned = [issue('FCRM-42','Reported by the source thread'),issue('FCRM-55','Упомянутая тематика',[themeLabel])];
+  sameTitle = [issue('FCRM-43',input.summary.toUpperCase()),issue('FCRM-44',input.summary + ' sibling'),
+    issue('FCRM-56',input.summary,[themeLabel])];
   const duplicates = await inspect('possible-duplicate',mentions);
   assert.deepEqual(Array.from(duplicates, item => item.key),['FCRM-42','FCRM-43']);
   assert.equal(duplicates[0].title,mentioned[0].fields.summary);
@@ -358,6 +370,7 @@ async function checkWrites() {
   searchReady = false;
   assert.equal((await inspect('ready')).length,0);
   searchReady = true;
+  current.fields.labels=[themeLabel];
   const beforeLateExact = requests.length;
   assertExistingWithoutLinks(await writer.create({...input,summary:'Редактированный черновик'}));
   assertOnlyReadOperationsSince(beforeLateExact);
@@ -405,16 +418,20 @@ async function checkSelectedLinks() {
   const developmentKey = 'OB-45';
   const relatedKey = 'FCRM-42';
   const duplicateKey = 'FCRM-44';
+  const blockedKey = 'FCRM-56';
+  const blockerKey = 'FCRM-57';
   const uncheckedKey = 'FCRM-53';
   const descriptions = new Map();
-  const themeType = {name:'Project',inward:'Задача проекта',outward:'В проекте'};
+  const themeType = {id:'3',name:'Project',inward:'Задача проекта',outward:'В проекте'};
   const relatedType = {name:'Relates',inward:'Relates to',outward:'Relates to'};
-  const duplicateType = {name:'Dupes',inward:'Дублировано с',outward:'Дубликат'};
+  const duplicateType = {id:'4',name:'Dupes',inward:'Дублировано с',outward:'Дубликат'};
+  const blockingType = {id:'123',name:'Blocks',inward:'Заблокировано',outward:'Блокирует'};
   const relationships = new Map();
   const operations = [];
   const journal = new Map();
   const sourceLinks = [];
   let missingMetadata = false;
+  let allowedBlockingType = true;
   let hasRelatedAccess = false;
   let acceptRelatedWrite = false;
   let linkId = 0;
@@ -446,9 +463,15 @@ async function checkSelectedLinks() {
         descriptions.set(issueKey,fields);
         return json({key:issueKey},201);
       }
-      if (path === 'issueLinkType') return json({issueLinkTypes:[relatedType,themeType,duplicateType]});
+      if (path === 'issueLinkType') return json({issueLinkTypes:[relatedType,themeType,duplicateType,...(allowedBlockingType ? [blockingType] : [])]});
       if (path === 'issueLink') {
         const payload = JSON.parse(options.body);
+        if (payload.type.name === 'Blocks') {
+          const inwardKey=payload.inwardIssue.key, outwardKey=payload.outwardIssue.key;
+          assert.ok(inwardKey === issueKey && outwardKey === blockedKey || inwardKey === blockerKey && outwardKey === issueKey);
+          savePair(inwardKey,outwardKey,blockingType);
+          throw new Error('Jira saved the dynamic link before the response was lost');
+        }
         if (payload.type.name === 'Dupes') {
           assert.deepEqual(payload,{type:{name:'Dupes'},inwardIssue:{key:issueKey},outwardIssue:{key:duplicateKey}});
           savePair(issueKey,duplicateKey,duplicateType);
@@ -468,7 +491,7 @@ async function checkSelectedLinks() {
       }
       const key = path.slice('issue/'.length);
       if (key === relatedKey && !hasRelatedAccess) return json({},403);
-      assert.ok([issueKey,themeKey,developmentKey,relatedKey,duplicateKey].includes(key),'Unexpected Jira request: ' + path);
+      assert.ok([issueKey,themeKey,developmentKey,relatedKey,duplicateKey,blockedKey,blockerKey].includes(key),'Unexpected Jira request: ' + path);
       const fields = descriptions.get(key) || {project:{key:key.split('-')[0]},summary:'Задача ' + key};
       return json({key,fields:{...fields,issuelinks:relationships.get(key) || []}});
     }
@@ -483,9 +506,14 @@ async function checkSelectedLinks() {
     savePair(source,proposal.key,themeType);
   });
   const input = {urls:[threadUrl],issueTypeId:'10',componentId:'20',summary:'Копирование номера карты',description:'Черновик',
-    themeKey,issueLinks:[{key:developmentKey,kind:'development'},{key:relatedKey,kind:'related'},{key:duplicateKey,kind:'duplicate'}]};
+    themeKey,issueLinks:[{key:developmentKey,kind:'development'},{key:relatedKey,kind:'related'},{key:duplicateKey,kind:'duplicate'},
+      {key:blockedKey,kind:'jira:123:outward'},{key:blockerKey,kind:'jira:123:inward'}]};
   await assert.rejects(writer.create({...input,issueLinks:[{key:developmentKey,kind:'duplicate'}]}),{code:'THREAD_LINK_INVALID'});
   assert.equal(operations.length,0);
+  const dynamicOptions=Array.from(await writer.listLinkKinds(blockedKey),({kind,label})=>[kind,label]);
+  assert.ok(dynamicOptions.some(([kind,label])=>kind === 'jira:123:outward' && label === blockingType.outward));
+  assert.ok(dynamicOptions.some(([kind,label])=>kind === 'jira:123:inward' && label === blockingType.inward));
+  assert.ok(!dynamicOptions.some(([kind])=>kind.startsWith('jira:3:')));
   missingMetadata = true;
   await assert.rejects(writer.create(input),{code:'THREAD_REQUIRED_FIELD'});
   missingMetadata = false;
@@ -493,10 +521,16 @@ async function checkSelectedLinks() {
   assert.ok(operations.every(([method]) => method === 'GET'));
   assert.equal(posts,0);
   hasRelatedAccess = true;
+  allowedBlockingType = false;
+  await assert.rejects(writer.create(input),{code:'THREAD_LINKS_INVALID'});
+  assert.equal(posts,0);
+  assert.ok(operations.every(([method])=>method === 'GET'));
+  allowedBlockingType = true;
   const result = await writer.create(input);
   assert.equal(result.title,input.summary);
   assert.deepEqual(Array.from(result.linkOutcomes,({key,kind,confirmed}) => [key,kind,confirmed]),[
-    [threadUrl,'source',true],[themeKey,'theme',true],[developmentKey,'development',true],[relatedKey,'related',false],[duplicateKey,'duplicate',true]
+    [threadUrl,'source',true],[themeKey,'theme',true],[developmentKey,'development',true],[relatedKey,'related',false],[duplicateKey,'duplicate',true],
+    [blockedKey,'jira:123:outward',true],[blockerKey,'jira:123:inward',true]
   ]);
   assert.equal(posts,1);
   const sourceDuplicate=relationships.get(issueKey).find(link=>link.outwardIssue?.key === duplicateKey);
@@ -504,6 +538,9 @@ async function checkSelectedLinks() {
   assert.equal(sourceDuplicate.type.outward,'Дубликат');
   assert.equal(targetDuplicate.type.inward,'Дублировано с');
   assert.equal(sourceDuplicate.id,targetDuplicate.id);
+  const blocking=relationships.get(issueKey).filter(link=>link.type.name === blockingType.name);
+  assert.equal(blocking.find(link=>link.outwardIssue?.key===blockedKey).id,relationships.get(blockedKey).find(link=>link.inwardIssue?.key===issueKey).id);
+  assert.equal(blocking.find(link=>link.inwardIssue?.key===blockerKey).id,relationships.get(blockerKey).find(link=>link.outwardIssue?.key===issueKey).id);
   const beforeRetry = operations.length;
   acceptRelatedWrite = true;
   const updated = await writer.retryLinks(input);
@@ -511,6 +548,11 @@ async function checkSelectedLinks() {
   assert.deepEqual(operations.slice(beforeRetry).filter(([method]) => method === 'POST'),[['POST','issueLink']]);
   assert.ok(operations.every(([,path]) => !path.endsWith(uncheckedKey)));
   assert.equal(posts,1);
+  allowedBlockingType = false;
+  const afterTypeRemoved = operations.length;
+  const changedCatalog = await writer.retryLinks(input);
+  assert.deepEqual(Array.from(changedCatalog.linkFailures),[blockedKey,blockerKey]);
+  assert.ok(operations.slice(afterTypeRemoved).every(([method])=>method === 'GET'));
 }
 
 async function checkThreadControls() {
@@ -630,7 +672,7 @@ async function checkThreadControls() {
   assert.doesNotMatch(extract('checkTask','showResultCard'),/threadWriter\.create/);
   assert.match(script,/create\.onclick = \(\) => writeTask\('create'\)/);
   assert.match(script,/confirmDuplicate\.onclick = \(\) => writeTask\('create', true\)/);
-  assert.match(script,/confirmedDuplicateKeys:reviewResult\.issues\.map\(issue => issue\.key\)/);
+  assert.match(script,/confirmedDuplicateKeys:reviewResult\.jiraDuplicateKeys \|\| reviewResult\.issues\.map\(issue => issue\.key\)/);
 }
 
 (async () => {

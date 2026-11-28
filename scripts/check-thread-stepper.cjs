@@ -29,7 +29,7 @@ async function checkPreflight(section, element) {
       preflightBack:element('button'),confirmDuplicate:element('button'),duplicateLinks:element('ul'),status:element('p'),
       pendingWrite:null,created:false,draft:null,step:1,busy:false,initialClarification:false,themeOverridden:false,
       question:{hidden:true},questionText:element('p'),reply:element('textarea'),followup:{hidden:true},
-      summary:{value:''},description:{value:'',hidden:true},descriptionView:element('div'),review:{hidden:true},
+      summary:{value:''},description:{value:'',hidden:true},descriptionView:element('div'),review:{hidden:true},themeReason:element('p'),
       selectedIssueLinks:new Map(),steps:[null,{querySelector:()=>element('h3')}],
       clearEarlyDuplicates(){},updateControls(){},fitSummary(){},renderContextSources(){},renderDescription(){},setTheme(){},
       showQuestion(text,_reason){context.question.hidden=!text;context.questionText.textContent=text || '';},
@@ -55,7 +55,8 @@ async function checkPreflight(section, element) {
         }
       }
     });
-    vm.runInContext(section('    function readResult(', '    function writeInput(') +
+    vm.runInContext(section('    function combineDuplicates(', '    function clearEarlyDuplicates(') +
+      section('    function readResult(', '    function writeInput(') +
       section('    if (preflight) {\n      preflightContinue.onclick', '    followup.onsubmit'),context);
     return {context,inspections,modelRequests,rendered,run:clarification=>vm.runInContext(
       'requestDraft('+JSON.stringify(clarification || '')+')',context)};
@@ -104,6 +105,48 @@ async function checkPreflight(section, element) {
   assert.equal(warning.context.review.hidden,false);
   assert.equal(warning.context.selectedIssueLinks.size,0);
   assert.equal(warning.context.earlyCheck,possible);
+
+  const semanticIssue = {key:'FCRM-75',title:'Другая формулировка',reason:'Совпадает идентификатор CASE-7429'};
+  const themeMatch = {key:'FCRM-70',title:'Контекстная тематика'};
+  const semanticDraft = {...modelDraft,duplicates:[semanticIssue],themes:[themeMatch],themeKey:'FCRM-70',themeReason:'Подтверждённая связь'};
+  const semantic = fixture([ready],[semanticDraft]);
+  let shownTheme;
+  semantic.context.setTheme=(theme,_manual,reason)=>{shownTheme={theme,reason};};
+  await semantic.run();
+  assert.equal(semantic.context.review.hidden,true);
+  assert.equal(semantic.context.preflightMatches.children[0].children[0].href,'/browse/FCRM-75');
+  assert.match(semantic.context.preflightMatches.children[0].children[1].textContent,/DeepSeek.*CASE-7429/);
+  assert.equal(semantic.context.preflightDraft.checked.jiraDuplicateKeys.length,0);
+  semantic.context.preflightContinue.onclick();
+  assert.equal(semantic.context.selectedIssueLinks.size,0);
+  assert.equal(shownTheme?.theme.key,'FCRM-70');
+  assert.equal(shownTheme?.reason,'Подтверждённая связь');
+
+  const mixed = fixture([possible],[{...semanticDraft,duplicates:[{...semanticIssue,key:issue.key},semanticIssue]}]);
+  await mixed.run();
+  const rows=mixed.context.preflightMatches.children;
+  assert.deepEqual(rows.map(row=>row.children[0].href),['/browse/FCRM-42','/browse/FCRM-75']);
+  assert.match(rows[0].children[1].textContent,/Упоминается в треде.*DeepSeek/);
+  assert.deepEqual(Array.from(mixed.context.preflightDraft.checked.jiraDuplicateKeys),['FCRM-42']);
+  mixed.context.reviewResult=mixed.context.preflightDraft.checked;
+  mixed.context.preflightContinue.onclick();
+  mixed.context.step=3;
+  mixed.context.checkedInput={summary:modelDraft.summary};
+  mixed.context.showWritten=()=>{};
+  mixed.context.keyLink=element('a');
+  const createdInputs=[];
+  mixed.context.threadWriter.create=async input=>{createdInputs.push(input);return {key:'FCRM-1'};};
+  vm.runInContext(section('    async function writeTask(', '    function keepOnlyInspectionError('),mixed.context);
+  await vm.runInContext("writeTask('create')",mixed.context);
+  assert.equal(createdInputs.length,0);
+  await vm.runInContext("writeTask('create',true)",mixed.context);
+  assert.equal(createdInputs.length,1);
+  assert.deepEqual(Array.from(createdInputs[0].confirmedDuplicateKeys),['FCRM-42']);
+
+  const exactWins = fixture([exact],[semanticDraft]);
+  await exactWins.run();
+  assert.equal(exactWins.context.preflightContinue.hidden,true);
+  assert.deepEqual(exactWins.context.preflightMatches.children.map(row=>row.children[0].href),['/browse/FCRM-42']);
 
   const retry = fixture([new Error('Jira timeout'),ready]);
   await retry.run();
@@ -156,7 +199,7 @@ async function checkDraftPanel() {
     return compiled.slice(from,to);
   }
   const element = tag => ({
-    tag,children:[],attributes:{},events:{},hidden:false,textContent:'',
+    tag,children:[],attributes:{},events:{},hidden:false,isConnected:true,textContent:'',
     append(...items){this.children.push(...items);},
     appendChild(item){this.append(item);},
     replaceChildren(...items){this.children=items;},
@@ -174,6 +217,7 @@ async function checkDraftPanel() {
     draft,requestSnapshot:{issueTypeId:'10',componentId:'20'},step:2,summary:{value:draft.summary},normalizedSummary:text=>text.trim(),
     selectedTheme:null,loadingLink:false,busy:false,pendingWrite:null,created:false,
     selectedIssueLinks:new Map(),linkEdits:new Map(),hiddenIssueLinks:new Set(),issueProposals:element('div'),
+    linkKindsByKey:new Map(),linkKindLabels:new Map(),
     linkedSources:element('div'),linkStatus:element('small'),linkField:element('input'),earlyDuplicates:element('section'),
     earlyStatus:element('p'),earlyMatches:element('ul'),earlySerial:0,earlyTimer:0,
     description:{...element('textarea'),hidden:true,value:'h2. Цель\n* <img src=x onerror=alert(1)>\n# Уточнить [условие|https://example.invalid/a]'},
@@ -185,6 +229,7 @@ async function checkDraftPanel() {
       getBoundingClientRect(){return {width:context.width};}},
     threadWriter:{
       inspect:input=>{inspections.push(input);return Promise.resolve(checked);},
+      listLinkKinds:async key=>key === 'FCRM-42' ? [{kind:'jira:123:outward',label:'Блокирует'}] : [],
       resolveLinkTarget:async key=>{
         lookups.push(key);
         if (key === 'FCRM-43') throw Object.assign(new Error('forbidden'),{status:403});
@@ -200,6 +245,7 @@ async function checkDraftPanel() {
     context
   );
   assert.match(compiled,/data-thread-description-read aria-pressed="true"/);
+  assert.match(compiled,/Связи с задачами Jira <small[^>]*>Необязательно<\/small>/);
   assert.match(compiled,/<textarea name="draftDescription"[^>]* hidden>/);
   context.descriptionEdit.onclick();
   assert.equal(context.description.hidden,false);
@@ -241,10 +287,11 @@ async function checkDraftPanel() {
   assert.deepEqual(selected(),[]);
   proposed.children[0].checked=true;
   proposed.children[0].events.change();
-  proposed.children[2].value='related';
-  proposed.children[2].events.change();
+  const [type,remove]=proposed.children[2].children;
+  type.value='related';
+  type.events.change();
   assert.deepEqual(selected(),[{key:'OB-45',kind:'related'}]);
-  proposed.children[3].onclick();
+  remove.onclick();
   assert.deepEqual(selected(),[]);
   assert.equal(context.linkField.focused,true);
 
@@ -284,8 +331,12 @@ async function checkDraftPanel() {
   assert.deepEqual(selected(),[{key:'FTD-99',kind:'related'},{key:'FCRM-42',kind:'related'}]);
   assert.match(matches[0].children[1].textContent,/В списке связей/);
   const candidate=context.issueProposals.children.find(row=>row.children[0]?.attributes['aria-label'] === 'Добавить связь с FCRM-42');
-  const kindPicker=candidate.children[2];
-  assert.deepEqual(kindPicker.children.map(option=>option.textContent),['Связанная задача','Дубликат']);
+  const kindPicker=candidate.children[2].children[0];
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(kindPicker.children.map(option=>option.textContent),['Связанная задача','Дубликат','Блокирует']);
+  kindPicker.value='jira:123:outward';
+  kindPicker.events.change();
+  assert.deepEqual(selected(),[{key:'FTD-99',kind:'related'},{key:'FCRM-42',kind:'jira:123:outward'}]);
   kindPicker.value='duplicate';
   kindPicker.events.change();
   const selectedAfterEdit=[{key:'FTD-99',kind:'related'},{key:'FCRM-42',kind:'duplicate'}];

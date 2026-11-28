@@ -18,9 +18,12 @@ export function createFcrmThreadWriter(
     issueLinks?: IssueLinkProposal[];
   };
   type Source = {id: string; url: string; marker: string};
-  type IssueLinkProposal = {key: string; kind: 'development' | 'related' | 'duplicate'};
+  type Direction = 'inward' | 'outward';
+  type DynamicLinkKind = `jira:${string}:${Direction}`;
+  type IssueLinkProposal = {key: string; kind: 'development' | 'related' | 'duplicate' | DynamicLinkKind};
   type LinkProposal = IssueLinkProposal | {key: string; kind: 'theme'};
-  type IssueLinkType = {name: string; inward: string; outward: string};
+  type IssueLinkType = {id?: string; name: string; inward: string; outward: string};
+  type LinkSelection = {type: IssueLinkType; direction: Direction};
   type LinkOutcome = {key: string; kind: LinkProposal['kind'] | 'source'; confirmed: boolean};
   type Candidate = {key: string; title: string; reason: string};
   type Inspection = {state: 'ready' | 'existing' | 'possible-duplicate' | 'uncertain'; issues: Candidate[]};
@@ -58,6 +61,7 @@ export function createFcrmThreadWriter(
   const api = '/rest/api/2/';
   const journalKey = 'ozon-fcrm-thread-creation-v1';
   const project = 'FCRM';
+  const isTheme = (issue: Issue) => issue?.fields?.labels?.includes('fcrm_umb_epic') === true;
   const isIssueKey = (key: unknown): key is string => typeof key === 'string' && /^FCRM-\d+$/.test(key);
   const issuePath = (key: string) => 'issue/' + encodeURIComponent(key);
   const projectTask = /^(задача проекта|project task)$/i;
@@ -65,6 +69,68 @@ export function createFcrmThreadWriter(
   const related = /^(связанная задача|relates(?: to)?)$/i;
   const duplicates = /^(дубликат|duplicates)$/i;
   const duplicatedBy = /^(дублировано с|is duplicated by)$/i;
+  const allowedTarget = /^(FCRM|OB|OBFRONT|FTD|FACS)-\d+$/;
+  const dynamicLinkKind = /^jira:([1-9]\d*):(inward|outward)$/;
+  const caption = (value: unknown) => typeof value === 'string' ? value.trim() : '';
+  const equalCaption = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
+  function isReservedLinkType(type: IssueLinkType) {
+    const inward = caption(type.inward);
+    const outward = caption(type.outward);
+    return projectTask.test(inward) || projectTask.test(outward) || inProject.test(inward) || inProject.test(outward) ||
+      (related.test(inward) && related.test(outward)) ||
+      (duplicatedBy.test(inward) && duplicates.test(outward)) ||
+      (duplicates.test(inward) && duplicatedBy.test(outward));
+  }
+
+  async function loadLinkTypes() {
+    const catalog = await request<{issueLinkTypes?: IssueLinkType[]}>('issueLinkType');
+    if (!Array.isArray(catalog?.issueLinkTypes)) {
+      throw failure('Jira не подтвердила список типов связей.', 'THREAD_LINKS_INVALID');
+    }
+    return catalog.issueLinkTypes.filter(type => caption(type?.name) && caption(type?.inward) && caption(type?.outward));
+  }
+
+  function isSelectableLinkType(type: IssueLinkType, types: IssueLinkType[]) {
+    return /^[1-9]\d*$/.test(String(type.id)) && !isReservedLinkType(type) &&
+      types.filter(item => String(item.id) === String(type.id)).length === 1 &&
+      types.filter(item => equalCaption(caption(item.name), caption(type.name))).length === 1;
+  }
+
+  async function listLinkKinds(key: string): Promise<{kind: IssueLinkProposal['kind']; label: string}[]> {
+    if (!allowedTarget.test(key)) throw failure('Проверьте ключ задачи Jira.', 'THREAD_LINK_INVALID');
+    const types = await loadLinkTypes();
+    const options: {kind: IssueLinkProposal['kind']; label: string}[] = [];
+    if (!isIssueKey(key)) options.push({kind: 'development', label: 'В проекте'});
+    options.push({kind: 'related', label: 'Связанная задача'});
+    if (isIssueKey(key)) options.push({kind: 'duplicate', label: 'Дубликат'});
+    for (const type of types) {
+      if (!isSelectableLinkType(type, types)) continue;
+      options.push({kind: ('jira:' + type.id + ':outward') as DynamicLinkKind, label: caption(type.outward)});
+      if (!equalCaption(caption(type.inward), caption(type.outward))) {
+        options.push({kind: ('jira:' + type.id + ':inward') as DynamicLinkKind, label: caption(type.inward)});
+      }
+    }
+    return options.map(option => {
+      const id = dynamicLinkKind.exec(option.kind)?.[1];
+      if (!id || options.filter(other => equalCaption(option.label, other.label)).length === 1) return option;
+      const name = types.find(type => String(type.id) === id)?.name;
+      return name ? {...option, label: option.label + ' (' + name + ')'} : option;
+    });
+  }
+
+  function resolveSelectedLinkType(types: IssueLinkType[], kind: string): LinkSelection {
+    const match = dynamicLinkKind.exec(kind);
+    const type = match && types.find(item => String(item.id) === match[1]);
+    if (!match || !type || !isSelectableLinkType(type, types)) {
+      throw failure('Выбранный тип связи больше недоступен в Jira.', 'THREAD_LINKS_INVALID');
+    }
+    const direction = match[2] as Direction;
+    if (direction === 'inward' && equalCaption(caption(type.inward), caption(type.outward))) {
+      throw failure('Обновите список и выберите доступное направление связи.', 'THREAD_LINKS_INVALID');
+    }
+    return {type, direction};
+  }
 
   function failure(message: string, code: string, status?: number) {
     return Object.assign(new Error(message), {code, status});
@@ -248,18 +314,18 @@ export function createFcrmThreadWriter(
   async function findMentionedIssues(inputKeys: string[] | undefined) {
     const keys = [...new Set((inputKeys || []).filter(isIssueKey))].slice(0, 12);
     if (!keys.length) return [];
-    const confirmed = await search('key in (' + keys.join(',') + ')', 'summary,project');
-    return confirmed.filter(issue => keys.includes(issue?.key) && issue.fields?.project?.key === project);
+    const confirmed = await search('key in (' + keys.join(',') + ')', 'summary,project,labels');
+    return confirmed.filter(issue => keys.includes(issue?.key) && issue.fields?.project?.key === project && !isTheme(issue));
   }
 
   async function findIssuesWithSameSummary(summary: string) {
     const words = summary.match(/[\p{L}\p{N}]+/gu)?.slice(0, 8) || [];
     if (!words.length) return [];
     const query = 'summary ~ ' + quoteJql('"' + words.join(' ') + '"');
-    const candidates = await search(query, 'summary');
+    const candidates = await search(query, 'summary,labels');
     const normalize = (value: string) => value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('ru');
     return candidates.filter(issue => isIssueKey(issue?.key) &&
-      typeof issue.fields?.summary === 'string' && normalize(issue.fields.summary) === normalize(summary));
+      !isTheme(issue) && typeof issue.fields?.summary === 'string' && normalize(issue.fields.summary) === normalize(summary));
   }
 
   async function findPossibleDuplicates(input: Input): Promise<Candidate[]> {
@@ -430,9 +496,10 @@ export function createFcrmThreadWriter(
       const key = typeof proposal?.key === 'string' ? proposal.key.trim().toUpperCase() : '';
       const kind = proposal?.kind;
       const validDevelopment = kind === 'development' && /^(OB|OBFRONT|FTD|FACS)-\d+$/.test(key);
-      const validRelated = kind === 'related' && /^(FCRM|OB|OBFRONT|FTD|FACS)-\d+$/.test(key);
+      const validRelated = kind === 'related' && allowedTarget.test(key);
       const validDuplicate = kind === 'duplicate' && isIssueKey(key);
-      if ((!validDevelopment && !validRelated && !validDuplicate) || key === themeKey ||
+      const validDynamic = typeof kind === 'string' && dynamicLinkKind.test(kind) && allowedTarget.test(key);
+      if ((!validDevelopment && !validRelated && !validDuplicate && !validDynamic) || key === themeKey ||
           (selected.has(key) && selected.get(key)?.kind !== kind)) {
         throw failure('Проверьте выбранные ключи и типы связей Jira.', 'THREAD_LINK_INVALID');
       }
@@ -450,7 +517,7 @@ export function createFcrmThreadWriter(
   }
 
   async function resolveLinkTarget(key: string) {
-    if (!/^(FCRM|OB|OBFRONT|FTD|FACS)-\d+$/.test(key)) {
+    if (!allowedTarget.test(key)) {
       throw failure('Проверьте ключ задачи Jira.', 'THREAD_LINK_INVALID');
     }
     return {key, title:await verifyLinkTarget(key)};
@@ -464,13 +531,35 @@ export function createFcrmThreadWriter(
     );
   }
 
-  async function checkIssueLink(sourceKey: string, proposal: LinkProposal, typeName?: string) {
+  async function checkIssueLink(sourceKey: string, proposal: LinkProposal, typeName?: string, selection?: LinkSelection) {
     const [source, target] = await Promise.all([
       readIssue(sourceKey, 'issuelinks'),
       readIssue(proposal.key, 'issuelinks')
     ]);
     if (!Array.isArray(source.issuelinks) || !Array.isArray(target.issuelinks)) {
       throw failure('Jira не подтвердила текущие связи.', 'THREAD_LINKS_INVALID');
+    }
+    if (selection) {
+      const {type, direction} = selection;
+      const reverse: Direction = direction === 'inward' ? 'outward' : 'inward';
+      const symmetric = equalCaption(caption(type.inward), caption(type.outward));
+      const from = (fields: Fields, peer: string, side: Direction) => fields.issuelinks!.filter(link => {
+        const sameType = link.type?.id != null
+          ? String(link.type.id) === String(type.id)
+          : link.type?.name === type.name;
+        return sameType && link[side === 'inward' ? 'inwardIssue' : 'outwardIssue']?.key === peer &&
+          equalCaption(caption(link.type?.[side]), caption(type[side]));
+      });
+      const sourceLinks = from(source, proposal.key, direction);
+      const targetLinks = from(target, sourceKey, reverse);
+      const inverseSource = from(source, proposal.key, reverse);
+      const inverseTarget = from(target, sourceKey, direction);
+      const sameLink = (a: typeof sourceLinks, b: typeof targetLinks) =>
+        a.some(link => !!link.id && b.some(other => String(other.id) === String(link.id)));
+      return {
+        confirmed: sameLink(sourceLinks, targetLinks) || (symmetric && sameLink(inverseSource, inverseTarget)),
+        present: !!(sourceLinks.length || targetLinks.length || inverseSource.length || inverseTarget.length)
+      };
     }
     const sourceCaption = proposal.kind === 'theme' ? projectTask : proposal.kind === 'development' ? inProject : proposal.kind === 'duplicate' ? duplicates : related;
     const targetCaption = proposal.kind === 'theme' ? inProject : proposal.kind === 'development' ? projectTask : proposal.kind === 'duplicate' ? duplicatedBy : related;
@@ -495,12 +584,16 @@ export function createFcrmThreadWriter(
     sourceKey: string,
     proposal: LinkProposal,
     write: boolean,
-    linkType: (kind: 'related' | 'duplicate') => Promise<string>
+    getLinkTypes: () => Promise<IssueLinkType[]>
   ) {
     if (sourceKey === proposal.key) return false;
-    const customLink = proposal.kind === 'related' || proposal.kind === 'duplicate';
-    const typeName = customLink ? await linkType(proposal.kind as 'related' | 'duplicate') : undefined;
-    const before = await checkIssueLink(sourceKey, proposal, typeName);
+    const selection = dynamicLinkKind.test(proposal.kind)
+      ? resolveSelectedLinkType(await getLinkTypes(), proposal.kind)
+      : undefined;
+    const typeName = proposal.kind === 'related' || proposal.kind === 'duplicate'
+      ? resolveLinkType(await getLinkTypes(), proposal.kind)
+      : selection?.type.name;
+    const before = await checkIssueLink(sourceKey, proposal, typeName, selection);
     if (before.confirmed || !write || before.present) return before.confirmed;
     try {
       await verifyLinkTarget(proposal.key);
@@ -509,16 +602,17 @@ export function createFcrmThreadWriter(
       } else if (proposal.kind === 'development') {
         await applyDevelopmentLink?.(sourceKey, {key: proposal.key, kind: 'development'});
       } else {
+        const sourceIsInward = selection ? selection.direction === 'outward' : proposal.kind === 'duplicate';
         await request('issueLink', 'POST', {
           type: {name: typeName},
-          inwardIssue: {key: proposal.kind === 'duplicate' ? sourceKey : proposal.key},
-          outwardIssue: {key: proposal.kind === 'duplicate' ? proposal.key : sourceKey}
+          inwardIssue: {key: sourceIsInward ? sourceKey : proposal.key},
+          outwardIssue: {key: sourceIsInward ? proposal.key : sourceKey}
         }, false);
       }
     } catch {
       // A failure to receive the response can still mean Jira saved the link.
     }
-    return (await checkIssueLink(sourceKey, proposal, typeName)).confirmed;
+    return (await checkIssueLink(sourceKey, proposal, typeName, selection)).confirmed;
   }
 
   async function finish(
@@ -530,13 +624,10 @@ export function createFcrmThreadWriter(
     const missingSources = await linkSources(issue.key, sources, write);
     const linkOutcomes: LinkOutcome[] = sources.map(({url}) =>
       ({key: url, kind: 'source', confirmed: !missingSources.includes(url)}));
-    let typesRequest: Promise<{issueLinkTypes: IssueLinkType[]}> | undefined;
-    const linkType = async (kind: 'related' | 'duplicate') => {
-      typesRequest ||= request<{issueLinkTypes: IssueLinkType[]}>('issueLinkType');
-      return resolveLinkType((await typesRequest).issueLinkTypes || [], kind);
-    };
+    let typesRequest: Promise<IssueLinkType[]> | undefined;
+    const getLinkTypes = () => typesRequest ||= loadLinkTypes();
     for (const proposal of proposals) {
-      const confirmed = await verifyOrApplyIssueLink(issue.key, proposal, write, linkType).catch(() => false);
+      const confirmed = await verifyOrApplyIssueLink(issue.key, proposal, write, getLinkTypes).catch(() => false);
       linkOutcomes.push({...proposal, confirmed});
     }
     const linkFailures = linkOutcomes.filter(link => !link.confirmed).map(link => link.key);
@@ -623,6 +714,11 @@ export function createFcrmThreadWriter(
 
       const fields = await buildFields(input, sources);
       await Promise.all(proposals.map(proposal => verifyLinkTarget(proposal.key)));
+      const customLinks = proposals.filter(proposal => dynamicLinkKind.test(proposal.kind));
+      if (customLinks.length) {
+        const types = await loadLinkTypes();
+        for (const proposal of customLinks) resolveSelectedLinkType(types, proposal.kind);
+      }
       await verifyDuplicateConfirmation(input);
       writeJournal(journal, sources, {});
       let receipt: {key?: string};
@@ -668,5 +764,5 @@ export function createFcrmThreadWriter(
     });
   }
 
-  return {inspect, create, recover, retryLinks, resolveLinkTarget};
+  return {inspect, create, recover, retryLinks, resolveLinkTarget, listLinkKinds};
 }
