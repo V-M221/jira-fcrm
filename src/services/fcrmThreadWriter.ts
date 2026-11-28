@@ -14,6 +14,8 @@ export function createFcrmThreadWriter(
     description: string;
     themeKey?: string;
     confirmedDuplicateKeys?: string[];
+    confirmedExistingKeys?: string[];
+    separateIntentId?: string;
     mentionedIssueKeys?: string[];
     issueLinks?: IssueLinkProposal[];
   };
@@ -26,7 +28,7 @@ export function createFcrmThreadWriter(
   type LinkSelection = {type: IssueLinkType; direction: Direction};
   type LinkOutcome = {key: string; kind: LinkProposal['kind'] | 'source'; confirmed: boolean};
   type Candidate = {key: string; title: string; reason: string};
-  type Inspection = {state: 'ready' | 'existing' | 'possible-duplicate' | 'uncertain'; issues: Candidate[]};
+  type Inspection = {state: 'ready' | 'existing' | 'possible-duplicate' | 'uncertain'; issues: Candidate[]; possibleIssues?: Candidate[]};
   type Fields = {
     summary?: string;
     description?: string;
@@ -54,7 +56,14 @@ export function createFcrmThreadWriter(
     defaultValue?: unknown;
   };
   type MetaFields = Record<string, MetaField>;
-  type JournalRecord = {key?: string; verified?: boolean; receipt?: false};
+  type SeparateReceipt = {
+    sourceMarkers: string[];
+    fingerprint: string;
+    confirmedKeys: string[];
+    confirmedDuplicateKeys: string[];
+  };
+  type SeparateIntent = {journalId: string; receipt: SeparateReceipt};
+  type JournalRecord = {key?: string; verified?: boolean; receipt?: false; separate?: SeparateReceipt};
   type Journal = Record<string, JournalRecord>;
   type RemoteLink = {object?: {url?: string}};
 
@@ -150,6 +159,11 @@ export function createFcrmThreadWriter(
     return {id: match[1], url: url.origin + url.pathname.replace(/\/$/, '')};
   }
 
+  async function digest(value: string) {
+    const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+    return Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('');
+  }
+
   async function normalizeSources(urls: string[]): Promise<Source[]> {
     if (!Array.isArray(urls) || !urls.length) {
       throw failure('Укажите хотя бы один тред chatZone.', 'THREAD_SOURCE_INVALID');
@@ -166,11 +180,8 @@ export function createFcrmThreadWriter(
     } catch {
       throw failure('Проверьте ссылки на исходные треды chatZone.', 'THREAD_SOURCE_INVALID');
     }
-    return Promise.all([...sources.values()].map(async source => {
-      const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(source.id));
-      const hex = Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('');
-      return {...source, marker: 'fcrm_thread_' + hex};
-    }));
+    return Promise.all([...sources.values()].map(async source =>
+      ({...source, marker: 'fcrm_thread_' + await digest(source.id)})));
   }
 
   async function request<T>(path: string, method: 'GET' | 'POST' = 'GET', body?: unknown, expectJson = true): Promise<T> {
@@ -214,16 +225,26 @@ export function createFcrmThreadWriter(
     }
   }
 
-  function writeJournal(journal: Journal, sources: Source[], record: JournalRecord | null) {
-    for (const {marker} of sources) {
-      if (record) journal[marker] = record;
-      else delete journal[marker];
-    }
+  function saveJournal(journal: Journal) {
     try {
       localStorage.setItem(journalKey, JSON.stringify(journal));
     } catch {
       throw failure('Не удалось сохранить состояние создания в браузере.', 'THREAD_JOURNAL_UNAVAILABLE');
     }
+  }
+
+  function writeJournal(journal: Journal, sources: Source[], record: JournalRecord | null) {
+    for (const {marker} of sources) {
+      if (record) journal[marker] = record;
+      else delete journal[marker];
+    }
+    saveJournal(journal);
+  }
+
+  function writeSeparateJournal(journal: Journal, intent: SeparateIntent, record: JournalRecord | null) {
+    if (record) journal[intent.journalId] = {...record, separate: intent.receipt};
+    else delete journal[intent.journalId];
+    saveJournal(journal);
   }
 
   const quoteJql = (value: string) => '"' + value.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
@@ -277,30 +298,51 @@ export function createFcrmThreadWriter(
     return sources.some(({marker}) => marker in journal && !journal[marker].verified);
   }
 
-  async function findExistingIssues(journal: Journal, sources: Source[]) {
+  function separateCreations(journal: Journal, sources: Source[]) {
+    const markers = new Set(sources.map(source => source.marker));
+    return Object.entries(journal).filter(([id, record]) =>
+      id.startsWith('separate:') && Array.isArray(record?.separate?.sourceMarkers) &&
+      record.separate.sourceMarkers.some(marker => markers.has(marker)));
+  }
+
+  function hasPendingSeparateCreation(journal: Journal, sources: Source[]) {
+    return separateCreations(journal, sources).some(([, record]) => !record.verified);
+  }
+
+  async function findExistingIssues(journal: Journal, sources: Source[], searchAll = false) {
     const reason = 'Совпадает исходный тред chatZone';
-    const keys = [...new Set(sources.map(source => journal[source.marker]?.key).filter(isIssueKey))];
+    const trackedKeys = sources.map(source => journal[source.marker]?.key);
+    const separateKeys = separateCreations(journal, sources).flatMap(([, record]) => record.verified ? [record.key] : []);
+    const keys = new Set([...trackedKeys, ...separateKeys].filter(isIssueKey));
     const found = new Map<string, Candidate>();
-    const confirmed = await Promise.all(keys.map(async key => {
-      const fields = await readIssue(key, 'project,labels,description,summary');
-      if (fields.project?.key !== project || !sources.some(source => matchesSource(fields, source))) throw unknown();
+    const confirmed = await Promise.all([...keys].map(async key => {
+      const fields = await readIssue(key, 'project,labels,description,summary').catch(error => {
+        if (searchAll && error.status === 404) return null;
+        throw error;
+      });
+      if (!fields) return null;
+      if (fields.project?.key !== project || !sources.some(source => matchesSource(fields, source))) {
+        if (searchAll) return null;
+        throw unknown();
+      }
       return candidate({key, fields}, reason);
     }));
-    for (const issue of confirmed) found.set(issue.key, issue);
+    for (const issue of confirmed) if (issue) found.set(issue.key, issue);
 
-    const untracked = sources.filter(source => !isIssueKey(journal[source.marker]?.key));
+    const untracked = searchAll ? sources : sources.filter(source => !isIssueKey(journal[source.marker]?.key));
     for (let start = 0; start < untracked.length; start += 8) {
       const batch = untracked.slice(start, start + 8);
       const labels = 'labels in (' + batch.map(source => quoteJql(source.marker)).join(',') + ')';
       const legacyDescriptions = batch.map(source => 'description ~ ' + quoteJql(source.id));
       const issues = await search([labels, ...legacyDescriptions].join(' OR '), 'labels,description,summary');
       for (const issue of issues) {
-        if (isIssueKey(issue?.key) && issue.fields && batch.some(source => matchesSource(issue.fields, source))) {
+        if (isIssueKey(issue?.key) && !(searchAll && keys.has(issue.key)) &&
+            issue.fields && batch.some(source => matchesSource(issue.fields, source))) {
           found.set(issue.key, candidate(issue, reason));
         }
       }
     }
-    return [...found.values()];
+    return [...found.values()].sort((a, b) => a.key.localeCompare(b.key));
   }
 
   async function locateIssue(journal: Journal, sources: Source[]) {
@@ -346,19 +388,25 @@ export function createFcrmThreadWriter(
   async function inspect(input: Input): Promise<Inspection> {
     const sources = await normalizeSources(input.urls);
     const journal = readJournal();
-    if (hasPendingCreation(journal, sources)) {
-      const issues = await findExistingIssues(journal, sources).catch(() => []);
+    if (hasPendingCreation(journal, sources) || hasPendingSeparateCreation(journal, sources)) {
+      const issues = await findExistingIssues(journal, sources, true).catch(() => []);
       return {state: 'uncertain', issues};
     }
-    const existing = await findExistingIssues(journal, sources);
-    if (existing.length) return {state: 'existing', issues: existing};
+    const existing = await findExistingIssues(journal, sources, true);
+    if (existing.length) {
+      const keys = new Set(existing.map(issue => issue.key));
+      const possibleIssues = await findPossibleDuplicates(input).then(issues =>
+        issues.filter(issue => !keys.has(issue.key))).catch(() => undefined);
+      return {state: 'existing', issues: existing, possibleIssues};
+    }
     const possible = await findPossibleDuplicates(input);
     return {state: possible.length ? 'possible-duplicate' : 'ready', issues: possible};
   }
 
-  async function verifyDuplicateConfirmation(input: Input) {
-    const issues = await findPossibleDuplicates(input);
-    const confirmed = new Set(input.confirmedDuplicateKeys || []);
+  async function verifyDuplicateConfirmation(input: Input, confirmedExisting: string[] = []) {
+    const exactKeys = new Set(confirmedExisting);
+    const issues = (await findPossibleDuplicates(input)).filter(issue => !exactKeys.has(issue.key));
+    const confirmed = new Set((input.confirmedDuplicateKeys || []).filter(key => !exactKeys.has(key)));
     if (confirmed.size !== issues.length || issues.some(issue => !confirmed.has(issue.key))) {
       throw Object.assign(
         failure('Проверьте текущий список возможных дублей перед созданием отдельной задачи.', 'THREAD_POSSIBLE_DUPLICATE'),
@@ -694,6 +742,91 @@ export function createFcrmThreadWriter(
     return proposals;
   }
 
+  function invalidSeparateApproval() {
+    return failure('Подтвердите создание отдельной задачи с текущими полями и совпадениями.', 'THREAD_EXACT_APPROVAL_INVALID');
+  }
+
+  async function getSeparateIntent(input: Input, sources: Source[], proposals: LinkProposal[]): Promise<SeparateIntent | null> {
+    if (input.separateIntentId === undefined && input.confirmedExistingKeys === undefined) return null;
+    if (typeof input.separateIntentId !== 'string' ||
+        !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(input.separateIntentId) ||
+        !Array.isArray(input.confirmedExistingKeys) || !input.confirmedExistingKeys.length ||
+        !input.confirmedExistingKeys.every(isIssueKey)) {
+      throw invalidSeparateApproval();
+    }
+    const confirmedKeys = [...new Set(input.confirmedExistingKeys)].sort();
+    const confirmedDuplicateKeys = [...new Set(input.confirmedDuplicateKeys || [])].sort();
+    const sourceMarkers = sources.map(source => source.marker);
+    const fingerprint = await digest(JSON.stringify({
+      urls: sources.map(source => source.url),
+      issueTypeId: input.issueTypeId,
+      componentId: input.componentId,
+      summary: input.summary.trim(),
+      description: input.description.trim(),
+      confirmedKeys,
+      confirmedDuplicateKeys,
+      mentionedIssueKeys: [...new Set(input.mentionedIssueKeys || [])].sort(),
+      proposals
+    }));
+    return {
+      journalId: 'separate:' + input.separateIntentId.toLowerCase(),
+      receipt: {sourceMarkers, fingerprint, confirmedKeys, confirmedDuplicateKeys}
+    };
+  }
+
+  function readSeparateReceipt(journal: Journal, intent: SeparateIntent) {
+    const record = journal[intent.journalId];
+    if (record && record.separate?.fingerprint !== intent.receipt.fingerprint) throw invalidSeparateApproval();
+    return record;
+  }
+
+  async function verifyExactApproval(journal: Journal, sources: Source[], intent: SeparateIntent) {
+    const issues = await findExistingIssues(journal, sources, true);
+    const approved = new Set(intent.receipt.confirmedKeys);
+    if (approved.size !== issues.length || issues.some(issue => !approved.has(issue.key))) {
+      throw Object.assign(
+        failure('Список точных совпадений изменился. Проверьте его перед созданием отдельной задачи.', 'THREAD_EXACT_REVIEW'),
+        {issueKeys: issues.map(issue => issue.key), issues}
+      );
+    }
+  }
+
+  async function finishSeparate(journal: Journal, intent: SeparateIntent, input: Input, sources: Source[], proposals: LinkProposal[], write: boolean) {
+    const key = readSeparateReceipt(journal, intent)?.key;
+    // An exact source lookup cannot recover an operation that intentionally shares the source.
+    if (!isIssueKey(key) || intent.receipt.confirmedKeys.includes(key)) throw unknown();
+    const issue = await verifyCreatedIssue(key, input, sources);
+    writeSeparateJournal(journal, intent, {key, verified: true});
+    return finish(issue, sources, proposals, write);
+  }
+
+  async function recoverPendingSeparate(
+    journal: Journal, input: Input, sources: Source[], proposals: LinkProposal[],
+    pending: ReturnType<typeof separateCreations>
+  ) {
+    if (pending.length !== 1 || hasPendingCreation(journal, sources)) throw unknown();
+    const [journalId, record] = pending[0];
+    const receipt = record.separate;
+    if (!isIssueKey(record.key) || !receipt || !Array.isArray(receipt.confirmedKeys) ||
+        !Array.isArray(receipt.confirmedDuplicateKeys) || receipt.sourceMarkers.length !== sources.length ||
+        !sources.every(source => receipt.sourceMarkers.includes(source.marker))) {
+      throw unknown();
+    }
+    const separateApproval = {
+      separateIntentId: journalId.slice('separate:'.length),
+      confirmedExistingKeys: receipt.confirmedKeys,
+      confirmedDuplicateKeys: receipt.confirmedDuplicateKeys
+    };
+    const restored = {...input, ...separateApproval, confirmedDuplicateKeys: input.confirmedDuplicateKeys ?? receipt.confirmedDuplicateKeys};
+    const intent = await getSeparateIntent(restored, sources, proposals).catch(() => null);
+    if (!intent || intent.receipt.fingerprint !== receipt.fingerprint) throw unknown();
+    const result = await finishSeparate(journal, intent, restored, sources, proposals, false).catch(error => {
+      if (error.code === 'THREAD_CREATED_DIFFERENT') throw unknown();
+      throw error;
+    });
+    return {...result, separateApproval};
+  }
+
   function withWriteLock<T>(operation: () => Promise<T>): Promise<T> {
     if (!navigator.locks?.request) {
       throw failure('Браузер не поддерживает защиту от параллельного создания.', 'THREAD_LOCK_UNAVAILABLE');
@@ -704,13 +837,21 @@ export function createFcrmThreadWriter(
   async function create(input: Input) {
     const sources = await normalizeSources(input.urls);
     const proposals = getLinkProposals(input);
+    const separate = await getSeparateIntent(input, sources, proposals);
     return withWriteLock(async () => {
       const journal = readJournal();
+      if (separate && readSeparateReceipt(journal, separate)) {
+        return finishSeparate(journal, separate, input, sources, proposals, false);
+      }
+      if (hasPendingSeparateCreation(journal, sources)) throw unknown();
       if (hasPendingCreation(journal, sources)) {
+        if (separate) throw unknown();
         return recoverCreation(journal, input, sources, proposals);
       }
-      const existing = await locateIssue(journal, sources);
-      if (existing) return existingResult(existing);
+      if (!separate) {
+        const existing = await locateIssue(journal, sources);
+        if (existing) return existingResult(existing);
+      }
 
       const fields = await buildFields(input, sources);
       await Promise.all(proposals.map(proposal => verifyLinkTarget(proposal.key)));
@@ -719,25 +860,34 @@ export function createFcrmThreadWriter(
         const types = await loadLinkTypes();
         for (const proposal of customLinks) resolveSelectedLinkType(types, proposal.kind);
       }
-      await verifyDuplicateConfirmation(input);
-      writeJournal(journal, sources, {});
+      if (separate) await verifyExactApproval(journal, sources, separate);
+      await verifyDuplicateConfirmation(input, separate?.receipt.confirmedKeys);
+      const remember = (record: JournalRecord | null) => separate
+        ? writeSeparateJournal(journal, separate, record)
+        : writeJournal(journal, sources, record);
+      remember({});
       let receipt: {key?: string};
       try {
         receipt = await request('issue', 'POST', {fields});
       } catch (error) {
         if ([400, 401, 403, 404, 405, 415, 422].includes((error as {status?: number}).status ?? 0)) {
-          writeJournal(journal, sources, null);
+          remember(null);
           throw error;
         }
+        if (separate) throw unknown();
         return recoverCreation(journal, input, sources, proposals);
       }
       const key = receipt?.key;
-      if (!isIssueKey(key)) return recoverCreation(journal, input, sources, proposals);
+      if (!isIssueKey(key) || separate?.receipt.confirmedKeys.includes(key)) {
+        if (separate) throw unknown();
+        return recoverCreation(journal, input, sources, proposals);
+      }
       try {
-        writeJournal(journal, sources, {key});
+        remember({key});
       } catch {
         throw unknown();
       }
+      if (separate) return finishSeparate(journal, separate, input, sources, proposals, true);
       const issue = await verifyCreatedIssue(key, input, sources);
       writeJournal(journal, sources, {key, verified: true});
       return finish(issue, sources, proposals, true);
@@ -746,14 +896,27 @@ export function createFcrmThreadWriter(
 
   async function recover(input: Input) {
     const sources = await normalizeSources(input.urls);
-    return withWriteLock(() => recoverCreation(readJournal(), input, sources, getLinkProposals(input)));
+    const proposals = getLinkProposals(input);
+    const separate = await getSeparateIntent(input, sources, proposals);
+    return withWriteLock(async () => {
+      const journal = readJournal();
+      if (separate) return finishSeparate(journal, separate, input, sources, proposals, false);
+      const pending = separateCreations(journal, sources).filter(([, record]) => !record.verified);
+      if (pending.length) return recoverPendingSeparate(journal, input, sources, proposals, pending);
+      return recoverCreation(journal, input, sources, proposals);
+    });
   }
 
   async function retryLinks(input: Input) {
     const sources = await normalizeSources(input.urls);
     const proposals = getLinkProposals(input);
+    const separate = await getSeparateIntent(input, sources, proposals);
     return withWriteLock(async () => {
       const journal = readJournal();
+      if (separate) return finishSeparate(journal, separate, input, sources, proposals, true);
+      if (separateCreations(journal, sources).length) {
+        throw failure('Для добавления связей подтвердите, какую задачу вы восстанавливаете.', 'THREAD_LINKS_UNOWNED');
+      }
       const key = journal[sources[0].marker]?.key;
       if (!isIssueKey(key) || !hasOwnReceipt(journal, sources, key)) {
         throw failure('Добавить связи можно только к задаче, созданной этим запросом.', 'THREAD_LINKS_UNOWNED');

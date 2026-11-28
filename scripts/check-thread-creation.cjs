@@ -65,7 +65,7 @@ async function checkDrafts() {
       assert.equal(options.redirect,'manual');
     }
     if (url.hostname === 'jit.o3.ru') {
-      assert.equal(url.searchParams.get('fields'),'summary,description,comment,issuelinks,labels');
+      assert.equal(url.searchParams.get('fields'),'summary,description,comment,issuelinks,labels,status');
       const key = path.split('/').at(-1);
       if (key === 'FCRM-77') return json({},403);
       if (key === 'FCRM-78') return json({},401);
@@ -127,7 +127,7 @@ async function checkDrafts() {
   assert.deepEqual(result.urls,[threadUrl]);
   assert.deepEqual(result.mentionedIssueKeys,['FCRM-42','FCRM-77','FCRM-78']);
   assert.equal(result.themeReason,answer.themeReason);
-  assert.equal(result.duplicateSearch,'unavailable');
+  assert.equal(result.duplicateSearch,'partial');
   assert.equal(result.themeSearch,'unavailable');
   assert.deepEqual(result.duplicates,[]);
   assert.deepEqual(result.links,[
@@ -170,7 +170,7 @@ async function checkDrafts() {
   getMode = 'poll';
   answerForRun = {status:'clarification',question:'Где разместить кнопку?',questionReason:'Без этого нельзя описать карту действий.'};
   assert.deepEqual(JSON.parse(await run()),{status:'clarification',message:'Где разместить кнопку?',questionReason:'Без этого нельзя описать карту действий.',sources:result.sources,urls:result.urls,mentionedIssueKeys:result.mentionedIssueKeys,
-    duplicates:[],duplicateSearch:'unavailable',themeSearch:'unavailable',themes:[]});
+    duplicates:[],duplicateSearch:'partial',themeSearch:'unavailable',themes:[]});
   assert.equal(taskPolls,3);
   assert.equal(outputReads,2);
 

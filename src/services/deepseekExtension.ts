@@ -22,14 +22,14 @@ function isThreadReferenceEndpoint(url: URL) {
     if (url.pathname === '/rest/api/2/search') {
       if (params.length !== 3 || new Set(params).size !== 3 || query.get('fields') !== 'summary,description,components,labels,issuetype,status,issuelinks') return false;
       const jql = query.get('jql') || '';
-      const allowed = /^(project in \(FCRM,OB,OBFRONT,FTD,FACS\)|project = FCRM AND labels = fcrm_umb_epic AND statusCategory != Done) AND \((.+)\) ORDER BY updated DESC$/.exec(jql);
-      if (!allowed || query.get('maxResults') !== (allowed[1].startsWith('project in') ? '24' : '16')) return false;
+      const allowed = /^(project = FCRM|project in \(OB,OBFRONT,FTD,FACS\)|project = FCRM AND labels = fcrm_umb_epic AND statusCategory != Done) AND \((.+)\) ORDER BY updated DESC$/.exec(jql);
+      if (!allowed || query.get('maxResults') !== (allowed[1].includes('labels') ? '16' : '24')) return false;
       const terms = allowed[2].split(' OR ');
       return terms.length <= 8 && terms.every(term => /^text ~ "[\p{L}\p{N}][\p{L}\p{N}_-]{4,39}"$/u.test(term) ||
         /^key in \((?:(?:FCRM|OB|OBFRONT|FTD|FACS)-[0-9]+,){0,9}(?:FCRM|OB|OBFRONT|FTD|FACS)-[0-9]+\)$/.test(term));
     }
     return /^\/rest\/api\/2\/issue\/[A-Z][A-Z0-9_]+-[0-9]+$/.test(url.pathname) &&
-      params.length === 1 && query.get('fields') === 'summary,description,comment,issuelinks,labels';
+      params.length === 1 && query.get('fields') === 'summary,description,comment,issuelinks,labels,status';
   }
   if (url.origin !== 'https://confluence.o3.ru' && url.origin !== 'https://confluence.o3t.ru') return false;
   if (query.get('expand') !== 'body.view') return false;
@@ -147,13 +147,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   if (message?.type !== ${JSON.stringify(DEEPSEEK_CHAT_MESSAGE_TYPE)}) return;
   let readThreadReference;
-  if (message.mode === 'thread') {
+  if (message.mode === 'thread' || message.mode === 'search_fcrm') {
     let origin;
     try { origin = new URL(sender.url); } catch { return; }
     if (sender.id !== chrome.runtime.id || sender.frameId !== 0 || !Number.isInteger(sender.tab?.id) ||
         origin.origin !== 'https://jit.o3.ru' || origin.pathname !== '/secure/RapidBoard.jspa') return;
     readThreadReference = createThreadReferenceRouter(chrome, sender.tab.id, validateThreadReference);
-    if (requestId) threadPhases.set(tabRequest, 'source');
+    if (requestId && message.mode === 'thread') threadPhases.set(tabRequest, 'source');
   }
   chrome.storage.local
     .get([TOKEN_KEY, PROMPT_KEY])
@@ -643,11 +643,7 @@ export function generateIssueEnhanceJs(): string {
     heading.append(title, keyLine);
     const close = actionButton('✕', 'o3ds-header-close', closeSession, session.phase === 'applying');
     close.setAttribute('aria-label', 'Закрыть помощника');
-    const tools = document.createElement('div');
-    tools.className = 'ozon-theme-tools';
-    tools.innerHTML = widgetTheme.control();
-    tools.appendChild(close);
-    header.append(heading, tools);
+    header.append(heading, close);
     layer.appendChild(header);
 
     if (session.phase === 'context') {

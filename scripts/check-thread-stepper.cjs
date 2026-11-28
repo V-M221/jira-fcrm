@@ -88,12 +88,42 @@ async function checkPreflight(section, element) {
   const found = fixture([exact]);
   await found.run();
   assert.equal(found.context.review.hidden,true);
-  assert.equal(found.context.preflightContinue.hidden,true);
+  assert.equal(found.context.preflightContinue.hidden,false);
+  assert.match(found.context.preflightContinue.textContent,/Подготовить отдельную задачу/);
   assert.equal(found.context.preflightRetry.hidden,true);
   assert.equal(found.context.preflightMatches.children[0].children[0].href,'/browse/FCRM-42');
   assert.equal(found.context.focused,found.context.preflightTitle);
-  found.context.preflightContinue.onclick();
   assert.deepEqual(found.rendered,[]);
+  found.context.preflightContinue.onclick();
+  assert.equal(found.context.review.hidden,false);
+  assert.equal(found.context.selectedIssueLinks.size,0);
+  found.context.step=3;
+  found.context.checkedInput={summary:modelDraft.summary};
+  found.context.reviewResult={...exact,possibleIssues:[{key:'FCRM-44'}]};
+  found.context.showDuplicates=()=>{};
+  found.context.recover=element('button');
+  found.context.keyLink=element('a');
+  found.context.showWritten=result=>{found.context.created=result;};
+  const createRequests=[], recoveryRequests=[];
+  found.context.threadWriter.create=async input=>{
+    createRequests.push(input);
+    throw Object.assign(new Error('Jira response was lost'),{code:'THREAD_CREATE_UNKNOWN'});
+  };
+  found.context.threadWriter.recover=async input=>{recoveryRequests.push(input);return {key:'FCRM-77'};};
+  vm.runInContext(section('    async function writeTask(', '    function keepOnlyInspectionError('),found.context);
+  await vm.runInContext("writeTask('create')",found.context);
+  assert.equal(createRequests.length,0);
+  await vm.runInContext("writeTask('create',true)",found.context);
+  assert.equal(createRequests.length,1);
+  assert.deepEqual(Array.from(createRequests[0].confirmedExistingKeys),['FCRM-42']);
+  assert.deepEqual(Array.from(createRequests[0].confirmedDuplicateKeys),['FCRM-44']);
+  assert.match(createRequests[0].separateIntentId,/^[a-f0-9-]{36}$/i);
+  assert.equal(found.context.reviewResult.state,'uncertain');
+  await vm.runInContext("writeTask('create',true)",found.context);
+  assert.equal(createRequests.length,1);
+  await vm.runInContext("writeTask('recover')",found.context);
+  assert.equal(recoveryRequests[0],createRequests[0]);
+  assert.equal(found.context.created.key,'FCRM-77');
 
   const warning = fixture([possible]);
   await warning.run();
@@ -145,7 +175,7 @@ async function checkPreflight(section, element) {
 
   const exactWins = fixture([exact],[semanticDraft]);
   await exactWins.run();
-  assert.equal(exactWins.context.preflightContinue.hidden,true);
+  assert.equal(exactWins.context.preflightContinue.hidden,false);
   assert.deepEqual(exactWins.context.preflightMatches.children.map(row=>row.children[0].href),['/browse/FCRM-42']);
 
   const retry = fixture([new Error('Jira timeout'),ready]);
@@ -170,7 +200,7 @@ async function checkPreflight(section, element) {
   assert.match(uncertain.context.preflightMessage.textContent,/не подтверждён/);
   assert.equal(uncertain.context.preflightRetry.hidden,false);
   await uncertain.context.preflightRetry.onclick();
-  assert.equal(uncertain.context.preflightContinue.hidden,true);
+  assert.equal(uncertain.context.preflightContinue.hidden,false);
   assert.deepEqual(uncertain.rendered,[]);
 
   const ask = {status:'clarification',message:'Уточните действие',urls:modelDraft.urls};
@@ -190,6 +220,76 @@ async function checkPreflight(section, element) {
   assert.equal(revised.inspections.length,2);
 }
 
+async function checkWizardState(section, element) {
+  const names = 'verification returnToBoard footer submit preflightContinue preflightRetry preflightBack continueButton inspect createActions create confirmDuplicate confirmExact redoInspect edit recover retryLinks newTask back themeToggle descriptionEdit themeClear themeInput linkField linkAdd'.split(' ');
+  const state = Object.fromEntries(names.map(name=>[name,element('button')]));
+  const urls=element('textarea'), component=element('button'), issueType=element('button'), info=element('textarea');
+  const sourceInputs=[urls,component,issueType,info];
+  const openCombo=element('button');
+  let comboClosed=0;
+  openCombo.onclick=()=>{comboClosed++;};
+  const form=element('form');
+  form.querySelectorAll=()=>sourceInputs;
+  const review=element('section');
+  const opened=[];
+  const drawerClose=element('button');
+  const link=element('a');
+  const summary={value:'Ручное название'}, description={value:'Ручное описание'};
+  const context=vm.createContext({
+    ...state,busy:true,pendingWrite:null,created:null,ready:true,loadingLink:false,draft:{summary:'Название модели'},
+    checkedInput:null,reviewResult:null,step:1,inspectionFailed:false,preflight:element('section'),initialClarification:false,
+    preflightDraft:null,exactApprovedKeys:[],confirmedExistingKeys:[],separateIntentId:null,exactOverrideReady:false,
+    duplicateLinks:element('div'),duplicateNote:element('p'),followup:element('form'),themeMenu:{hidden:true},issueProposals:element('div'),earlyMatches:element('ul'),
+    showResultCard(){},showQuestion(){},say(message,tone){context.notice={message,tone};},
+    reply:{value:'Уточнение'},review,form,summary,description,draftReady:()=>true,requestSnapshot:{urls:['fixture']},
+    panel:{hidden:false,isConnected:true,querySelectorAll:()=>[openCombo]},heading:element('h2'),
+    openSharedFcrmDetails:async (task,trigger)=>{opened.push({key:task.key,title:task.summary,trigger});return true;},
+    resumeThreadFromDetails:null,document:{getElementById:key=>key==='ozon-ext-sidebar-close' ? drawerClose : null},
+    link,window:{open(){assert.fail('Task details must open in the widget');}}
+  });
+  vm.runInContext(section('    function focus(', '    function setStep(') +
+    section('    function updateControls(', '    function closePanel(') +
+    section('    async function openThreadIssue(', '    function linkFor(') +
+    section('    function showWritten(', '    async function writeTask('),context);
+  vm.runInContext('updateControls()',context);
+  assert.ok(sourceInputs.every(field=>field.disabled));
+  assert.equal(state.submit.disabled,true);
+  assert.equal(form.attributes['aria-busy'],'true');
+  assert.equal(comboClosed,1);
+  await vm.runInContext("openThreadIssue('FCRM-42','Подтверждённая задача',link)",context);
+  assert.equal(opened.length,0);
+
+  context.busy=false;
+  context.step=2;
+  vm.runInContext('updateControls()',context);
+  assert.ok(sourceInputs.every(field=>!field.disabled));
+  assert.equal(state.submit.disabled,false);
+  assert.equal(form.attributes['aria-busy'],'false');
+  await vm.runInContext("openThreadIssue('FCRM-42','Подтверждённая задача',link)",context);
+  assert.deepEqual(opened,[{key:'FCRM-42',title:'Подтверждённая задача',trigger:link}]);
+  assert.equal(context.panel.hidden,true);
+  assert.equal(drawerClose.focused,true);
+  vm.runInContext('resumeThreadFromDetails()',context);
+  assert.equal(context.panel.hidden,false);
+  assert.equal(link.focused,true);
+  assert.equal(context.step,2);
+  assert.equal(context.summary.value,'Ручное название');
+  assert.equal(context.description.value,'Ручное описание');
+
+  context.step=3;
+  vm.runInContext("showWritten({key:'FCRM-42',existing:false,linkFailures:[]})",context);
+  assert.equal(context.notice.tone,'success');
+  assert.match(context.notice.message,/подтвердила создание/);
+  vm.runInContext('updateControls()',context);
+  assert.equal(state.footer.hidden,false);
+  assert.equal(state.returnToBoard.hidden,false);
+  assert.equal(state.verification.hidden,true);
+  assert.equal(state.create.disabled,true);
+  vm.runInContext("showWritten({key:'FCRM-42',existing:false,linkFailures:['FCRM-72']})",context);
+  assert.equal(context.notice.tone,'warning');
+  assert.equal(state.retryLinks.hidden,false);
+}
+
 async function checkDraftPanel() {
   const compiled = fs.readFileSync('FCRM-Chrome-3.3/content.js','utf8');
   function section(start, end) {
@@ -198,14 +298,32 @@ async function checkDraftPanel() {
     assert.ok(from >= 0 && to > from,start);
     return compiled.slice(from,to);
   }
+  let activeElement;
   const element = tag => ({
-    tag,children:[],attributes:{},events:{},hidden:false,isConnected:true,textContent:'',
+    tag,children:[],attributes:{},events:{},hidden:false,isConnected:true,textContent:'',style:{setProperty(){}},
+    set innerHTML(value) {
+      this.rawHTML=value;
+      if (!value.includes('ozon-ext-search-select-trigger')) return;
+      const trigger=element('button'), label=element('span'), search=element('input'), list=element('div'), menu=element('div');
+      trigger.className='ozon-ext-search-select-trigger';
+      menu.className='ozon-ext-combo-popover'; menu.hidden=true;
+      list.className='ozon-ext-combo-list';
+      trigger.append(label); menu.append(search,list); this.replaceChildren(trigger,menu);
+    },
+    get innerHTML(){return this.rawHTML;},
+    querySelectorAll(selector){
+      const matches=node=>selector.startsWith('.') ? node.className?.split(/\s+/).includes(selector.slice(1)) : node.tag === selector;
+      return this.children.flatMap(child=>[...(matches(child) ? [child] : []),...(child.querySelectorAll?.(selector) || [])]);
+    },
+    querySelector(selector){return this.querySelectorAll(selector)[0];},
+    contains(node){return this === node || this.children.some(child=>child.contains?.(node));},
+    click(){if (!this.disabled) this.onclick?.();},
     append(...items){this.children.push(...items);},
     appendChild(item){this.append(item);},
-    replaceChildren(...items){this.children=items;},
+    replaceChildren(...items){this.children=items;this.textContent='';},
     setAttribute(key,value){this.attributes[key]=value;},
     addEventListener(key,fn){this.events[key]=fn;},
-    focus(){this.focused=true;},
+    focus(){this.focused=true;activeElement=this;},
     get childElementCount(){return this.children.length;},
   });
   const draft = {urls:['https://chatzone.o3t.ru/o3/pl/'+'a'.repeat(26)],summary:'Название черновика',mentionedIssueKeys:['FCRM-42'],
@@ -213,7 +331,7 @@ async function checkDraftPanel() {
   let checked = {state:'ready',issues:[]};
   const inspections = [], lookups = [], timer = [];
   const context = vm.createContext({
-    URL,document:{createElement:element,createTextNode:text=>({textContent:text})},
+    URL,document:{createElement:element,createTextNode:text=>({textContent:text}),get activeElement(){return activeElement;}},setTimeout,
     draft,requestSnapshot:{issueTypeId:'10',componentId:'20'},step:2,summary:{value:draft.summary},normalizedSummary:text=>text.trim(),
     selectedTheme:null,loadingLink:false,busy:false,pendingWrite:null,created:false,
     selectedIssueLinks:new Map(),linkEdits:new Map(),hiddenIssueLinks:new Set(),issueProposals:element('div'),
@@ -225,7 +343,7 @@ async function checkDraftPanel() {
     readDraft:()=>({summary:draft.summary,description:'Черновик'}),
     focus:node=>node.focus(),updateControls(){},window:{innerWidth:1000,clearTimeout(){},setTimeout(fn){timer.push(fn);return timer.length;}},
     localStorage:{getItem:()=>null,setItem(_key,value){context.savedWidth=value;}},
-    widthControl:element('div'),width:700,panel:{style:{setProperty(_key,value){context.width=parseInt(value,10);}},
+    widthControl:element('div'),width:700,panel:{isConnected:true,hidden:false,querySelectorAll:()=>[],style:{setProperty(_key,value){context.width=parseInt(value,10);}},
       getBoundingClientRect(){return {width:context.width};}},
     threadWriter:{
       inspect:input=>{inspections.push(input);return Promise.resolve(checked);},
@@ -246,6 +364,9 @@ async function checkDraftPanel() {
   );
   assert.match(compiled,/data-thread-description-read aria-pressed="true"/);
   assert.match(compiled,/Связи с задачами Jira <small[^>]*>Необязательно<\/small>/);
+  assert.match(compiled,/<footer[^>]*data-thread-footer[^>]*aria-label="Действия мастера"/);
+  assert.match(compiled,/<button[^>]*data-thread-key hidden/);
+  assert.doesNotMatch(compiled,/<details data-thread-post-review/);
   assert.match(compiled,/<textarea name="draftDescription"[^>]* hidden>/);
   context.descriptionEdit.onclick();
   assert.equal(context.description.hidden,false);
@@ -288,8 +409,16 @@ async function checkDraftPanel() {
   proposed.children[0].checked=true;
   proposed.children[0].events.change();
   const [type,remove]=proposed.children[2].children;
-  type.value='related';
-  type.events.change();
+  const trigger=type.querySelector('button');
+  trigger.click();
+  const menu=type.querySelector('.ozon-ext-combo-popover');
+  const filter=menu.querySelector('input');
+  assert.equal(activeElement,filter);
+  filter.value='связанная';
+  filter.oninput();
+  type.events.keydown({key:'Enter',preventDefault(){}});
+  assert.equal(menu.hidden,true);
+  assert.equal(activeElement,trigger);
   assert.deepEqual(selected(),[{key:'OB-45',kind:'related'}]);
   remove.onclick();
   assert.deepEqual(selected(),[]);
@@ -332,13 +461,29 @@ async function checkDraftPanel() {
   assert.match(matches[0].children[1].textContent,/В списке связей/);
   const candidate=context.issueProposals.children.find(row=>row.children[0]?.attributes['aria-label'] === 'Добавить связь с FCRM-42');
   const kindPicker=candidate.children[2].children[0];
+  const kindTrigger=kindPicker.querySelector('button');
   await new Promise(resolve=>setImmediate(resolve));
-  assert.deepEqual(kindPicker.children.map(option=>option.textContent),['Связанная задача','Дубликат','Блокирует']);
-  kindPicker.value='jira:123:outward';
-  kindPicker.events.change();
+  kindTrigger.click();
+  const kindMenu=kindPicker.querySelector('.ozon-ext-combo-popover');
+  const kindFilter=kindMenu.querySelector('input');
+  assert.deepEqual(kindMenu.querySelectorAll('button').map(option=>option.textContent),['Связанная задача','Дубликат','Блокирует']);
+  kindFilter.value='блокирует';
+  kindFilter.oninput();
+  kindPicker.events.keydown({key:'ArrowDown',preventDefault(){}});
+  assert.equal(activeElement.textContent,'Блокирует');
+  activeElement.click();
   assert.deepEqual(selected(),[{key:'FTD-99',kind:'related'},{key:'FCRM-42',kind:'jira:123:outward'}]);
-  kindPicker.value='duplicate';
-  kindPicker.events.change();
+  kindTrigger.click();
+  kindFilter.value='несуществующий тип';
+  kindFilter.oninput();
+  assert.equal(kindMenu.querySelector('.ozon-ext-combo-list').textContent,'Ничего не найдено');
+  kindPicker.events.keydown({key:'Escape',preventDefault(){}});
+  assert.equal(kindMenu.hidden,true);
+  assert.equal(activeElement,kindTrigger);
+  kindTrigger.click();
+  kindFilter.value='дубликат';
+  kindFilter.oninput();
+  kindPicker.events.keydown({key:'Enter',preventDefault(){}});
   const selectedAfterEdit=[{key:'FTD-99',kind:'related'},{key:'FCRM-42',kind:'duplicate'}];
   assert.deepEqual(selected(),selectedAfterEdit);
   draft.links.set('FCRM-42',{key:'FCRM-42',title:'Похожая задача после уточнения',kind:'related'});
@@ -349,6 +494,7 @@ async function checkDraftPanel() {
   assert.ok(controls.some(node=>node.attributes?.['aria-label'] === 'Добавить связь с FCRM-42' && node.checked));
   assert.ok(flatten(context.linkedSources.children).some(node=>node.tag === 'a' && !node.hidden));
   await checkPreflight(section,element);
+  await checkWizardState(section,element);
 }
 
 function checkPanelDismissal(content) {

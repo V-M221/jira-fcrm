@@ -41,7 +41,7 @@ function makeTab(shared, prefersDark = false, blocked = false) {
     value:'',matches:query=>query === controlSelector,
     closest:scope=>root && scope.includes(root) ? {id:root.slice(1)} : null,
   });
-  const settings = ['#ozon-structure-root','#ozon-thread-sidebar','#o3ds-layer'].map(selector);
+  const settings = [selector('#ozon-structure-root')];
   const media = {matches:prefersDark,addEventListener:listen(mediaEvents)};
   const document = {
     documentElement:{dataset:{}},activeElement:activeInput,
@@ -106,6 +106,8 @@ function checkPalette(css) {
 async function checkWidgetTheme() {
   const zip = await JSZip.loadAsync(fs.readFileSync('FCRM-Chrome-3.3.zip'));
   const [content,issueEnhance,styles] = await Promise.all(['content.js','issue-enhance.js','styles.css'].map(name=>zip.file(name).async('string')));
+  assert.equal((content.match(/widgetTheme\.control\(\)/g) || []).length,1,'Only the board renders a theme control');
+  assert.doesNotMatch(issueEnhance,/widgetTheme\.control\(\)/);
   const board = bootstrap(content);
   const issue = bootstrap(issueEnhance);
   const shared = new Map();
@@ -116,22 +118,22 @@ async function checkWidgetTheme() {
   assert.match(controller.control(),/<select data-ozon-theme-setting aria-label="Тема виджета">/);
   assert.match(controller.control(),/<option value="light">Светлая<\/option><option value="dark">Тёмная<\/option><option value="system" selected>Как в системе<\/option>/);
   assert.equal(first.effective(),'light');
-  assert.deepEqual(first.controlValues(),['system','system','system']);
+  assert.deepEqual(first.controlValues(),['system']);
   const second=makeTab(shared,true);
   issue.runInContext(second.context);
   assert.equal(second.effective(),'dark');
 
-  first.choose('dark',1);
+  first.choose('dark');
   assert.equal(first.effective(),'dark');
   assert.deepEqual(first.saveCount,['dark']);
   second.receiveStorage('dark');
-  assert.deepEqual(second.controlValues(),['dark','dark','dark']);
+  assert.deepEqual(second.controlValues(),['dark']);
   second.setOS(false);
   assert.equal(second.effective(),'dark');
   const refreshed=makeTab(shared);
   board.runInContext(refreshed.context);
   assert.equal(refreshed.effective(),'dark');
-  assert.deepEqual(refreshed.controlValues(),['dark','dark','dark']);
+  assert.deepEqual(refreshed.controlValues(),['dark']);
 
   second.choose('light');
   first.receiveStorage('light');
@@ -143,10 +145,10 @@ async function checkWidgetTheme() {
   assert.equal(first.effective(),'light');
   assert.equal(shared.get(key),'light');
 
-  first.choose('system',2);
+  first.choose('system');
   assert.equal(shared.get(key),'system');
   assert.equal(first.effective(),'dark');
-  assert.deepEqual(first.controlValues(),['system','system','system']);
+  assert.deepEqual(first.controlValues(),['system']);
   first.setOS(false);
   assert.equal(first.effective(),'light');
   first.setOS(true);
@@ -161,7 +163,7 @@ async function checkWidgetTheme() {
   const unknown=makeTab(new Map([[key,'invalid']]),true);
   board.runInContext(unknown.context);
   assert.equal(unknown.effective(),'dark');
-  assert.deepEqual(unknown.controlValues(),['system','system','system']);
+  assert.deepEqual(unknown.controlValues(),['system']);
   const privateTab=makeTab(new Map(),true,true);
   issue.runInContext(privateTab.context);
   privateTab.choose('light');
