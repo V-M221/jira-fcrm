@@ -15,7 +15,7 @@ import { createExtensionUpdateNotice, EXTENSION_UPDATE_INTERVAL, EXTENSION_UPDAT
 import { createJiraDraftLinkClient } from '../services/deepseek';
 import { createFcrmThreadWriter } from '../services/fcrmThreadWriter';
 
-export const EXTENSION_VERSION = '3.5.194';
+export const EXTENSION_VERSION = '3.5.195';
 
 export function fcrmReviewRowClass(key:string, status:string):string {
   if (!/^FCRM-\d+$/i.test(key)) return '';
@@ -52,7 +52,7 @@ export function generateManifestJson(config: ExtensionConfig): string {
         run_at: 'document_idle',
       },
       {
-        matches: ['https://jit.o3.ru/*'],
+        matches: ['https://jit.o3.ru/*', 'https://confluence.o3.ru/*', 'https://confluence.o3t.ru/*'],
         js: ['issue-enhance.js'],
         run_at: 'document_idle',
       },

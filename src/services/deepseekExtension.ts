@@ -13,6 +13,81 @@ import { bindExtensionUpdateMessages, EXTENSION_UPDATE_CACHE_TTL, EXTENSION_UPDA
   saveJiraDraft,
 } from './deepseek';
 
+function isThreadReferenceEndpoint(url: URL) {
+  if (url.username || url.password || url.hash) return false;
+  const query = url.searchParams;
+  const params = [...query.keys()];
+  if (url.origin === 'https://jit.o3.ru') {
+    return /^\/rest\/api\/2\/issue\/[A-Z][A-Z0-9_]+-[0-9]+$/.test(url.pathname) &&
+      params.length === 1 && query.get('fields') === 'summary,description,comment,issuelinks';
+  }
+  if (url.origin !== 'https://confluence.o3.ru' && url.origin !== 'https://confluence.o3t.ru') return false;
+  if (query.get('expand') !== 'body.view') return false;
+  if (/^\/rest\/api\/content\/[0-9]+$/.test(url.pathname)) return params.length === 1;
+  return url.pathname === '/rest/api/content' && params.length === 4 && new Set(params).size === 4 &&
+    query.get('type') === 'page' && Boolean(query.get('spaceKey')?.trim()) && Boolean(query.get('title')?.trim());
+}
+
+function bindThreadReferenceReceiver(api: any, current: Location, validate: typeof isThreadReferenceEndpoint) {
+  api.runtime.onMessage.addListener((message: any, sender: any, sendResponse: (response: unknown) => void) => {
+    if (message?.type !== 'o3ds:thread-reference' || sender.id !== api.runtime.id || sender.tab ||
+        typeof message.endpoint !== 'string' || message.endpoint.length > 4000) return;
+    let endpoint: URL;
+    try { endpoint = new URL(message.endpoint); } catch { return; }
+    if (endpoint.origin !== current.origin || !validate(endpoint)) return;
+    async function read() {
+      try {
+        const response = await fetch(endpoint.pathname + endpoint.search, {
+          method:'GET', credentials:'same-origin', cache:'no-store', redirect:'manual',
+          headers:{Accept:'application/json'}, signal:AbortSignal.timeout(8000),
+        });
+        if (response.type === 'opaqueredirect' || response.status === 401 || (response.status >= 300 && response.status < 400)) {
+          return {reason:'Нужно войти в сервис'};
+        }
+        if (response.status === 403) return {reason:'Доступ запрещён'};
+        if (response.status === 404) return {reason:'Источник не найден или скрыт правами'};
+        if (!response.ok) return {reason:'Сервис не ответил (HTTP ' + response.status + ')'};
+        if (response.headers.get('Content-Type')?.includes('text/html')) return {reason:'Сервис вернул страницу входа или HTML'};
+        const data = await response.json().catch(() => null);
+        return data && typeof data === 'object' ? {data} : {reason:'Сервис вернул неизвестный формат'};
+      } catch (error) {
+        return {reason:error instanceof Error && ['TimeoutError','AbortError'].includes(error.name)
+          ? 'Истекло время чтения' : 'Не удалось подключиться'};
+      }
+    }
+    void read().then(sendResponse);
+    return true;
+  });
+}
+
+function createThreadReferenceRouter(api: any, jiraTabId: number, validate: typeof isThreadReferenceEndpoint) {
+  const confluenceTabs = new Map<string, Promise<any[]>>();
+  return async (endpoint: string): Promise<{data?: any; reason?: string}> => {
+    const url = new URL(endpoint);
+    if (!validate(url)) return {reason:'Ссылка не поддерживается'};
+    const message = {type:'o3ds:thread-reference',endpoint:url.href};
+    async function send(tabId: number) {
+      return api.tabs.sendMessage(tabId, message, {frameId:0}).catch(() => undefined);
+    }
+    if (url.origin === 'https://jit.o3.ru') {
+      return (await send(jiraTabId)) ?? {reason:'Обновите вкладку Jira и повторите подготовку'};
+    }
+    let candidates = confluenceTabs.get(url.origin);
+    if (!candidates) {
+      const query = api.tabs.query({url:url.origin + '/*'}).catch(() => []) as Promise<any[]>;
+      confluenceTabs.set(url.origin, query);
+      candidates = query;
+    }
+    const tabs = (await candidates).filter(tab => Number.isInteger(tab.id));
+    for (const tab of tabs.slice(0,3)) {
+      const result = await send(tab.id);
+      if (result) return result;
+    }
+    return {reason:'Откройте или обновите вкладку Confluence в этом браузере и повторите подготовку'};
+  };
+}
+
+
 export function generateBackgroundJs(): string {
   return `(${bindExtensionUpdateMessages.toString()})(chrome, ${JSON.stringify(EXTENSION_UPDATE_MESSAGES)}, ${JSON.stringify(EXTENSION_UPDATE_METADATA_URL)}, ${EXTENSION_UPDATE_CACHE_TTL});
 
@@ -23,6 +98,8 @@ const PROMPT_KEY = ${JSON.stringify(DEEPSEEK_PROMPT_STORAGE_KEY)};
 const defaultPrompt = ${JSON.stringify(DEFAULT_DEEPSEEK_SYSTEM_PROMPT)};
 const designPrompt = ${JSON.stringify(DESIGN_TASK_SYSTEM_PROMPT)};
 const threadPhases = new Map();
+const validateThreadReference = ${isThreadReferenceEndpoint.toString()};
+const createThreadReferenceRouter = ${createThreadReferenceRouter.toString()};
 
 async function getPromptCatalog(savedPrompt) {
   const thread = {urls:['https://chatzone.o3t.ru/example/pl/00000000000000000000000000'], issueTypeName:'Задача',componentName:'Пример компонента', themes:[{key:'FCRM-2',title:'Пример тематики'}]};
@@ -59,7 +136,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message?.type !== ${JSON.stringify(DEEPSEEK_CHAT_MESSAGE_TYPE)}) return;
-  if (requestId && message.mode === 'thread') threadPhases.set(tabRequest, 'source');
+  let readThreadReference;
+  if (message.mode === 'thread') {
+    let origin;
+    try { origin = new URL(sender.url); } catch { return; }
+    if (sender.id !== chrome.runtime.id || sender.frameId !== 0 || !Number.isInteger(sender.tab?.id) ||
+        origin.origin !== 'https://jit.o3.ru' || origin.pathname !== '/secure/RapidBoard.jspa') return;
+    readThreadReference = createThreadReferenceRouter(chrome, sender.tab.id, validateThreadReference);
+    if (requestId) threadPhases.set(tabRequest, 'source');
+  }
   chrome.storage.local
     .get([TOKEN_KEY, PROMPT_KEY])
     .then(stored => {
@@ -67,7 +152,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const prompt = message.mode === 'design' ? designPrompt : stored[PROMPT_KEY] || defaultPrompt;
       return completeDeepseekChat(message.issueKey, message.mode, token, message.approvedDescription || '', prompt, message.clarification, message.additionalContext || '', false, phase => {
         if (requestId && message.mode === 'thread') threadPhases.set(tabRequest, phase);
-      });
+      }, readThreadReference);
     })
     .then(text => sendResponse({ok:true, text}))
     .catch(err => {
@@ -219,6 +304,11 @@ document.getElementById('clear').addEventListener('click', () => {
 export function generateIssueEnhanceJs(): string {
   return `(() => {
   'use strict';
+
+  if (['https://jit.o3.ru','https://confluence.o3.ru','https://confluence.o3t.ru'].includes(location.origin)) {
+    (${bindThreadReferenceReceiver.toString()})(chrome, location, (${isThreadReferenceEndpoint.toString()}));
+  }
+  if (location.origin === 'https://confluence.o3.ru' || location.origin === 'https://confluence.o3t.ru') return;
 
   const formatAnswer = ${answerMarkup.toString()};
   const parseJiraDraft = ${parseJiraDraft.toString()};

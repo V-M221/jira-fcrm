@@ -257,7 +257,8 @@ export async function completeDeepseekChat(
   clarification?: { preview: string; reply: string },
   additionalContext = '',
   promptPreview = false,
-  onStage?: (phase: 'source' | 'model' | 'format') => void
+  onStage?: (phase: 'source' | 'model' | 'format') => void,
+  readThreadReference?: (endpoint: string) => Promise<{data?: any; reason?: string}>
 ): Promise<string> {
   const threadDeadline = Date.now() + 165000;
   const threadSystemPrompt = [
@@ -376,6 +377,7 @@ export async function completeDeepseekChat(
     }
 
     async function getJson(endpoint: string) {
+      if (readThreadReference) return readThreadReference(endpoint);
       const timeout = Math.max(1,Math.min(8000,threadDeadline - Date.now()));
       try {
         const response = await fetch(endpoint,{method:'GET',credentials:'include',cache:'no-store',redirect:'manual',
