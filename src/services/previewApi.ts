@@ -482,11 +482,12 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
         if (message.type === 'o3ds:chat' && message.mode === 'thread') {
           const input = JSON.parse(message.approvedDescription || '{}');
           const text = input.additionalInfo?.includes('Демо: уточнение') && !input.clarification
-            ? {status:'clarification',message:'В каком разделе карточки нужна кнопка?'}
+            ? {status:'clarification',message:'В каком разделе карточки нужна кнопка?',questionReason:'Ответ определит, где оператор сможет скопировать номер.'}
             : {status:'draft',summary:'[Демо] Добавить кнопку копирования номера в карточку',
                 description:'h2. Цель\nУпростить работу оператора с номером карточки.\n\nh2. Что меняется\n* Номер можно скопировать из карточки.' +
                   (input.clarification ? '\n* Уточнение: ' + String(input.clarification).trim().replace(/[\r\n]+/g, ' ') : ''),
-                themeKey:'',message:''};
+                themeKey:input.themes?.[0]?.key || '',message:input.clarification ? '' : 'На какой странице карточки должна быть кнопка?',
+                questionReason:input.clarification ? '' : 'Это уточнит место кнопки в описании.'};
           callback({ok:true,text:JSON.stringify(text)});
           return;
         }

@@ -16,6 +16,7 @@ const answer = {
   changes: ['Сделать копирование доступным в карточке.'],
   themeKey: 'FCRM-123',
   question: 'Где разместить кнопку?',
+  questionReason: 'Это уточнит расположение кнопки в описании.',
 };
 
 function load(file, globals = {}) {
@@ -78,13 +79,14 @@ async function checkDrafts() {
   });
   const run = (preview = false) => completeDeepseekChat('FCRM','thread',null,input,'ignored',undefined,'',preview);
   const prompt = JSON.parse(await run(true));
-  assert.match(prompt.system,/fcrm-thread\/1/);
+  assert.match(prompt.system,/fcrm-thread\/2/);
   assert.equal(calls.length,0);
   const result = JSON.parse(await run());
   assert.equal(result.status,'draft');
   assert.deepEqual(result.urls,[threadUrl]);
   assert.deepEqual(result.mentionedIssueKeys,['FCRM-42']);
   assert.equal(result.themeKey,'FCRM-123');
+  assert.equal(result.questionReason,'Это уточнит расположение кнопки в описании.');
   assert.deepEqual(payload.tool_ids,[]);
   assert.deepEqual(payload.skill_ids,[]);
   assert.equal(payload.features.memory,false);
@@ -94,8 +96,8 @@ async function checkDrafts() {
   assert.equal(calls.filter(call => call.path.includes('/posts/')).length,2);
 
   getMode = 'poll';
-  answerForRun = {status:'clarification',question:'Где разместить кнопку?'};
-  assert.deepEqual(JSON.parse(await run()),{status:'clarification',message:'Где разместить кнопку?'});
+  answerForRun = {status:'clarification',question:'Где разместить кнопку?',questionReason:'Без этого нельзя описать карту действий.'};
+  assert.deepEqual(JSON.parse(await run()),{status:'clarification',message:'Где разместить кнопку?',questionReason:'Без этого нельзя описать карту действий.'});
   assert.equal(taskPolls,3);
   assert.equal(outputReads,2);
 
@@ -104,6 +106,10 @@ async function checkDrafts() {
   const filtered = JSON.parse(await run());
   assert.equal(filtered.themeKey,'');
   assert.equal(filtered.message,'');
+  assert.equal(filtered.questionReason,'');
+
+  answerForRun = {...answer,questionReason:'<markup>Недопустимая разметка</markup>'};
+  assert.equal(JSON.parse(await run()).questionReason,'');
 
   access = false;
   calls = [];
@@ -187,8 +193,55 @@ async function checkWrites() {
   assert.equal(issuePosts,2);
 }
 
+async function checkThreadControls() {
+  const script = fs.readFileSync('FCRM-Chrome-3.3/content.js','utf8');
+  new vm.Script(script);
+  assert.match(script, /<textarea name="draftSummary" rows="2" maxlength="255">/);
+  const extract = (name, next) => {
+    const from = script.indexOf('    function ' + name + '(');
+    const to = script.indexOf('    function ' + next + '(',from+1);
+    assert.ok(from >= 0 && to > from, name);
+    return script.slice(from,to);
+  };
+  const elements = () => ({textContent:'',hidden:false,style:{},setAttribute(){},removeAttribute(){}});
+  const summary = {...elements(),value:'  Длинное название\n задачи\tFCRM  ',scrollHeight:92};
+  const question = elements(), questionHeading = elements(), questionReason = elements(), questionPolicy = elements();
+  const themeResults = {items:[],replaceChildren(){this.items=[];},appendChild(item){this.items.push(item);}};
+  const choices = [{key:'FCRM-12',title:'Поиск в карточке'},{key:'FCRM-120',title:'Поиск по номеру'}];
+  let runSearch;
+  const themeInput = {value:'fcrm-12'};
+  const target = vm.createContext({
+    CSS:{supports:()=>false},summary,description:{value:'Описание'},selectedTheme:{key:'FCRM-12'},
+    question,questionHeading,questionReason,questionPolicy,questionText:elements(),reply:elements(),replyLabel:elements(),created:false,
+    themeResults,themeInput,themeStatus:elements(),themeSearchSerial:0,themeSearchTimer:0,themeMenu:{hidden:false},panel:{isConnected:true},
+    themeTerms:query=>query.toLowerCase().match(/[\p{L}\p{N}]+/gu) || [],themeLabel:item=>item.title+' · '+item.key,
+    loadSearchThemes:Promise.resolve(choices),findThemes:async()=>choices,
+    window:{clearTimeout(){},setTimeout(fn){runSearch=fn;return 1;}},
+    document:{createElement:()=>({...elements(),dataset:{},addEventListener(){}})},
+  });
+  vm.runInContext(extract('normalizedSummary','readResult') + extract('queueThemeSearch','normalizedSummary').split('    themeToggle.addEventListener')[0],target);
+  assert.equal(vm.runInContext('readDraft().summary',target),'Длинное название задачи FCRM');
+  vm.runInContext('fitSummary()',target);
+  assert.equal(summary.style.height,'94px');
+  vm.runInContext('showQuestion("Где разместить кнопку?", "Уточнит расположение.", false)',target);
+  assert.equal(questionHeading.textContent,'Вопрос к черновику');
+  assert.match(questionPolicy.textContent,/Ответ необязателен/);
+  assert.equal(questionReason.textContent,'Уточнит расположение.');
+  vm.runInContext('showQuestion("Где разместить кнопку?", "", true)',target);
+  assert.match(questionPolicy.textContent,/Ответьте, чтобы подготовить/);
+  assert.equal(questionReason.hidden,true);
+  vm.runInContext('queueThemeSearch()',target);
+  await runSearch();
+  assert.deepEqual(themeResults.items.map(item=>item.textContent),['Поиск в карточке · FCRM-12']);
+  themeInput.value='карточке';
+  vm.runInContext('queueThemeSearch()',target);
+  await runSearch();
+  assert.deepEqual(themeResults.items.map(item=>item.textContent),['Поиск в карточке · FCRM-12']);
+}
+
 (async () => {
   await checkDrafts();
   await checkWrites();
+  await checkThreadControls();
   console.log('FCRM thread checks passed: source permissions, scope, SSE, retry, parsing, write, reconciliation and links.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

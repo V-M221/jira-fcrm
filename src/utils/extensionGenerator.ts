@@ -15,7 +15,7 @@ import { createExtensionUpdateNotice, EXTENSION_UPDATE_INTERVAL, EXTENSION_UPDAT
 import { createJiraDraftLinkClient } from '../services/deepseek';
 import { createFcrmThreadWriter } from '../services/fcrmThreadWriter';
 
-export const EXTENSION_VERSION = '3.5.191';
+export const EXTENSION_VERSION = '3.5.192';
 
 export function fcrmReviewRowClass(key:string, status:string):string {
   if (!/^FCRM-\d+$/i.test(key)) return '';
@@ -479,6 +479,18 @@ body.ozon-native-board-visible > :is(.ozon-component-editor,#ozon-thread-sidebar
 #ozon-thread-sidebar small {color:#475569;}
 #ozon-thread-sidebar :is(input,textarea) {display:block;box-sizing:border-box;width:100%;min-width:0;border:1px solid #a8bbd2;border-radius:8px;padding:8px 10px;color:#071026;background:#fff;font:inherit;font-weight:400;}
 #ozon-thread-sidebar textarea {resize:vertical;}
+#ozon-thread-sidebar [name="draftSummary"] {field-sizing:content;min-height:calc(3em + 18px);overflow-wrap:anywhere;}
+#ozon-thread-sidebar [data-thread-theme-current] {margin:4px 0 8px;}
+#ozon-thread-sidebar [data-thread-theme-menu] {margin-top:8px;border:1px solid #d7e0ec;border-radius:8px;padding:8px;}
+#ozon-thread-sidebar [data-thread-theme-results] {display:grid;gap:4px;max-height:230px;overflow:auto;}
+#ozon-thread-sidebar [data-thread-theme-option] {width:100%;min-height:32px;padding:6px 8px;border:1px solid transparent;border-radius:6px;background:#f5f7fa;text-align:start;color:#071026;font:inherit;overflow-wrap:anywhere;cursor:pointer;}
+#ozon-thread-sidebar [data-thread-theme-option]:hover,#ozon-thread-sidebar [data-thread-theme-option][aria-pressed="true"] {background:#e5f0ff;border-color:#a8c8fb;}
+#ozon-thread-sidebar [data-thread-followup] {margin:12px 0;}
+#ozon-thread-sidebar [data-thread-question] {padding:12px;border:1px solid #d7e0ec;border-radius:8px;background:#f5f8fd;}
+#ozon-thread-sidebar [data-thread-question] h3 {margin:0;}
+#ozon-thread-sidebar [data-thread-question] [data-thread-question-text] {margin:6px 0;font-weight:600;}
+#ozon-thread-sidebar [data-thread-question-reason] {margin:4px 0;color:#475569;}
+#ozon-thread-sidebar [data-thread-question-policy] {display:block;margin-top:6px;}
 #ozon-thread-sidebar .ozon-thread-actions {display:flex;flex-wrap:wrap;gap:6px;}
 #ozon-thread-sidebar :is(button,input,textarea,a):focus-visible,#ozon-prompt-catalog :is(button,summary):focus-visible {outline:2px solid #005bff;outline-offset:2px;}
 #ozon-thread-sidebar button:disabled {opacity:.55;cursor:default;}
@@ -2462,13 +2474,21 @@ export function generateContentScriptJs(
       '<div class="ozon-thread-actions"><button class="ozon-ext-btn" type="submit" disabled>Подготовить черновик</button>' +
       '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-load-fields hidden>Повторить загрузку полей Jira</button></div></form>' +
       '<section data-thread-review hidden><h3 tabindex="-1">Черновик задачи FCRM</h3>' +
-      '<p data-thread-context></p><label>Название<input name="draftSummary" maxlength="255"></label>' +
+      '<p data-thread-context></p><label>Название<textarea name="draftSummary" rows="2" maxlength="255"></textarea></label>' +
       '<label>Описание<textarea name="draftDescription" rows="9"></textarea></label>' +
-      '<label>Тематика FCRM<input name="draftTheme" placeholder="FCRM-1234"></label>' +
-      '<div class="ozon-thread-actions"><button class="ozon-ext-btn" type="button" data-thread-create>Создать в Jira</button>' +
-      '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-confirm-duplicate hidden>Создать отдельную задачу</button></div></section>' +
-      '<ul data-thread-duplicate-links hidden></ul><p data-thread-question hidden></p><form data-thread-followup hidden><label>Уточнение<textarea name="reply" rows="3"></textarea></label>' +
+      '<div><strong>Тематика FCRM</strong><p data-thread-theme-current>Не выбрана</p>' +
+      '<div class="ozon-thread-actions"><button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-theme-toggle aria-controls="ozon-thread-theme-menu" aria-expanded="false">Выбрать тематику</button>' +
+      '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-theme-clear hidden>Без тематики</button></div>' +
+      '<div id="ozon-thread-theme-menu" data-thread-theme-menu hidden><label>Поиск по названию или ключу<input type="search" name="draftThemeSearch" autocomplete="off"></label>' +
+      '<p data-thread-theme-status role="status"></p><div data-thread-theme-results role="group" aria-label="Подходящие тематики"></div></div></div></section>' +
+      '<form data-thread-followup hidden><div data-thread-question hidden><h3 data-thread-question-heading></h3>' +
+      '<p id="ozon-thread-question-text" data-thread-question-text></p><p id="ozon-thread-question-reason" data-thread-question-reason hidden></p>' +
+      '<small id="ozon-thread-question-policy" data-thread-question-policy></small></div>' +
+      '<label><span data-thread-reply-label>Дополнение к черновику</span><textarea name="reply" rows="3"></textarea></label>' +
       '<div class="ozon-thread-actions"><button class="ozon-ext-btn ozon-ext-btn-surface" type="submit" disabled>Отправить уточнение</button></div></form>' +
+      '<div class="ozon-thread-actions" data-thread-create-actions hidden><button class="ozon-ext-btn" type="button" data-thread-create>Создать в Jira</button>' +
+      '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-confirm-duplicate hidden>Создать отдельную задачу</button></div>' +
+      '<ul data-thread-duplicate-links hidden></ul>' +
       '<p><a data-thread-key target="_blank" rel="noopener noreferrer" hidden></a></p>' +
       '<div class="ozon-thread-actions"><button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-recover hidden>Проверить Jira</button>' +
       '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-retry-links hidden>Повторить добавление связей</button>' +
@@ -2486,12 +2506,24 @@ export function generateContentScriptJs(
     const context = panel.querySelector('[data-thread-context]');
     const summary = review.querySelector('[name="draftSummary"]');
     const description = review.querySelector('[name="draftDescription"]');
-    const theme = review.querySelector('[name="draftTheme"]');
+    const themeCurrent = review.querySelector('[data-thread-theme-current]');
+    const themeToggle = review.querySelector('[data-thread-theme-toggle]');
+    const themeClear = review.querySelector('[data-thread-theme-clear]');
+    const themeMenu = review.querySelector('[data-thread-theme-menu]');
+    const themeInput = themeMenu.querySelector('input');
+    const themeStatus = themeMenu.querySelector('[data-thread-theme-status]');
+    const themeResults = themeMenu.querySelector('[data-thread-theme-results]');
     const question = panel.querySelector('[data-thread-question]');
+    const questionHeading = question.querySelector('[data-thread-question-heading]');
+    const questionText = question.querySelector('[data-thread-question-text]');
+    const questionReason = question.querySelector('[data-thread-question-reason]');
+    const questionPolicy = question.querySelector('[data-thread-question-policy]');
     const duplicateLinks = panel.querySelector('[data-thread-duplicate-links]');
     const followup = panel.querySelector('[data-thread-followup]');
     const reply = followup.querySelector('[name="reply"]');
+    const replyLabel = followup.querySelector('[data-thread-reply-label]');
     const continueButton = followup.querySelector('[type="submit"]');
+    const createActions = panel.querySelector('[data-thread-create-actions]');
     const create = panel.querySelector('[data-thread-create]');
     const confirmDuplicate = panel.querySelector('[data-thread-confirm-duplicate]');
     const recover = panel.querySelector('[data-thread-recover]');
@@ -2505,6 +2537,10 @@ export function generateContentScriptJs(
     let created = null;
     let initialClarification = false;
     let loadSearchThemes = null;
+    let selectedTheme = null;
+    let themeOverridden = false;
+    let themeSearchSerial = 0;
+    let themeSearchTimer = 0;
 
     function say(text) { status.textContent = text; }
     function focus(target) { if (!panel.hidden) target.focus({preventScroll:true}); }
@@ -2512,7 +2548,12 @@ export function generateContentScriptJs(
       const locked = busy || Boolean(pendingWrite) || Boolean(created);
       submit.disabled = busy || !ready;
       continueButton.disabled = busy || Boolean(pendingWrite && !created) || !reply.value.trim();
-      create.disabled = locked || initialClarification || !summary.value.trim() || !description.value.trim();
+      createActions.hidden = !draft || initialClarification || Boolean(created);
+      create.disabled = locked || initialClarification || !normalizedSummary(summary.value) || !description.value.trim();
+      themeToggle.disabled = locked;
+      themeClear.disabled = locked;
+      reply.readOnly = busy;
+      if (locked && !themeMenu.hidden) closeThemeMenu();
       confirmDuplicate.disabled = create.disabled;
       recover.disabled = busy;
       retryLinks.disabled = busy;
@@ -2520,7 +2561,7 @@ export function generateContentScriptJs(
       newTask.disabled = busy;
       for (const field of form.querySelectorAll('input,textarea')) field.readOnly = busy;
       form.querySelectorAll('.ozon-ext-search-select-trigger').forEach(button => { button.disabled = busy; });
-      for (const field of [summary, description, theme]) field.readOnly = busy || Boolean(pendingWrite) || Boolean(created);
+      for (const field of [summary, description]) field.readOnly = locked;
       form.setAttribute('aria-busy', String(busy));
       review.setAttribute('aria-busy', String(busy));
     }
@@ -2542,6 +2583,10 @@ export function generateContentScriptJs(
       pendingWrite = null;
       created = null;
       initialClarification = false;
+      loadSearchThemes = null;
+      themeOverridden = false;
+      setTheme(null);
+      closeThemeMenu();
       form.hidden = false;
       review.hidden = true;
       question.hidden = true;
@@ -2553,7 +2598,6 @@ export function generateContentScriptJs(
       retryLinks.hidden = true;
       confirmDuplicate.hidden = true;
       duplicateLinks.hidden = true;
-      create.hidden = false;
       heading.textContent = 'Создать FCRM из треда';
       reply.value = '';
       say('Выберите тип задачи и компонент FCRM.');
@@ -2583,37 +2627,165 @@ export function generateContentScriptJs(
         } catch (_) { reject(new Error('Расширение не ответило. Обновите страницу Jira.')); }
       });
     }
-    function sourceThemes() {
-      if (loadSearchThemes) return loadSearchThemes;
-      const jql = 'project = FCRM AND labels = fcrm_umb_epic AND statusCategory != Done ORDER BY updated DESC';
-      const params = new URLSearchParams({jql,fields:'summary',maxResults:'25'});
-      loadSearchThemes = fetch('/rest/api/2/search?' + params, {
+
+    function themeTerms(query) {
+      return (query.toLocaleLowerCase('ru').match(/[\\p{L}\\p{N}]+/gu) || []).slice(0,5);
+    }
+    async function findThemes(query = '') {
+      const scope = 'project = FCRM AND labels = fcrm_umb_epic AND statusCategory != Done';
+      const search = /^FCRM-\\d+$/i.test(query)
+        ? ' AND key = ' + query.toUpperCase()
+        : themeTerms(query).map(term => ' AND summary ~ "' + term.slice(0,60) + '*"').join('');
+      const params = new URLSearchParams({jql:scope + search + ' ORDER BY updated DESC',fields:'summary',maxResults:'25'});
+      const response = await fetch('/rest/api/2/search?' + params, {
         credentials:'same-origin',headers:{Accept:'application/json'},signal:AbortSignal.timeout(4000)
-      }).then(response => response.ok ? response.json() : null)
-        .then(data => Array.isArray(data?.issues) ? data.issues.slice(0,25).flatMap(issue => (
-          /^FCRM-\\d+$/.test(issue.key) && typeof issue.fields?.summary === 'string'
-            ? [{key:issue.key,title:issue.fields.summary.slice(0,255)}] : []
-        )) : []).catch(() => []);
+      });
+      if (!response.ok) throw new Error('Не удалось загрузить тематики Jira.');
+      const data = await response.json();
+      if (!Array.isArray(data?.issues)) throw new Error('Не удалось загрузить тематики Jira.');
+      return data.issues.slice(0,25).flatMap(issue => (
+        /^FCRM-\\d+$/.test(issue.key) && typeof issue.fields?.summary === 'string' && issue.fields.summary.trim()
+          ? [{key:issue.key,title:issue.fields.summary.trim().slice(0,255)}] : []
+      ));
+    }
+    function sourceThemes() {
+      if (!loadSearchThemes) {
+        loadSearchThemes = findThemes().catch(() => {
+          loadSearchThemes = null;
+          return [];
+        });
+      }
       return loadSearchThemes;
     }
-    function readDraft() {
-      return {summary:summary.value.trim(),description:description.value.trim(),themeKey:theme.value.trim().toUpperCase()};
+    function themeLabel(item) { return item.title + ' · ' + item.key; }
+    function setTheme(item, manual = false) {
+      selectedTheme = item;
+      if (manual) themeOverridden = true;
+      themeCurrent.textContent = item ? themeLabel(item) : 'Не выбрана';
+      themeToggle.textContent = item ? 'Изменить тематику' : 'Выбрать тематику';
+      themeClear.hidden = !item;
+      if (manual) {
+        confirmDuplicate.hidden = true;
+        duplicateLinks.hidden = true;
+      }
     }
+    function closeThemeMenu(restoreFocus = false) {
+      window.clearTimeout(themeSearchTimer);
+      themeSearchSerial += 1;
+      themeMenu.hidden = true;
+      themeToggle.setAttribute('aria-expanded', 'false');
+      if (restoreFocus) focus(themeToggle);
+    }
+    function queueThemeSearch() {
+      window.clearTimeout(themeSearchTimer);
+      const request = ++themeSearchSerial;
+      const query = themeInput.value.trim();
+      themeResults.replaceChildren();
+      themeStatus.textContent = 'Ищу тематики в Jira…';
+      themeSearchTimer = window.setTimeout(async () => {
+        const terms = themeTerms(query);
+        const exactKey = /^FCRM-\\d+$/i.test(query) ? query.toUpperCase() : '';
+        const matches = item => exactKey ? item.key === exactKey : terms.every(term => themeLabel(item).toLocaleLowerCase('ru').includes(term));
+        const cached = query && loadSearchThemes ? await loadSearchThemes : [];
+        let remote = [];
+        let failed = false;
+        try { remote = await findThemes(query); } catch (_) { failed = true; }
+        if (request !== themeSearchSerial || themeMenu.hidden || !panel.isConnected) return;
+        const candidates = new Map();
+        for (const item of [...cached, ...remote]) if (matches(item)) candidates.set(item.key, item);
+        if (!candidates.size) {
+          themeStatus.textContent = failed ? 'Не удалось загрузить тематики Jira. Попробуйте изменить запрос или открыть поиск снова.' : 'Подходящих тематик нет.';
+          return;
+        }
+        themeStatus.textContent = failed ? 'Jira недоступна. Показаны недавние результаты.' : '';
+        for (const item of candidates.values()) {
+          const option = document.createElement('button');
+          option.type = 'button';
+          option.dataset.threadThemeOption = item.key;
+          option.textContent = themeLabel(item);
+          option.setAttribute('aria-pressed', String(item.key === selectedTheme?.key));
+          option.addEventListener('click', () => {
+            setTheme(item, true);
+            closeThemeMenu(true);
+          });
+          themeResults.appendChild(option);
+        }
+      }, query ? 260 : 0);
+    }
+    themeToggle.addEventListener('click', () => {
+      if (!themeMenu.hidden) { closeThemeMenu(); return; }
+      themeMenu.hidden = false;
+      themeToggle.setAttribute('aria-expanded', 'true');
+      themeInput.value = '';
+      focus(themeInput);
+      queueThemeSearch();
+    });
+    themeClear.addEventListener('click', () => {
+      setTheme(null, true);
+      closeThemeMenu(true);
+    });
+    themeInput.addEventListener('input', queueThemeSearch);
+    themeMenu.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeThemeMenu(true);
+        return;
+      }
+      const options = Array.from(themeResults.querySelectorAll('button'));
+      if (!options.length) return;
+      if (event.key === 'Enter' && event.target === themeInput) {
+        event.preventDefault();
+        options[0].click();
+      }
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const index = options.indexOf(document.activeElement);
+        const next = event.key === 'ArrowDown' ? (index + 1) % options.length : (index <= 0 ? options.length - 1 : index - 1);
+        options[next].focus();
+      }
+    });
+    function normalizedSummary(text) { return text.replace(/\\s+/g, ' ').trim(); }
+    function fitSummary() {
+      if (CSS.supports('field-sizing', 'content')) return;
+      summary.style.height = 'auto';
+      summary.style.height = summary.scrollHeight + 2 + 'px';
+    }
+    function readDraft() {
+      return {summary:normalizedSummary(summary.value),description:description.value.trim(),themeKey:selectedTheme?.key || ''};
+    }
+    function showQuestion(text = '', reason = '', required = false) {
+      question.hidden = !text;
+      questionHeading.textContent = required ? 'Нужно уточнение для задачи' : 'Вопрос к черновику';
+      questionText.textContent = text;
+      questionReason.textContent = reason;
+      questionReason.hidden = !reason;
+      questionPolicy.textContent = required ? 'Ответьте, чтобы подготовить черновик.' :
+        created ? 'Ответ поможет уточнить предложение к задаче.' : 'Ответ необязателен, можно создать по черновику.';
+      replyLabel.textContent = text ? 'Ответ на вопрос' : (created ? 'Уточнение к созданной задаче' : 'Дополнение к черновику');
+      if (text) {
+        reply.setAttribute('aria-describedby', 'ozon-thread-question-text ' + (reason ? 'ozon-thread-question-reason ' : '') + 'ozon-thread-question-policy');
+      } else {
+        reply.removeAttribute('aria-describedby');
+      }
+    }
+
     function readResult(text) {
       let result;
       try { result = JSON.parse(text); } catch (_) { throw new Error('DeepSeek вернул черновик в неожиданном формате. Повторите запрос.'); }
+      const questionReason = typeof result?.questionReason === 'string' ? result.questionReason.trim().slice(0,180) : '';
       if (result?.status === 'clarification') {
         const detail = typeof result.message === 'string' ? result.message.trim().slice(0,500) : '';
-        return {question:detail || 'Какие детали нужно учесть в черновике?'};
+        return {question:detail || 'Какие детали нужно учесть в черновике?', questionReason};
       }
       if (result?.status !== 'draft' || typeof result.summary !== 'string' || !result.summary.trim() || typeof result.description !== 'string' || !result.description.trim()) {
         throw new Error('DeepSeek вернул неполный черновик. Повторите запрос.');
       }
       return {
-        summary:result.summary.trim().slice(0,255),
+        summary:normalizedSummary(result.summary).slice(0,255),
         description:result.description.trim(),
         themeKey:/^FCRM-\\d+$/.test(result.themeKey) ? result.themeKey : '',
         question:typeof result.message === 'string' ? result.message.trim().slice(0,500) : '',
+        questionReason,
         mentionedIssueKeys:Array.isArray(result.mentionedIssueKeys) ? result.mentionedIssueKeys.filter(key => /^FCRM-\\d+$/.test(key)).slice(0,12) : [],
         urls:Array.isArray(result.urls) && result.urls.length > 0 && result.urls.length <= requestSnapshot.urls.length && result.urls.every(url => typeof url === 'string') ? result.urls : requestSnapshot.urls
       };
@@ -2629,8 +2801,8 @@ export function generateContentScriptJs(
     async function requestDraft(clarification) {
       if (busy || !requestSnapshot || (pendingWrite && !created)) return;
       const previousDraft = draft && (created ? draft : readDraft());
-      const clarificationWithQuestion = clarification && !question.hidden && question.textContent
-        ? question.textContent + '\\nОтвет: ' + clarification : clarification;
+      const clarificationWithQuestion = clarification && !question.hidden && questionText.textContent
+        ? questionText.textContent + '\\nОтвет: ' + clarification : clarification;
       busy = true;
       confirmDuplicate.hidden = true;
       duplicateLinks.hidden = true;
@@ -2666,22 +2838,20 @@ export function generateContentScriptJs(
         reply.value = '';
         if (!result.summary) {
           initialClarification = !created;
-          question.textContent = result.question;
-          question.hidden = false;
-          say('Для черновика нужно уточнение.');
+          showQuestion(result.question, result.questionReason, !created);
+          say(created ? 'Для предложения нужно уточнение.' : 'Для черновика нужно уточнение.');
           nextFocus = reply;
         } else {
           initialClarification = false;
           draft = result;
           summary.value = result.summary;
           description.value = result.description;
-          theme.value = result.themeKey;
+          if (!themeOverridden && !created) setTheme(themes.find(item => item.key === result.themeKey) || null);
           context.textContent = requestSnapshot.issueTypeName + ' · ' + requestSnapshot.componentName;
           review.querySelector('h3').textContent = created ? 'Предложение к задаче ' + created.key : 'Черновик задачи FCRM';
           review.hidden = false;
-          question.textContent = result.question;
-          question.hidden = !result.question;
-          create.hidden = Boolean(created);
+          fitSummary();
+          showQuestion(result.question, result.questionReason);
           say(created ? 'Предложение готово. Проверьте его перед изменением задачи в Jira.' : 'Черновик готов. Проверьте поля перед созданием задачи в Jira.');
           nextFocus = review.querySelector('h3');
         }
@@ -2700,9 +2870,8 @@ export function generateContentScriptJs(
       created = result;
       recover.hidden = true;
       review.hidden = true;
-      create.hidden = true;
       confirmDuplicate.hidden = true;
-      question.hidden = true;
+      showQuestion();
       back.hidden = true;
       newTask.hidden = false;
       followup.hidden = false;
@@ -2717,11 +2886,7 @@ export function generateContentScriptJs(
       if (busy || action === 'create' && create.disabled) return;
       if (action === 'create') {
         const values = readDraft();
-        if (values.themeKey && !/^FCRM-\\d+$/.test(values.themeKey)) {
-          say('Укажите ключ тематики в формате FCRM-1234 или оставьте поле пустым.');
-          focus(theme);
-          return;
-        }
+
         pendingWrite = {
           ...values, urls:draft.urls, issueTypeId:requestSnapshot.issueTypeId,
           componentId:requestSnapshot.componentId, mentionedIssueKeys:draft.mentionedIssueKeys, allowPossibleDuplicate
@@ -2786,7 +2951,8 @@ export function generateContentScriptJs(
       const clarification = reply.value.trim();
       if (clarification) requestDraft(clarification);
     };
-    [summary, description, theme, reply].forEach(field => field.addEventListener('input', () => { confirmDuplicate.hidden = true; duplicateLinks.hidden = true; updateControls(); }));
+    summary.addEventListener('input', fitSummary);
+    [summary, description, reply].forEach(field => field.addEventListener('input', () => { confirmDuplicate.hidden = true; duplicateLinks.hidden = true; updateControls(); }));
     async function loadFields() {
       retryFields.hidden = true;
       say('Загружаю типы задач и компоненты FCRM…');
