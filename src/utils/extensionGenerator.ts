@@ -15,7 +15,7 @@ import { createExtensionUpdateNotice, EXTENSION_UPDATE_INTERVAL, EXTENSION_UPDAT
 import { createJiraDraftLinkClient } from '../services/deepseek';
 import { createFcrmThreadWriter } from '../services/fcrmThreadWriter';
 
-export const EXTENSION_VERSION = '3.5.196';
+export const EXTENSION_VERSION = '3.5.197';
 
 export function fcrmReviewRowClass(key:string, status:string):string {
   if (!/^FCRM-\d+$/i.test(key)) return '';
@@ -168,9 +168,9 @@ body.ozon-native-board-visible > :is(.ozon-component-editor,#ozon-thread-sidebar
   box-sizing: border-box !important;
 }
 
-#ozon-structure-root *,
-#ozon-structure-root *::before,
-#ozon-structure-root *::after {
+:is(#ozon-structure-root,#ozon-thread-sidebar) *,
+:is(#ozon-structure-root,#ozon-thread-sidebar) *::before,
+:is(#ozon-structure-root,#ozon-thread-sidebar) *::after {
   box-sizing: border-box;
   font-family: var(--ozon-font-sans);
 }
@@ -468,33 +468,41 @@ body.ozon-native-board-visible > :is(.ozon-component-editor,#ozon-thread-sidebar
 .ozon-ext-status-count + .ozon-ext-status-count::before { content:'·';margin-right:8px;color:#CBD5E1; }
 .ozon-ext-view-tabs { display:flex;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid #E2E8F0;background:#fff;flex-shrink:0; }
 
-#ozon-thread-sidebar {position:fixed;right:0;top:40px;bottom:0;width:min(var(--thread-width,clamp(720px,76vw,1040px)),100vw);box-sizing:border-box;z-index:100050;background:#fff;box-shadow:-8px 0 28px #07102622;padding:22px 26px;overflow:auto;font:14px/1.55 var(--ozon-font-sans,sans-serif);color:#071026;}
-#ozon-thread-sidebar [hidden] {display:none!important;}
+#ozon-thread-sidebar {position:fixed;right:0;top:40px;bottom:0;width:min(var(--thread-width,clamp(720px,76vw,1040px)),100vw);box-sizing:border-box;z-index:100050;height:auto!important;font:12px/1.35 var(--ozon-font-sans);color:var(--ozon-navy);-webkit-font-smoothing:antialiased;}
+#ozon-thread-sidebar[hidden],#ozon-thread-sidebar [hidden] {display:none!important;}
 
-#ozon-thread-sidebar {--thread-gap:16px;scrollbar-color:#b8c7da transparent;scrollbar-width:thin;animation:ozon-thread-enter 160ms ease-out;}
+#ozon-thread-sidebar {--thread-gap:10px;scrollbar-color:#b8c4d0 transparent;scrollbar-width:thin;animation:ozon-thread-enter 160ms ease-out;}
 @keyframes ozon-thread-enter {from {transform:translateX(10px);opacity:.86} to {transform:translateX(0);opacity:1}}
 #ozon-thread-sidebar [data-thread-width] {position:fixed;top:50%;left:max(0px,calc(100vw - var(--thread-width,clamp(720px,76vw,1040px))));width:10px;height:56px;z-index:2;border:1px solid #d7e0ec;border-left:0;border-radius:0 6px 6px 0;background:#f2f5fa;color:#627b9a;cursor:ew-resize;touch-action:none;transform:translateY(-50%);display:grid;place-items:center;font-size:12px;user-select:none;}
 #ozon-thread-sidebar [data-thread-width]:focus-visible {outline:2px solid #005bff;outline-offset:2px;}
 #ozon-thread-sidebar [data-thread-step-body] {animation:ozon-thread-body 130ms ease-out;}
 @keyframes ozon-thread-body {from {opacity:.72} to {opacity:1}}
 @media (prefers-reduced-motion:reduce) {#ozon-thread-sidebar,#ozon-thread-sidebar [data-thread-step-body] {animation:none;}}
-@media (max-width:760px) {#ozon-thread-sidebar {width:100vw;padding:16px;}#ozon-thread-sidebar [data-thread-width] {display:none;}}
-#ozon-thread-sidebar .ozon-thread-head h2 {font-size:18px;}
+@media (max-width:760px) {#ozon-thread-sidebar {width:100vw;}#ozon-thread-sidebar [data-thread-width] {display:none;}}
+#ozon-thread-sidebar .ozon-thread-head h2 {font-size:13.5px;font-weight:700;}
 #ozon-thread-sidebar [data-thread-status] {margin:0 0 16px;padding:10px 12px;border:1px solid #d7e0ec;border-left:3px solid #94a3b8;border-radius:8px;background:#f5f8fd;color:#334155;}
 #ozon-thread-sidebar [data-thread-status][data-tone="progress"] {border-left-color:#005bff;background:#edf4ff;color:#173b7a;}
 #ozon-thread-sidebar [data-thread-status][data-tone="error"] {border-color:#fac9c6;border-left-color:#bd302b;background:#fff3f2;color:#89221e;}
 #ozon-thread-sidebar [data-thread-status][data-tone="success"] {border-color:#d7e0ec;border-left-color:#8eaed9;background:#f4f7fb;color:#304662;}
 #ozon-thread-sidebar [data-thread-status][data-tone="warning"] {border-color:#f2d9a7;border-left-color:#a35e09;background:#fff8e8;color:#76440a;}
-#ozon-thread-sidebar [name="draftDescription"] {min-height:156px;line-height:1.6;field-sizing:content;border:0;border-radius:0 0 8px 8px;}
-#ozon-thread-sidebar :is(input,textarea):disabled {background:#f5f7fa;color:#475569;opacity:1;cursor:wait;}
+#ozon-thread-sidebar [name="draftDescription"] {min-height:156px;field-sizing:content;}
+#ozon-thread-sidebar :is(input,textarea,select):disabled {background:var(--ozon-layer-surface)!important;color:#64748b!important;opacity:1;cursor:wait;}
 #ozon-thread-sidebar [data-thread-context-sources] {margin:0 0 12px;color:#475569;}
 #ozon-thread-sidebar [data-thread-context-sources] summary {cursor:pointer;font-weight:600;}
 #ozon-thread-sidebar [data-thread-context-sources] a {color:#005bff;}
 #ozon-thread-sidebar [data-thread-theme-reason] {margin:0 0 8px;color:#475569;}
-#ozon-thread-sidebar [data-thread-related] {min-width:0;margin:8px 0 0;padding:10px 12px;border:1px solid #d7e0ec;border-radius:8px;}
-#ozon-thread-sidebar [data-thread-related] legend {padding:0 4px;font-weight:650;}
+#ozon-thread-sidebar [data-thread-related] {min-width:0;margin:0;padding:0;}
+#ozon-thread-sidebar [data-thread-linked-sources] ul {list-style:none;margin:4px 0 0;padding:0;display:grid;gap:4px;}
+#ozon-thread-sidebar .ozon-ext-section-head {cursor:default;}
+#ozon-thread-sidebar .ozon-ext-section-head:hover {background:#f8fafc;}
+#ozon-thread-sidebar .ozon-thread-section-body {padding:10px 12px;}
+#ozon-thread-sidebar [data-thread-preflight] {gap:0;}
+#ozon-thread-sidebar [data-thread-preflight-message] {margin:0;}
+#ozon-thread-sidebar [data-thread-preflight-matches] {padding-left:16px;margin:8px 0 12px;}
+#ozon-thread-sidebar [data-thread-preflight-matches] small {display:block;margin:2px 0 6px;}
 #ozon-thread-sidebar .ozon-thread-proposal {display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:start;gap:8px;margin:0;padding:10px 0;border-bottom:1px solid #e2e8f0;}
-#ozon-thread-sidebar .ozon-thread-proposal select {padding:6px 8px;border:1px solid #a8bbd2;border-radius:6px;background:#fff;color:#071026;font:inherit;}
+#ozon-thread-sidebar .ozon-thread-proposal select {min-height:30px;max-width:100%;font-family:var(--ozon-font-sans);}
+#ozon-thread-sidebar .ozon-thread-proposal > span {min-width:0;overflow-wrap:anywhere;}
 #ozon-thread-sidebar .ozon-thread-link-add {display:flex;gap:8px;align-items:center;margin-top:8px;}
 #ozon-thread-sidebar .ozon-thread-link-add button {flex-shrink:0;}
 #ozon-thread-sidebar [data-thread-early-duplicates] {gap:6px;}
@@ -506,8 +514,8 @@ body.ozon-native-board-visible > :is(.ozon-component-editor,#ozon-thread-sidebar
 #ozon-thread-sidebar .ozon-thread-proposal input {width:16px;height:16px;margin:4px 0 0;flex:0 0 auto;accent-color:#005bff;}
 #ozon-thread-sidebar .ozon-thread-proposal small {display:block;}
 #ozon-thread-sidebar [data-thread-result] {padding:16px;border:1px solid #d7e0ec;border-radius:10px;background:#f8fafc;}
-#ozon-thread-sidebar [data-thread-result] h3 {margin:0;font-size:16px;}
-#ozon-thread-sidebar [data-thread-result-title] {margin:0;font-size:17px;font-weight:650;}
+#ozon-thread-sidebar [data-thread-result] h3 {margin:0;font-size:12px;}
+#ozon-thread-sidebar [data-thread-result-title] {margin:0;font-size:12px;font-weight:700;}
 #ozon-thread-sidebar a[data-thread-key] {width:fit-content;padding:6px 10px;border:1px solid #a8c8fb;border-radius:8px;background:#e6f0ff;font-weight:650;text-decoration:none;}
 #ozon-thread-sidebar [data-thread-link-outcomes] h4 {margin:6px 0;}
 #ozon-thread-sidebar [data-thread-link-outcomes] ul {padding-left:20px;margin:6px 0;}
@@ -536,23 +544,26 @@ body.ozon-native-board-visible > :is(.ozon-component-editor,#ozon-thread-sidebar
 #ozon-thread-sidebar [data-thread-duplicate-links] a {color:#005bff;text-decoration:underline;}
 #ozon-thread-sidebar [data-thread-post-review] {margin-top:16px;}
 #ozon-thread-sidebar [data-thread-create-actions] {margin:var(--thread-gap) 0;}
-#ozon-thread-sidebar .ozon-thread-editor {border:1px solid #a8bbd2;border-radius:8px;overflow:hidden;}
-#ozon-thread-sidebar .ozon-thread-editor-nav {display:flex;gap:4px;padding:6px 8px;background:#f2f5fa;border-bottom:1px solid #d7e0ec;}
+#ozon-thread-sidebar .ozon-thread-editor {border:1px solid var(--ozon-border);border-radius:10px;}
+#ozon-thread-sidebar .ozon-thread-editor-nav {display:flex;gap:4px;padding:6px 8px;background:#f8fafc;border-bottom:1px solid var(--ozon-border);border-radius:10px 10px 0 0;}
 #ozon-thread-sidebar .ozon-thread-editor-nav button[aria-pressed=true] {color:#005bff;background:#e6effd;}
 #ozon-thread-sidebar [data-thread-description-preview] {padding:12px;min-height:156px;overflow-wrap:anywhere;}
-#ozon-thread-sidebar :is([data-thread-description-preview],.ozon-thread-final-description) :is(h3,h4) {margin:0 0 6px;font-size:15px;}
+#ozon-thread-sidebar :is([data-thread-description-preview],.ozon-thread-final-description) :is(h3,h4) {margin:0 0 6px;font-size:12px;}
 #ozon-thread-sidebar :is([data-thread-description-preview],.ozon-thread-final-description) :is(p,ul,ol) {margin:0 0 10px;}
 #ozon-thread-sidebar :is([data-thread-description-preview],.ozon-thread-final-description) :last-child {margin-bottom:0;}
-#ozon-thread-sidebar h2,#ozon-thread-sidebar h3 {margin:0;font-size:15px;line-height:1.3;}
-#ozon-thread-sidebar h3 {margin-top:12px;}
-#ozon-thread-sidebar .ozon-thread-head {display:flex;align-items:center;justify-content:space-between;gap:12px;}
+#ozon-thread-sidebar :is(h2,h3,h4) {margin:0;font-size:12px;line-height:inherit;font-weight:700;}
+#ozon-thread-sidebar .ozon-thread-head {flex-shrink:0;}
 #ozon-thread-sidebar p {margin:10px 0;overflow-wrap:anywhere;}
 #ozon-thread-sidebar :is(form,section) {display:flex;flex-direction:column;gap:var(--thread-gap);}
-#ozon-thread-sidebar label {display:grid;gap:4px;font-weight:600;}
-#ozon-thread-sidebar small {color:#475569;}
-#ozon-thread-sidebar :is(input,textarea) {display:block;box-sizing:border-box;width:100%;min-width:0;border:1px solid #a8bbd2;border-radius:8px;padding:8px 10px;color:#071026;background:#fff;font:inherit;font-weight:400;}
+#ozon-thread-sidebar label {display:grid;gap:4px;}
+#ozon-thread-sidebar .ozon-ext-field-label {padding-top:0;}
+#ozon-thread-sidebar small {color:#64748b;font-size:11.5px;}
+#ozon-thread-sidebar :is(input:not([type="checkbox"]),textarea) {display:block;width:100%;min-height:30px;font:500 11.5px/1.35 var(--ozon-font-sans);color:var(--ozon-navy);}
+#ozon-thread-sidebar .ozon-ext-search-select-trigger {height:auto;min-height:30px;}
+#ozon-thread-sidebar [data-thread-link-add] {height:30px;}
+#ozon-thread-sidebar :is(a,summary) {overflow-wrap:anywhere;}
 #ozon-thread-sidebar textarea {resize:vertical;}
-#ozon-thread-sidebar [name="draftSummary"] {field-sizing:content;min-height:calc(3em + 18px);overflow-wrap:anywhere;}
+#ozon-thread-sidebar [name="draftSummary"] {field-sizing:content;min-height:calc(2em + 14px);overflow-wrap:anywhere;}
 #ozon-thread-sidebar [data-thread-theme-current] {margin:4px 0 8px;}
 #ozon-thread-sidebar [data-thread-theme-menu] {margin-top:8px;border:1px solid #d7e0ec;border-radius:8px;padding:8px;}
 #ozon-thread-sidebar [data-thread-theme-results] {display:grid;gap:4px;max-height:300px;overflow:auto;scrollbar-width:thin;scrollbar-color:#b8c7da transparent;}
@@ -567,8 +578,8 @@ body.ozon-native-board-visible > :is(.ozon-component-editor,#ozon-thread-sidebar
 #ozon-thread-sidebar [data-thread-question-reason] {margin:4px 0;color:#475569;}
 #ozon-thread-sidebar [data-thread-question-policy] {display:block;margin-top:6px;}
 #ozon-thread-sidebar .ozon-thread-actions {display:flex;flex-wrap:wrap;gap:6px;}
-#ozon-thread-sidebar :is(button,input,textarea,a):focus-visible,#ozon-prompt-catalog :is(button,summary):focus-visible {outline:2px solid #005bff;outline-offset:2px;}
-#ozon-thread-sidebar button:disabled {opacity:.55;cursor:default;}
+#ozon-thread-sidebar :is(a,summary,select):focus-visible {outline:2px solid #ff007a;outline-offset:2px;}
+#ozon-prompt-catalog :is(button,summary):focus-visible {outline:2px solid #005bff;outline-offset:2px;}
 #ozon-thread-sidebar [data-thread-key] {color:#005bff;text-decoration:underline;}
 #ozon-prompt-catalog {overflow:auto;min-height:0;padding:16px;background:#f8fafc;color:#071026;}
 #ozon-prompt-catalog h2 {margin:0 0 8px;font-size:16px;}
@@ -2119,23 +2130,25 @@ button.ozon-report-trend-bars:hover,.ozon-report-trend-bars:focus-visible {backg
 }
 #ozon-structure-root .ozon-ext-type-pill {background:#f2f4f7;}
 #ozon-structure-root .ozon-ext-badge-progress {background:rgba(0,150,255,.08);color:#005bff;}
-#ozon-structure-root :is(.ozon-ext-btn,.ozon-ext-open-sb-btn) {
+:is(#ozon-structure-root,#ozon-thread-sidebar) :is(.ozon-ext-btn,.ozon-ext-open-sb-btn) {
   border-radius:10px!important; font-weight:600; box-shadow:none!important;
 }
-#ozon-structure-root .ozon-ext-btn:not(.ozon-ext-btn-negative):not(.ozon-ext-btn-surface) {background-color:#e5f2ff;color:#005bff;}
-#ozon-structure-root :is(.ozon-ext-btn,.ozon-ext-open-sb-btn):hover:enabled {filter:brightness(.96);}
-#ozon-structure-root :is(.ozon-ext-btn,.ozon-ext-open-sb-btn):active:enabled {filter:brightness(.91);}
+:is(#ozon-structure-root,#ozon-thread-sidebar) .ozon-ext-btn:not(.ozon-ext-btn-negative):not(.ozon-ext-btn-surface) {background-color:#e5f2ff;color:#005bff;}
+:is(#ozon-structure-root,#ozon-thread-sidebar) :is(.ozon-ext-btn,.ozon-ext-open-sb-btn):hover:enabled {filter:brightness(.96);}
+:is(#ozon-structure-root,#ozon-thread-sidebar) :is(.ozon-ext-btn,.ozon-ext-open-sb-btn):active:enabled {filter:brightness(.91);}
 #ozon-structure-root .ozon-ext-filter-bar button[aria-pressed] {border-radius:999px!important;padding-inline:12px;}
 #ozon-structure-root .ozon-ext-filter-bar button[aria-pressed="true"] {color:#005bff;background:#e5f2ff;box-shadow:inset 0 0 0 1px #a4ccff!important;}
-#ozon-structure-root :is(.ozon-ext-field-grid,.ozon-ext-create-dialog) :is(input[type="text"],textarea) {
+#ozon-structure-root :is(.ozon-ext-field-grid,.ozon-ext-create-dialog) :is(input[type="text"],textarea),
+#ozon-thread-sidebar :is(input:not([type="checkbox"]),textarea,.ozon-ext-search-select-trigger) {
   box-sizing:border-box;border:1px solid #dce3eb!important;border-radius:10px!important;background-color:#fff!important;
   padding:6px 10px; min-width:0; caret-color:#005bff;
 }
-#ozon-structure-root :is(.ozon-ext-field-grid,.ozon-ext-create-dialog) :is(input,textarea):focus {
+#ozon-structure-root :is(.ozon-ext-field-grid,.ozon-ext-create-dialog) :is(input,textarea):focus,
+#ozon-thread-sidebar :is(input:not([type="checkbox"]),textarea,.ozon-ext-search-select-trigger):focus {
   border-color:#005bff!important;box-shadow:inset 0 0 0 1px #005bff!important;
 }
-#ozon-structure-root :is(button,input,textarea):focus-visible {outline:2px solid #ff007a!important;outline-offset:2px;}
-#ozon-structure-root .ozon-ext-btn:disabled {opacity:.45;cursor:default;}
+:is(#ozon-structure-root,#ozon-thread-sidebar) :is(button,input,textarea):focus-visible {outline:2px solid #ff007a!important;outline-offset:2px;}
+:is(#ozon-structure-root,#ozon-thread-sidebar) .ozon-ext-btn:disabled {opacity:.45;cursor:default;}
 /* Compact density for the Jira board, with the states from the field spec. */
 #ozon-structure-root :is(.ozon-ext-toolbar-trigger,.ozon-ext-search-select-trigger,.ozon-ext-sb-combo-trigger,.ozon-ext-cell-combo-trigger,input[type="search"]) {
   box-sizing:border-box; background-color:white!important; border:1px solid #dce3eb!important;
@@ -2539,38 +2552,44 @@ export function generateContentScriptJs(
     if (existing) { existing.hidden = false; existing.querySelector('[data-thread-close]').focus(); return; }
     const panel = document.createElement('aside');
     panel.id = 'ozon-thread-sidebar';
+    panel.className = 'ozon-ext-sidebar';
     panel.setAttribute('role', 'dialog');
     panel.setAttribute('aria-labelledby', 'ozon-thread-title');
     const stepStart = (number,title) => '<li data-thread-step="' + number + '"><div class="ozon-thread-step-heading"><span class="ozon-thread-step-marker" aria-hidden="true">' + number +
       '</span><h3 tabindex="-1">' + title + '</h3></div><p data-thread-step-summary hidden></p><div data-thread-step-body' + (number === 1 ? '' : ' hidden') + '>';
     const stepEnd = '</div></li>';
-    panel.innerHTML = '<div data-thread-width role="separator" tabindex="0" aria-label="Ширина панели" aria-orientation="vertical">⋮</div><header class="ozon-thread-head"><h2 id="ozon-thread-title" tabindex="-1">Создать FCRM из треда</h2><button type="button" data-thread-close class="ozon-ext-btn ozon-ext-btn-surface">Закрыть</button></header>' +
-      '<p data-thread-status role="status" tabindex="-1">Загружаю типы задач и компоненты FCRM…</p><ol class="ozon-thread-steps" aria-label="Этапы создания задачи">' +
+    panel.innerHTML = '<div data-thread-width role="separator" tabindex="0" aria-label="Ширина панели" aria-orientation="vertical">⋮</div><header class="ozon-thread-head ozon-ext-sidebar-header"><h2 id="ozon-thread-title" tabindex="-1">Создать FCRM из треда</h2><button type="button" data-thread-close class="ozon-ext-btn ozon-ext-btn-surface">Закрыть</button></header>' +
+      '<div class="ozon-ext-sidebar-body"><p data-thread-status role="status" tabindex="-1">Загружаю типы задач и компоненты FCRM…</p><ol class="ozon-thread-steps" aria-label="Этапы создания задачи">' +
       stepStart(1,'Исходные данные') +
-      '<form data-thread-source><label>Ссылки на треды chatZone<textarea name="urls" rows="3" required aria-describedby="ozon-thread-url-hint" placeholder="https://chatzone.o3t.ru/o3/pl/…"></textarea></label>' +
+      '<form data-thread-source><label class="ozon-ext-field-label">Ссылки на треды chatZone<textarea name="urls" rows="3" required aria-describedby="ozon-thread-url-hint" placeholder="https://chatzone.o3t.ru/o3/pl/…"></textarea></label>' +
       '<small id="ozon-thread-url-hint">До 10 ссылок, каждая с новой строки.</small>' +
-      '<label>Тип задачи<input name="issueType"></label><label>Компонент FCRM<input name="component"></label>' +
-      '<label>Дополнительная информация<textarea name="additionalInfo" rows="3"></textarea></label>' +
+      '<label class="ozon-ext-field-label">Тип задачи<input name="issueType"></label><label class="ozon-ext-field-label">Компонент FCRM<input name="component"></label>' +
+      '<label class="ozon-ext-field-label">Дополнительная информация<textarea name="additionalInfo" rows="3"></textarea></label>' +
       '<div class="ozon-thread-actions"><button class="ozon-ext-btn" type="submit" disabled>Подготовить черновик</button>' +
-      '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-load-fields hidden>Повторить загрузку полей Jira</button></div></form>' + stepEnd +
+      '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-load-fields hidden>Повторить загрузку полей Jira</button></div></form>' +
+      '<section data-thread-preflight class="ozon-ext-section-card" aria-labelledby="ozon-thread-preflight-title" hidden><h3 id="ozon-thread-preflight-title" class="ozon-ext-section-head" tabindex="-1"></h3>' +
+      '<div class="ozon-thread-section-body"><p data-thread-preflight-message></p><ul data-thread-preflight-matches></ul><div class="ozon-thread-actions">' +
+      '<button type="button" class="ozon-ext-btn" data-thread-preflight-continue>Продолжить к черновику</button>' +
+      '<button type="button" class="ozon-ext-btn" data-thread-preflight-retry>Повторить проверку</button>' +
+      '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-thread-preflight-back>Изменить исходные данные</button></div></div></section>' + stepEnd +
       stepStart(2,'Черновик') + '<details data-thread-context-sources hidden><summary>Дополнительные источники</summary><ul></ul></details>' +
       '<section data-thread-review hidden>' +
-      '<label>Название<textarea name="draftSummary" rows="2" maxlength="255"></textarea></label>' +
-      '<div><strong>Описание</strong><div class="ozon-thread-editor"><div class="ozon-thread-editor-nav" role="group" aria-label="Режим описания">' +
+      '<label class="ozon-ext-field-label">Название<textarea name="draftSummary" rows="2" maxlength="255"></textarea></label>' +
+      '<div><strong class="ozon-ext-field-label">Описание</strong><div class="ozon-thread-editor"><div class="ozon-thread-editor-nav" role="group" aria-label="Режим описания">' +
       '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-description-edit aria-pressed="false">Jira Wiki</button>' +
       '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-description-read aria-pressed="true">Предпросмотр</button></div>' +
       '<div data-thread-description-preview></div><textarea name="draftDescription" rows="7" aria-label="Описание" hidden></textarea></div></div>' +
-      '<div><strong>Тематика FCRM</strong><p data-thread-theme-current>Не выбрана</p><p data-thread-theme-reason hidden></p>' +
+      '<div><strong class="ozon-ext-field-label">Тематика FCRM</strong><p data-thread-theme-current>Не выбрана</p><p data-thread-theme-reason hidden></p>' +
       '<div class="ozon-thread-actions"><button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-theme-toggle aria-controls="ozon-thread-theme-menu" aria-expanded="false">Выбрать тематику</button>' +
       '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-theme-clear hidden>Без тематики</button></div>' +
-      '<div id="ozon-thread-theme-menu" data-thread-theme-menu hidden><label>Поиск по названию или ключу<input type="search" name="draftThemeSearch" autocomplete="off"></label>' +
+      '<div id="ozon-thread-theme-menu" data-thread-theme-menu hidden><label class="ozon-ext-field-label">Поиск по названию или ключу<input type="search" name="draftThemeSearch" autocomplete="off"></label>' +
       '<p data-thread-theme-status role="status"></p><div data-thread-theme-results role="group" aria-label="Подходящие тематики"></div></div></div>' +
-      '<fieldset data-thread-related><legend>Связи с задачами Jira</legend><div data-thread-linked-sources></div><div class="ozon-thread-link-add"><input name="linkKey" aria-label="Ключ или ссылка Jira" placeholder="Ключ или ссылка Jira"><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-thread-link-add>Добавить связь</button></div><small data-thread-link-status role="status"></small><div data-thread-issue-proposals></div></fieldset></section>' +
+      '<div class="ozon-ext-section-card" data-thread-related role="group" aria-labelledby="ozon-thread-links-title"><h3 class="ozon-ext-section-head" id="ozon-thread-links-title">Связи с задачами Jira</h3><div class="ozon-thread-section-body"><div data-thread-linked-sources></div><div class="ozon-thread-link-add"><input name="linkKey" aria-label="Ключ или ссылка Jira" placeholder="Ключ или ссылка Jira"><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-thread-link-add>Добавить связь</button></div><small data-thread-link-status role="status"></small><div data-thread-issue-proposals></div></div></div></section>' +
       '<section data-thread-early-duplicates hidden><h3>Возможные дубли</h3><p data-thread-early-status role="status"></p><ul></ul></section>' +
       '<form data-thread-followup hidden><div data-thread-question hidden><h3 data-thread-question-heading></h3>' +
       '<p id="ozon-thread-question-text" data-thread-question-text></p><p id="ozon-thread-question-reason" data-thread-question-reason hidden></p>' +
       '<small id="ozon-thread-question-policy" data-thread-question-policy></small></div>' +
-      '<label><span data-thread-reply-label>Дополнение к черновику</span><textarea name="reply" rows="3"></textarea></label>' +
+      '<label class="ozon-ext-field-label"><span data-thread-reply-label>Дополнение к черновику</span><textarea name="reply" rows="3"></textarea></label>' +
       '<div class="ozon-thread-actions"><button class="ozon-ext-btn ozon-ext-btn-surface" type="submit" disabled>Отправить уточнение</button></div></form>' +
       '<div class="ozon-thread-actions"><button class="ozon-ext-btn" type="button" data-thread-inspect hidden>Проверить перед созданием</button>' +
       '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-back>Изменить исходные данные</button></div>' + stepEnd +
@@ -2587,8 +2606,15 @@ export function generateContentScriptJs(
       '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-edit>Вернуться к черновику</button>' +
       '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-new hidden>Создать другую</button>' +
       '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-return hidden>Вернуться к доске</button></div>' +
-      '<details data-thread-post-review hidden><summary>Уточнить созданную задачу</summary><div data-thread-suggestion hidden><h3 tabindex="-1">Предложение к задаче</h3><p data-thread-suggestion-title></p><p class="ozon-thread-final-description" data-thread-suggestion-body></p></div></details>' + stepEnd + '</ol>';
+      '<details data-thread-post-review hidden><summary>Уточнить созданную задачу</summary><div data-thread-suggestion hidden><h3 tabindex="-1">Предложение к задаче</h3><p data-thread-suggestion-title></p><p class="ozon-thread-final-description" data-thread-suggestion-body></p></div></details>' + stepEnd + '</ol></div>';
     const form = panel.querySelector('[data-thread-source]');
+    const preflight = panel.querySelector('[data-thread-preflight]');
+    const preflightTitle = preflight?.querySelector('h3');
+    const preflightMessage = preflight?.querySelector('[data-thread-preflight-message]');
+    const preflightMatches = preflight?.querySelector('[data-thread-preflight-matches]');
+    const preflightContinue = preflight?.querySelector('[data-thread-preflight-continue]');
+    const preflightRetry = preflight?.querySelector('[data-thread-preflight-retry]');
+    const preflightBack = preflight?.querySelector('[data-thread-preflight-back]');
     const status = panel.querySelector('[data-thread-status]');
     const verification = panel.querySelector('[data-thread-verification]');
     const resultCard = panel.querySelector('[data-thread-result]');
@@ -2656,6 +2682,7 @@ export function generateContentScriptJs(
     let busy = false;
     let ready = false;
     let requestSnapshot = null;
+    let preflightDraft = null;
     let draft = null;
     let pendingWrite = null;
     let created = null;
@@ -2765,6 +2792,7 @@ export function generateContentScriptJs(
       returnToBoard.hidden = !terminal && state !== 'uncertain';
       returnToBoard.disabled = busy;
       submit.disabled = busy || !ready;
+      if (preflight) for (const button of [preflightContinue,preflightRetry,preflightBack]) button.disabled = busy;
       continueButton.disabled = busy || Boolean(pendingWrite && !created) || !reply.value.trim();
       inspect.hidden = !draft || initialClarification;
       inspect.disabled = locked || loadingLink || !draftReady();
@@ -2819,6 +2847,7 @@ export function generateContentScriptJs(
       resultCard.hidden = true;
     }
     function showSources() {
+      clearPreflight();
       clearInspection();
       clearEarlyDuplicates();
       setStep(1);
@@ -2835,6 +2864,7 @@ export function generateContentScriptJs(
       updateControls();
     };
     function resetDraft() {
+      clearPreflight();
       draft = null;
       initialClarification = false;
       loadSearchThemes = null;
@@ -3151,16 +3181,17 @@ export function generateContentScriptJs(
     function renderDraftLinks() {
       linkedSources.replaceChildren();
       if (draft.urls.length) {
-        const sources = document.createElement('details');
-        const summary = document.createElement('summary');
-        summary.textContent = 'Треды chatZone · ' + draft.urls.length;
+        const sources = document.createElement('div');
+        const title = document.createElement('strong');
+        title.className = 'ozon-ext-field-label';
+        title.textContent = 'Исходные треды chatZone';
         const list = document.createElement('ul');
         for (const url of draft.urls) {
           const item = document.createElement('li');
           item.append(linkFor(url,url));
           list.appendChild(item);
         }
-        sources.append(summary,list);
+        sources.append(title,list);
         linkedSources.appendChild(sources);
       }
       const proposals = new Map([...linkEdits, ...[...draft.links].filter(([key]) => !linkEdits.has(key))]);
@@ -3207,7 +3238,7 @@ export function generateContentScriptJs(
         const remove = document.createElement('button');
         remove.type = 'button';
         remove.textContent = 'Удалить';
-        remove.className = 'ozon-ext-btn ozon-ext-btn-surface';
+        remove.className = 'ozon-ext-btn ozon-ext-btn-negative';
         remove.setAttribute('aria-label','Удалить связь с ' + item.key);
         remove.onclick = () => {
           if (busy || pendingWrite || created) return;
@@ -3282,7 +3313,7 @@ export function generateContentScriptJs(
       if (earlyDuplicates) earlyDuplicates.hidden = true;
     }
 
-    function queueEarlyDuplicates(result = draft, wait = false) {
+    function queueEarlyDuplicates(result = draft, wait = false, prior) {
       if (!earlyDuplicates || !result || !requestSnapshot) return;
       clearEarlyDuplicates();
       const serial = earlySerial;
@@ -3292,7 +3323,7 @@ export function generateContentScriptJs(
       earlyTimer = window.setTimeout(async () => {
         try {
           const input = {urls:result.urls,mentionedIssueKeys:result.mentionedIssueKeys,summary:result.summary ? normalizedSummary(summary.value) : ''};
-          const checked = await threadWriter.inspect(input);
+          const checked = prior || await threadWriter.inspect(input);
           if (serial !== earlySerial || step !== 2) return;
           earlyStatus.textContent = ({
             ready:'Совпадений по треду, упоминаниям и названию не найдено.',
@@ -3412,6 +3443,89 @@ export function generateContentScriptJs(
       if (/формат|неполный|json/.test(hint)) return 'DeepSeek вернул неполный черновик. Повторите запрос.';
       return 'DeepSeek не подготовил черновик. Повторите запрос.';
     }
+    function renderDraftResult(result, themes, previousDraft, keepSummary, keepDescription, earlyCheck) {
+      renderContextSources(result.sources);
+      followup.hidden = false;
+      reply.value = '';
+      setStep(2);
+      initialClarification = !result.summary;
+      showQuestion(result.question, result.questionReason, initialClarification);
+      if (initialClarification) {
+        say('Для черновика нужно уточнение.', 'warning');
+      } else {
+        draft = result;
+        summary.value = keepSummary ? previousDraft.summary : result.summary;
+        description.value = keepDescription ? previousDraft.description : result.description;
+        if (description.hidden) renderDescription(descriptionView, description.value);
+        if (!themeOverridden) setTheme(themes.find(item => item.key === result.themeKey) || null, false, result.themeReason);
+        review.hidden = false;
+        fitSummary();
+        renderDraftLinks();
+        say(keepSummary || keepDescription ? 'Черновик уточнён. Ваши правки сохранены.' : 'Черновик готов. Проверьте поля и перейдите к проверке Jira.', 'success');
+      }
+      queueEarlyDuplicates(result, false, earlyCheck);
+      return initialClarification ? reply : steps[1].querySelector('h3');
+    }
+
+    function clearPreflight() {
+      preflightDraft = null;
+      if (!preflight) return;
+      preflight.hidden = true;
+      preflightMatches.replaceChildren();
+      form.hidden = false;
+    }
+
+    function acceptPreflight(result) {
+      const prepared = preflightDraft;
+      clearPreflight();
+      return renderDraftResult(prepared.result,prepared.themes,null,false,false,result);
+    }
+
+    async function inspectBeforeDraft() {
+      const {result} = preflightDraft;
+      say('Проверяю возможные дубли в Jira…');
+      let checked;
+      try {
+        const input = {urls:result.urls,mentionedIssueKeys:result.mentionedIssueKeys,summary:result.summary || ''};
+        checked = await threadWriter.inspect(input);
+        if (!['ready','existing','possible-duplicate','uncertain'].includes(checked?.state) || !Array.isArray(checked.issues) ||
+            (['existing','possible-duplicate'].includes(checked.state) && !checked.issues.some(issue => /^FCRM-\\d+$/.test(issue?.key)))) throw new Error();
+      } catch (_) {
+        checked = {state:'unavailable',issues:[]};
+      }
+      if (checked.state === 'ready') return acceptPreflight(checked);
+      const existing = checked.state === 'existing';
+      const possible = checked.state === 'possible-duplicate';
+      preflightDraft.checked = checked;
+      preflight.hidden = false;
+      form.hidden = true;
+      preflightContinue.hidden = existing;
+      preflightRetry.hidden = existing || possible;
+      preflightContinue.textContent = result.summary ? 'Продолжить к черновику' : 'Продолжить к уточнению';
+      preflightTitle.textContent = existing ? 'Задача уже есть в Jira' : possible ? 'Возможные дубли' : 'Проверка дублей';
+      preflightMessage.textContent = ({
+        existing:'Для исходного треда уже есть задача. Откройте её по ссылке.',
+        'possible-duplicate':result.summary ? 'Посмотрите совпадения. Если нужна отдельная задача, продолжите к черновику.' : 'Посмотрите совпадения. Если нужна отдельная задача, продолжите к уточнению.',
+        uncertain:'Исход предыдущей записи ещё не подтверждён. Перед созданием Jira проверит его снова.',
+        unavailable:'Jira не ответила на проверку дублей. Повторите проверку или продолжите. Перед созданием проверка обязательна.'
+      })[checked.state];
+      preflightMatches.replaceChildren();
+      for (const match of checked.issues || []) {
+        if (!/^FCRM-\\d+$/.test(match.key)) continue;
+        const item = document.createElement('li');
+        item.appendChild(linkFor(match.key,match.title ? match.title + ' · ' + match.key : match.key));
+        if (match.reason) {
+          const reason = document.createElement('small');
+          reason.textContent = match.reason;
+          item.appendChild(reason);
+        }
+        preflightMatches.appendChild(item);
+      }
+      say(existing ? 'Jira нашла задачу с этим тредом.' : possible ? 'Jira нашла возможные совпадения.' : 'Проверку Jira нужно повторить.', existing ? 'success' : 'warning');
+      return preflightTitle;
+    }
+
+
     async function requestDraft(clarification) {
       if (busy || !requestSnapshot || (pendingWrite && !created)) return;
       const previousDraft = draft && (created ? draft : readDraft());
@@ -3450,10 +3564,10 @@ export function generateContentScriptJs(
         });
         if (!response.ok) throw new Error(modelFailure(response));
         const result = readResult(response.text);
-        renderContextSources(result.sources);
-        followup.hidden = false;
-        reply.value = '';
         if (created) {
+          renderContextSources(result.sources);
+          followup.hidden = false;
+          reply.value = '';
           showQuestion(result.question, result.questionReason);
           if (result.summary) {
             draft = result;
@@ -3466,26 +3580,13 @@ export function generateContentScriptJs(
             say('Для предложения нужно уточнение.', 'warning');
             nextFocus = reply;
           }
+        } else if (preflight && (step === 1 || !draft && result.summary)) {
+          setStep(1, false);
+          progressActive = false;
+          preflightDraft = {result,themes,checked:null};
+          nextFocus = await inspectBeforeDraft();
         } else {
-          setStep(2);
-          initialClarification = !result.summary;
-          showQuestion(result.question, result.questionReason, initialClarification);
-          if (initialClarification) {
-            say('Для черновика нужно уточнение.', 'warning');
-            nextFocus = reply;
-          } else {
-            draft = result;
-            summary.value = keepSummary ? previousDraft.summary : result.summary;
-            description.value = keepDescription ? previousDraft.description : result.description;
-            if (description.hidden) renderDescription(descriptionView, description.value);
-            if (!themeOverridden) setTheme(themes.find(item => item.key === result.themeKey) || null, false, result.themeReason);
-            review.hidden = false;
-            fitSummary();
-            renderDraftLinks();
-            say(keepSummary || keepDescription ? 'Черновик уточнён. Ваши правки сохранены.' : 'Черновик готов. Проверьте поля и перейдите к проверке Jira.', 'success');
-            nextFocus = steps[1].querySelector('h3');
-          }
-          queueEarlyDuplicates(result);
+          nextFocus = renderDraftResult(result,themes,previousDraft,keepSummary,keepDescription);
         }
       } catch (error) {
         say(error.message, 'error');
@@ -3720,6 +3821,25 @@ export function generateContentScriptJs(
     confirmDuplicate.onclick = () => writeTask('create', true);
     recover.onclick = () => writeTask('recover');
     retryLinks.onclick = () => writeTask('retryLinks');
+    if (preflight) {
+      preflightContinue.onclick = () => {
+        if (busy || !preflightDraft || preflightDraft.checked?.state === 'existing') return;
+        const checked = preflightDraft.checked?.state === 'possible-duplicate' ? preflightDraft.checked : undefined;
+        const next = acceptPreflight(checked);
+        updateControls();
+        focus(next);
+      };
+      preflightRetry.onclick = async () => {
+        if (busy || !preflightDraft) return;
+        busy = true;
+        updateControls();
+        const next = await inspectBeforeDraft();
+        busy = false;
+        updateControls();
+        focus(next);
+      };
+      preflightBack.onclick = () => { showSources(); focus(form.querySelector('[name="urls"]')); };
+    }
     followup.onsubmit = event => {
       event.preventDefault();
       const clarification = reply.value.trim();

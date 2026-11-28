@@ -12,6 +12,141 @@ const globals = {exports:moduleExports,URL,URLSearchParams,TextEncoder,AbortSign
 vm.runInNewContext(writer, globals);
 const {createFcrmThreadWriter} = moduleExports;
 
+async function checkPreflight(section, element) {
+  const ready = {state:'ready',issues:[]};
+  const modelDraft = {status:'draft',summary:'Новое название',description:'Черновик',
+    urls:['https://chatzone.o3t.ru/o3/pl/'+'a'.repeat(26)],mentionedIssueKeys:['FCRM-42']};
+  const issue = {key:'FCRM-42',title:'Найденная задача',reason:'Упоминается в треде'};
+  const exact = {state:'existing',issues:[issue]};
+  const possible = {state:'possible-duplicate',issues:[issue]};
+  function fixture(answers, results = [modelDraft]) {
+    const inspections = [], modelRequests = [], rendered = [];
+    const context = vm.createContext({
+      crypto:webcrypto,window:{setInterval:()=>1,clearInterval(){}},
+      requestSnapshot:{urls:['https://chatzone.o3t.ru/o3/pl/'+'b'.repeat(26)]},
+      form:element('form'),preflight:{...element('section'),hidden:true},preflightDraft:null,preflightMatches:element('ul'),
+      preflightTitle:element('h3'),preflightMessage:element('p'),preflightContinue:element('button'),preflightRetry:element('button'),
+      preflightBack:element('button'),confirmDuplicate:element('button'),duplicateLinks:element('ul'),status:element('p'),
+      pendingWrite:null,created:false,draft:null,step:1,busy:false,initialClarification:false,themeOverridden:false,
+      question:{hidden:true},questionText:element('p'),reply:element('textarea'),followup:{hidden:true},
+      summary:{value:''},description:{value:'',hidden:true},descriptionView:element('div'),review:{hidden:true},
+      selectedIssueLinks:new Map(),steps:[null,{querySelector:()=>element('h3')}],
+      clearEarlyDuplicates(){},updateControls(){},fitSummary(){},renderContextSources(){},renderDescription(){},setTheme(){},
+      showQuestion(text,_reason){context.question.hidden=!text;context.questionText.textContent=text || '';},
+      sourceThemes:async()=>[],
+      requestFromExtension:async message=>{
+        modelRequests.push(message);
+        return {ok:true,text:JSON.stringify(results.shift())};
+      },
+      setStep(number){context.step=number;},say(message){context.status.textContent=message;},
+      focus(node){context.focused=node;},
+      renderDraftLinks(){rendered.push(context.draft);},
+      queueEarlyDuplicates(_result,_wait,check){context.earlyCheck=check;},
+      normalizedSummary:text=>text.trim(),parseProposals:()=>new Map(),
+      readDraft:()=>({summary:context.summary.value,description:context.description.value}),
+      document:{createElement:element},
+      linkFor:(key,text)=>({href:'/browse/'+key,textContent:text}),
+      threadWriter:{
+        inspect:async input=>{
+          inspections.push(JSON.parse(JSON.stringify(input)));
+          const answer=answers.shift();
+          if (answer instanceof Error) throw answer;
+          return answer;
+        }
+      }
+    });
+    vm.runInContext(section('    function readResult(', '    function writeInput(') +
+      section('    if (preflight) {\n      preflightContinue.onclick', '    followup.onsubmit'),context);
+    return {context,inspections,modelRequests,rendered,run:clarification=>vm.runInContext(
+      'requestDraft('+JSON.stringify(clarification || '')+')',context)};
+  }
+
+  let resolveJira, startJira;
+  const waiting = new Promise(resolve=>{resolveJira=resolve;});
+  const inspectStarted = new Promise(resolve=>{startJira=resolve;});
+  const pending = fixture([waiting]);
+  const inspect = pending.context.threadWriter.inspect;
+  pending.context.threadWriter.inspect = input=>{
+    startJira();
+    return inspect(input);
+  };
+  const inFlight = pending.run();
+  await inspectStarted;
+  assert.equal(pending.context.busy,true);
+  assert.equal(pending.context.step,1);
+  assert.equal(pending.context.review.hidden,true);
+  assert.deepEqual(pending.rendered,[]);
+  assert.deepEqual(pending.inspections,[{urls:modelDraft.urls,mentionedIssueKeys:modelDraft.mentionedIssueKeys,summary:modelDraft.summary}]);
+  assert.equal(pending.modelRequests[0].type,'o3ds:chat');
+  resolveJira(ready);
+  await inFlight;
+  assert.equal(pending.context.step,2);
+  assert.equal(pending.context.preflight.hidden,true);
+  assert.equal(pending.context.review.hidden,false);
+
+  const found = fixture([exact]);
+  await found.run();
+  assert.equal(found.context.review.hidden,true);
+  assert.equal(found.context.preflightContinue.hidden,true);
+  assert.equal(found.context.preflightRetry.hidden,true);
+  assert.equal(found.context.preflightMatches.children[0].children[0].href,'/browse/FCRM-42');
+  assert.equal(found.context.focused,found.context.preflightTitle);
+  found.context.preflightContinue.onclick();
+  assert.deepEqual(found.rendered,[]);
+
+  const warning = fixture([possible]);
+  await warning.run();
+  assert.equal(warning.context.preflight.hidden,false);
+  assert.equal(warning.context.review.hidden,true);
+  assert.match(warning.context.preflightContinue.textContent,/Продолжить к черновику/);
+  assert.equal(warning.context.preflightMatches.children.length,1);
+  warning.context.preflightContinue.onclick();
+  assert.equal(warning.context.review.hidden,false);
+  assert.equal(warning.context.selectedIssueLinks.size,0);
+  assert.equal(warning.context.earlyCheck,possible);
+
+  const retry = fixture([new Error('Jira timeout'),ready]);
+  await retry.run();
+  assert.equal(retry.context.review.hidden,true);
+  assert.equal(retry.context.preflightRetry.hidden,false);
+  assert.equal(retry.context.preflightContinue.hidden,false);
+  assert.match(retry.context.preflightMessage.textContent,/проверка обязательна/);
+  await retry.context.preflightRetry.onclick();
+  assert.equal(retry.context.review.hidden,false);
+  assert.equal(retry.inspections.length,2);
+  assert.equal(retry.modelRequests.length,1);
+
+  const outage = fixture([new Error('Forbidden')]);
+  await outage.run();
+  outage.context.preflightContinue.onclick();
+  assert.equal(outage.context.review.hidden,false);
+
+  const uncertain = fixture([{state:'uncertain',issues:[issue]},exact]);
+  await uncertain.run();
+  assert.equal(uncertain.context.review.hidden,true);
+  assert.match(uncertain.context.preflightMessage.textContent,/не подтверждён/);
+  assert.equal(uncertain.context.preflightRetry.hidden,false);
+  await uncertain.context.preflightRetry.onclick();
+  assert.equal(uncertain.context.preflightContinue.hidden,true);
+  assert.deepEqual(uncertain.rendered,[]);
+
+  const ask = {status:'clarification',message:'Уточните действие',urls:modelDraft.urls};
+  const revised = fixture([ready,ready],[ask,modelDraft,{...modelDraft,summary:'Изменение модели'}]);
+  await revised.run();
+  assert.equal(revised.context.initialClarification,true);
+  assert.equal(revised.context.review.hidden,true);
+  assert.equal(revised.context.focused,revised.context.reply);
+  await revised.run('Подтверждение');
+  assert.equal(revised.context.review.hidden,false);
+  assert.equal(revised.inspections.length,2);
+  assert.equal(revised.inspections[0].summary,'');
+  assert.equal(revised.inspections[1].summary,modelDraft.summary);
+  revised.context.summary.value='Ручная правка';
+  await revised.run('Дополнение');
+  assert.equal(revised.context.summary.value,'Ручная правка');
+  assert.equal(revised.inspections.length,2);
+}
+
 async function checkDraftPanel() {
   const compiled = fs.readFileSync('FCRM-Chrome-3.3/content.js','utf8');
   function section(start, end) {
@@ -97,7 +232,12 @@ async function checkDraftPanel() {
   vm.runInContext('renderDraftLinks()',context);
   const proposed = context.issueProposals.children[0];
   assert.equal(proposed.children[0].checked,false);
-  assert.equal(context.linkedSources.children[0].tag,'details');
+  const flatten = nodes => nodes.flatMap(node=>[node,...flatten(node.children || [])]);
+  const sourceNodes=flatten(context.linkedSources.children);
+  assert.ok(sourceNodes.some(node=>/треды chatZone/i.test(node.textContent)));
+  assert.ok(sourceNodes.some(node=>node.tag === 'ul'));
+  assert.deepEqual(sourceNodes.filter(node=>node.tag === 'a').map(node=>node.href),draft.urls);
+  assert.ok(sourceNodes.every(node=>node.tag !== 'details' && node.tag !== 'summary' && !node.hidden));
   assert.deepEqual(selected(),[]);
   proposed.children[0].checked=true;
   proposed.children[0].events.change();
@@ -148,7 +288,16 @@ async function checkDraftPanel() {
   assert.deepEqual(kindPicker.children.map(option=>option.textContent),['Связанная задача','Дубликат']);
   kindPicker.value='duplicate';
   kindPicker.events.change();
-  assert.deepEqual(selected(),[{key:'FTD-99',kind:'related'},{key:'FCRM-42',kind:'duplicate'}]);
+  const selectedAfterEdit=[{key:'FTD-99',kind:'related'},{key:'FCRM-42',kind:'duplicate'}];
+  assert.deepEqual(selected(),selectedAfterEdit);
+  draft.links.set('FCRM-42',{key:'FCRM-42',title:'Похожая задача после уточнения',kind:'related'});
+  vm.runInContext('renderDraftLinks()',context);
+  assert.deepEqual(selected(),selectedAfterEdit);
+  const controls=flatten(context.issueProposals.children);
+  assert.ok(!controls.some(node=>node.attributes?.['aria-label'] === 'Добавить связь с OB-45'));
+  assert.ok(controls.some(node=>node.attributes?.['aria-label'] === 'Добавить связь с FCRM-42' && node.checked));
+  assert.ok(flatten(context.linkedSources.children).some(node=>node.tag === 'a' && !node.hidden));
+  await checkPreflight(section,element);
 }
 
 async function checkStepper() {
@@ -239,7 +388,7 @@ async function checkStepper() {
     assert.equal(status.parent,controlsForStep[number-1].pane);
   }
   await checkDraftPanel();
-  console.log('Stepper regression PASS: single open step, read-only inspection, exact match, updated duplicate set, uncertain response, preview, resize, manual links and early duplicate actions.');
+  console.log('Stepper regression PASS: single open step, read-only inspection, exact match, updated duplicate set, uncertain response, preview, resize, manual links, initial duplicate gate and early duplicate actions.');
 }
 
 checkStepper().catch(error => { console.error(error); process.exitCode = 1; });
