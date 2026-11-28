@@ -243,6 +243,8 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
         let number=99900; while (issues.has('FCRM-'+number)) number++;
         const issue=toIssue({key:'FCRM-'+number,summary:fields.summary,component:componentName,issueTypeName:type?.name || 'Задача'}, Boolean(fields.labels?.includes('fcrm_umb_epic')));
         issue.fields.labels=fields.labels || []; issue.fields.description=fields.description || '';
+        issue.fields.issuetype.id=String(fields.issuetype?.id || '');
+        mainKeys.add(issue.key);
         return json({id:issue.id,key:issue.key},201);
       }
       if (method === 'POST' && path === '/rest/api/2/issueLink') {
@@ -400,6 +402,8 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
       if (/\/issuetypes\/\d+$/.test(path)) return page([
         { fieldId: 'summary', name: 'Название', required: true, schema: { type: 'string' } },
         { fieldId: 'description', name: 'Описание', required: true, schema: { type: 'string' } },
+        { fieldId: 'components', name: 'Компоненты', required: true },
+        { fieldId: 'labels', name: 'Метки', required: false },
       ], url, 'values');
       return page(types, url, 'values');
     }
@@ -463,9 +467,30 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
     if (/\/project\/[^/]+$/.test(path)) return json({ key: config.projectKey, issueTypes: types });
     return json({ errorMessages: ['Этот запрос не используется в локальном предпросмотре'] }, 404);
   };
+  const backgroundListeners: Function[] = [];
   Object.defineProperty(window, 'chrome', { configurable: true, value: {
-    runtime: { lastError: null, sendMessage(message: any, callback: (response: any) => void) {
+    storage: {local:{get: async () => ({})}},
+    runtime: { lastError: null, onMessage: {addListener(listener: Function) { backgroundListeners.push(listener); }}, sendMessage(message: any, callback: (response: any) => void) {
+      if (message.type === 'o3ds:prompt-catalog') {
+        for (const listener of backgroundListeners) {
+          if (listener(message, {tab:{id:1}}, callback) === true) return;
+        }
+        callback({ok:false,error:'Промпты недоступны в этой сборке.'});
+        return;
+      }
       window.setTimeout(() => {
+        if (message.type === 'o3ds:chat' && message.mode === 'thread') {
+          const input = JSON.parse(message.approvedDescription || '{}');
+          const text = input.additionalInfo?.includes('Демо: уточнение') && !input.clarification
+            ? {status:'clarification',message:'В каком разделе карточки нужна кнопка?'}
+            : {status:'draft',summary:'[Демо] Добавить кнопку копирования номера в карточку',
+                description:'h2. Цель\nУпростить работу оператора с номером карточки.\n\nh2. Что меняется\n* Номер можно скопировать из карточки.' +
+                  (input.clarification ? '\n* Уточнение: ' + String(input.clarification).trim().replace(/[\r\n]+/g, ' ') : ''),
+                themeKey:'',message:''};
+          callback({ok:true,text:JSON.stringify(text)});
+          return;
+        }
+        if (message.type === 'o3ds:thread-status') {callback({phase:'model'});return;}
         const issue = issues.get(message.issueKey);
         if (issue && message.type === 'o3ds:chat' && message.mode === 'analyze') {
           const designKey = 'FTD-90001';

@@ -47,7 +47,7 @@ function createPreviewDocument(): string {
   };
   return '<!doctype html><html lang="ru"><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;background:white;}html #ozon-structure-root{top:0!important;}html #ozon-thread-sidebar{top:0!important;}</style></head><body>' +
     script('(' + installPreviewApi.toString() + ')(' + JSON.stringify(fixture) + ');') +
-    script(runtime) + script(files['issue-enhance.js']) + '</body></html>';
+    script(files['background.js']) + script(runtime) + script(files['issue-enhance.js']) + '</body></html>';
 }
 
 export default function ExtensionPreview() {

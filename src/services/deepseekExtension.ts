@@ -20,27 +20,61 @@ const completeDeepseekChat = ${completeDeepseekChat.toString()};
 const TOKEN_KEY = ${JSON.stringify(DEEPSEEK_TOKEN_STORAGE_KEY)};
 const PROMPT_KEY = ${JSON.stringify(DEEPSEEK_PROMPT_STORAGE_KEY)};
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (!message || message.type !== ${JSON.stringify(DEEPSEEK_CHAT_MESSAGE_TYPE)}) {
+const defaultPrompt = ${JSON.stringify(DEFAULT_DEEPSEEK_SYSTEM_PROMPT)};
+const designPrompt = ${JSON.stringify(DESIGN_TASK_SYSTEM_PROMPT)};
+const threadPhases = new Map();
+
+async function getPromptCatalog(savedPrompt) {
+  const thread = {urls:['https://chatzone.o3t.ru/example/pl/00000000000000000000000000'], issueTypeName:'Задача',componentName:'Пример компонента', themes:[{key:'FCRM-2',title:'Пример тематики'}]};
+  const revision = {preview:'Предыдущий черновик',reply:'Сделай короче.'};
+  const examples = [
+    ['Создать FCRM из треда','thread','FCRM',JSON.stringify(thread)],
+    ['Уточнить черновик из треда','thread','FCRM',JSON.stringify({...thread,clarification:'Уточнить, для кого нужно изменение.',previousDraft:{summary:'Пример темы',description:'Пример описания'}})],
+    ['Улучшить описание','analyze','FCRM-1'],
+    ['Уточнить описание','analyze','FCRM-1','',revision],
+    ['Перепроверить источник','analyze','FCRM-1','',{...revision,reply:'Проверь связь с FCRM-2.'}],
+    ['Подготовить дизайн-задачу FTD','design','FCRM-1'],
+    ['Уточнить дизайн-задачу','design','FCRM-1','',revision],
+    ['Найти похожие задачи FCRM','search_fcrm','FCRM-1','{}'],
+    ['Найти обсуждения в chatZone','search_threads','FCRM-1',JSON.stringify({channels:['https://chatzone.o3t.ru/example/channels/sample']})],
+    ['Уточнить результаты поиска chatZone','search_threads','FCRM-1',JSON.stringify({channels:['https://chatzone.o3t.ru/example/channels/sample'],reply:'Уточнить результаты.',conversation:[]})],
+    ['Проверить и установить тематическую связь','links','FCRM-1'],
+  ];
+  return Promise.all(examples.map(async ([title, mode, key, input, clarification]) => ({
+    title,...JSON.parse(await completeDeepseekChat(key, mode, null, input || '', mode === 'design' ? designPrompt : savedPrompt, clarification, '', true)),
+  })));
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  const requestId = typeof message?.requestId === 'string' && /^[a-f0-9-]{36}$/i.test(message.requestId) ? message.requestId : '';
+  const tabRequest = String(sender.tab?.id ?? '') + ':' + requestId;
+  if (message?.type === 'o3ds:thread-status') {
+    sendResponse({phase: requestId ? threadPhases.get(tabRequest) || null : null});
     return;
   }
+  if (message?.type === 'o3ds:prompt-catalog') {
+    chrome.storage.local.get(PROMPT_KEY)
+      .then(stored => getPromptCatalog(stored[PROMPT_KEY] || defaultPrompt))
+      .then(entries => sendResponse({ok:true,entries}), () => sendResponse({ok:false,error:'Не удалось загрузить промпты виджета.'}));
+    return true;
+  }
+  if (message?.type !== ${JSON.stringify(DEEPSEEK_CHAT_MESSAGE_TYPE)}) return;
+  if (requestId && message.mode === 'thread') threadPhases.set(tabRequest, 'source');
   chrome.storage.local
     .get([TOKEN_KEY, PROMPT_KEY])
-    .then((stored) => {
-      const raw = stored && stored[TOKEN_KEY] ? String(stored[TOKEN_KEY]) : '';
-      const prompt = message.mode === 'design' ? ${JSON.stringify(DESIGN_TASK_SYSTEM_PROMPT)} : stored && stored[PROMPT_KEY] ? String(stored[PROMPT_KEY]) : ${JSON.stringify(DEFAULT_DEEPSEEK_SYSTEM_PROMPT)};
-      return completeDeepseekChat(message.issueKey, message.mode, raw || null, message.approvedDescription || '', prompt, message.clarification, message.additionalContext || '');
-    })
-    .then((text) => {
-      sendResponse({ ok: true, text: text });
-    })
-    .catch((err) => {
-      sendResponse({
-        ok: false,
-        error: err && err.message ? String(err.message).replace(/^THREAD_INPUT_INVALID: /, '') : 'Не удалось получить ответ DeepSeek',
-        errorCode: err && String(err.message || '').startsWith('THREAD_INPUT_INVALID: ') ? 'THREAD_INPUT_INVALID' : undefined,
+    .then(stored => {
+      const token = stored[TOKEN_KEY] ? String(stored[TOKEN_KEY]) : null;
+      const prompt = message.mode === 'design' ? designPrompt : stored[PROMPT_KEY] || defaultPrompt;
+      return completeDeepseekChat(message.issueKey, message.mode, token, message.approvedDescription || '', prompt, message.clarification, message.additionalContext || '', false, phase => {
+        if (requestId && message.mode === 'thread') threadPhases.set(tabRequest, phase);
       });
-    });
+    })
+    .then(text => sendResponse({ok:true, text}))
+    .catch(err => {
+      const message = err?.message ? String(err.message) : 'Не удалось получить ответ DeepSeek';
+      sendResponse({ok:false,error:message.replace(/^THREAD_INPUT_INVALID: /, ''),errorCode:message.startsWith('THREAD_INPUT_INVALID: ') ? 'THREAD_INPUT_INVALID' : undefined});
+    })
+    .finally(() => { if (requestId && message.mode === 'thread') threadPhases.delete(tabRequest); });
   return true;
 });
 `;

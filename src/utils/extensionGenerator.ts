@@ -12,7 +12,10 @@ import { createJiraGroupingUi } from '../services/jiraGroupingUi';
 import { createJiraPeopleUi } from '../services/jiraPeopleUi';
 import { createExtensionUpdateNotice, EXTENSION_UPDATE_INTERVAL, EXTENSION_UPDATE_MESSAGES, EXTENSION_UPDATE_ZIP_URL } from '../services/extensionUpdate';
 
-export const EXTENSION_VERSION = '3.5.190';
+import { createJiraDraftLinkClient } from '../services/deepseek';
+import { createFcrmThreadWriter } from '../services/fcrmThreadWriter';
+
+export const EXTENSION_VERSION = '3.5.191';
 
 export function fcrmReviewRowClass(key:string, status:string):string {
   if (!/^FCRM-\d+$/i.test(key)) return '';
@@ -29,7 +32,7 @@ export function generateManifestJson(config: ExtensionConfig): string {
     version: EXTENSION_VERSION,
     description: `Компактный реестр Jira Structure (v3.2): свернутые по умолчанию спринты и компоненты, Input-Select поиск для Эпиков (FCRM) и Компонентов (по проекту задачи), группировка связей OB/OBFRONT/FTD, кнопка «Улучшить» у заголовка задачи через DeepSeek и MCP jit.`,
     permissions: ['storage', 'activeTab'],
-    host_permissions: ['https://jit.o3.ru/*', 'https://deepseek.o3t.ru/*'],
+    host_permissions: ['https://jit.o3.ru/*', 'https://deepseek.o3t.ru/*', 'https://chatzone.o3t.ru/*', 'https://chatzone.o3.ru/*'],
     action: {
       default_title: 'Ozon Bank В· FCRM Structure',
       default_popup: 'popup.html',
@@ -464,6 +467,29 @@ body.ozon-native-board-visible > :is(.ozon-component-editor,#ozon-thread-sidebar
 .ozon-ext-status-count { color:#64748B;font-size:10px;font-weight:400;white-space:nowrap; }
 .ozon-ext-status-count + .ozon-ext-status-count::before { content:'·';margin-right:8px;color:#CBD5E1; }
 .ozon-ext-view-tabs { display:flex;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid #E2E8F0;background:#fff;flex-shrink:0; }
+
+#ozon-thread-sidebar {position:fixed;right:0;top:40px;bottom:0;width:min(500px,100vw);box-sizing:border-box;z-index:100050;background:#fff;box-shadow:-8px 0 28px #07102622;padding:16px;overflow:auto;font:13px/1.5 var(--ozon-font-sans,sans-serif);color:#071026;}
+#ozon-thread-sidebar [hidden] {display:none!important;}
+#ozon-thread-sidebar h2,#ozon-thread-sidebar h3 {margin:0;font-size:15px;line-height:1.3;}
+#ozon-thread-sidebar h3 {margin-top:12px;}
+#ozon-thread-sidebar .ozon-thread-head {display:flex;align-items:center;justify-content:space-between;gap:12px;}
+#ozon-thread-sidebar p {margin:10px 0;overflow-wrap:anywhere;}
+#ozon-thread-sidebar :is(form,section) {display:flex;flex-direction:column;gap:10px;}
+#ozon-thread-sidebar label {display:grid;gap:4px;font-weight:600;}
+#ozon-thread-sidebar small {color:#475569;}
+#ozon-thread-sidebar :is(input,textarea) {display:block;box-sizing:border-box;width:100%;min-width:0;border:1px solid #a8bbd2;border-radius:8px;padding:8px 10px;color:#071026;background:#fff;font:inherit;font-weight:400;}
+#ozon-thread-sidebar textarea {resize:vertical;}
+#ozon-thread-sidebar .ozon-thread-actions {display:flex;flex-wrap:wrap;gap:6px;}
+#ozon-thread-sidebar :is(button,input,textarea,a):focus-visible,#ozon-prompt-catalog :is(button,summary):focus-visible {outline:2px solid #005bff;outline-offset:2px;}
+#ozon-thread-sidebar button:disabled {opacity:.55;cursor:default;}
+#ozon-thread-sidebar [data-thread-key] {color:#005bff;text-decoration:underline;}
+#ozon-prompt-catalog {overflow:auto;min-height:0;padding:16px;background:#f8fafc;color:#071026;}
+#ozon-prompt-catalog h2 {margin:0 0 8px;font-size:16px;}
+#ozon-prompt-catalog h3 {margin:12px 0 4px;font-size:12px;}
+#ozon-prompt-catalog details {max-width:85ch;margin-bottom:8px;border:1px solid #d7e0ec;border-radius:8px;padding:8px 12px;background:white;}
+#ozon-prompt-catalog summary {font-weight:600;cursor:pointer;}
+#ozon-prompt-catalog pre {margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.55;}
+
 .ozon-ext-view-tabs > nav {display:flex;gap:6px;align-items:center;min-width:0;overflow-x:auto;}
 .ozon-ext-view-tabs [role="tab"] { border:1px solid transparent;border-radius:8px;padding:6px 12px;background:transparent;color:#64748B;font:600 12px var(--ozon-font-sans);cursor:pointer;white-space:nowrap; }
 .ozon-ext-view-tabs [aria-selected="true"] { color:#005BFF;background:#E5F0FF; }
@@ -2415,264 +2441,465 @@ export function generateContentScriptJs(
     };
   }
 
-  let threadCreationBusy = false;
-  async function openThreadCreationSidebar() {
+
+  const threadThemeLinks = (${createJiraDraftLinkClient.toString()})();
+  const threadWriter = (${createFcrmThreadWriter.toString()})((key, themeKey) => threadThemeLinks.apply(key, {kind:'theme',key:themeKey,reason:''}));
+
+  async function openThreadCreationSidebar(event) {
+    const launcher = event.currentTarget;
     const existing = document.getElementById('ozon-thread-sidebar');
-    if (existing) { existing.hidden = false; return; }
+    if (existing) { existing.hidden = false; existing.querySelector('[data-thread-close]').focus(); return; }
     const panel = document.createElement('aside');
     panel.id = 'ozon-thread-sidebar';
-    panel.setAttribute('aria-label', 'Создать FCRM из треда');
-    panel.style.cssText = 'position:fixed;right:0;top:40px;bottom:0;width:min(480px,100vw);z-index:100050;background:white;box-shadow:-8px 0 28px #07102622;padding:20px;overflow:auto;font:13px/1.5 sans-serif;color:#071026;';
-    panel.innerHTML = '<div style="display:flex;justify-content:space-between;gap:12px"><strong>Создать FCRM из треда</strong><button type="button" data-thread-close>Закрыть</button></div><form style="display:flex;flex-direction:column;gap:14px;margin-top:20px;"><label>Ссылки на треды chatZone<textarea name="urls" rows="5" required placeholder="https://chatzone.o3t.ru/pl/…"></textarea></label><label>Тип задачи<input name="issueType" list="ozon-thread-types" placeholder="Поиск типа задачи" required autocomplete="off"><datalist id="ozon-thread-types"></datalist></label><label>Компонент FCRM<input name="component" list="ozon-thread-components" placeholder="Поиск компонента" required autocomplete="off"><datalist id="ozon-thread-components"></datalist></label><button type="submit" disabled>Создать задачу</button><div role="status" aria-live="polite">Загружаю типы задач и компоненты…</div><a data-thread-result target="_blank" rel="noopener noreferrer" hidden></a></form>';
-    panel.querySelectorAll('input,textarea,button').forEach(el => {
-      el.style.cssText = 'box-sizing:border-box;max-width:100%;padding:8px 10px;border:1px solid #dce3eb;border-radius:9px;background:white;color:#071026;font:inherit;';
-      if (el.matches('input,textarea')) el.style.width = '100%';
-    });
-    const form = panel.querySelector('form');
-    const resultView = document.createElement('div');
-    resultView.setAttribute('aria-live', 'polite');
-    form.before(resultView);
-    const skeleton = document.createElement('div');
-    skeleton.hidden = true;
-    skeleton.setAttribute('role', 'status');
-    skeleton.setAttribute('aria-label', 'DeepSeek создаёт задачу');
-    skeleton.innerHTML = '<p>Изучаю обсуждения и создаю задачу…</p>' + [95, 70, 90, 80, 60].map(width => '<div aria-hidden="true" style="display:block!important;height:20px!important;min-height:20px!important;margin:16px 0!important;width:' + width + '%!important;border-radius:7px!important;background:linear-gradient(90deg,#eef2f6 25%,#dce4ee 50%,#eef2f6 75%)!important;background-size:200% 100%!important;animation:ozon-skeleton-shimmer 1.2s linear infinite!important;"></div>').join('');
-    form.before(skeleton);
-    const submit = panel.querySelector('[type="submit"]');
-    submit.style.background = '#005bff';
-    submit.style.color = 'white';
-    const urlsInput = form.querySelector('[name="urls"]');
-    urlsInput.rows = 3;
-    urlsInput.placeholder = 'https://chatzone.o3t.ru/o3/pl/…';
-    urlsInput.style.cssText += 'resize:vertical;min-height:88px;border:0;background:transparent;outline:none;';
-    const urlField = document.createElement('div');
-    urlField.style.cssText = 'display:flex;align-items:flex-start;gap:4px;margin-top:6px;border:1px solid #dce3eb;border-radius:10px;background:#f8fbff;';
-    const urlIcon = document.createElement('span');
-    urlIcon.style.cssText = 'display:flex;padding:12px 0 0 12px;color:#005bff;flex-shrink:0;';
-    urlIcon.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="m10 13 4-4M8 16l-1 1a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0M16 8l1-1a4 4 0 0 1 6 6l-4 4a4 4 0 0 1-6 0"/></svg>';
-    urlsInput.replaceWith(urlField);
-    urlField.append(urlIcon, urlsInput);
-    urlsInput.addEventListener('focus', () => { urlField.style.borderColor = '#005bff'; });
-    urlsInput.addEventListener('blur', () => { urlField.style.borderColor = '#dce3eb'; });
-    const urlHint = document.createElement('div');
-    urlHint.id = 'ozon-thread-url-hint';
-    urlHint.textContent = 'Вставьте ссылку на тред. Несколько ссылок — каждая с новой строки.';
-    urlHint.style.cssText = 'margin-top:4px;font-size:11px;color:#64748b;';
-    urlsInput.setAttribute('aria-describedby', urlHint.id);
-    urlField.after(urlHint);
-    const contextLabel = document.createElement('label');
-    contextLabel.textContent = 'Дополнительная информация';
-    const contextInput = document.createElement('textarea');
-    contextInput.name = 'additionalInfo';
-    contextInput.rows = 4;
-    contextInput.placeholder = 'Контекст, требования или уточнения, которых нет в обсуждении';
-    contextInput.style.cssText = 'display:block;box-sizing:border-box;width:100%;margin-top:6px;padding:8px 10px;min-height:100px;resize:vertical;border:1px solid #dce3eb;border-radius:9px;background:white;color:#071026;font:inherit;';
-    contextLabel.appendChild(contextInput);
-    submit.before(contextLabel);
-    const status = form.querySelector('[role="status"]');
-    const conversation = [];
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-labelledby', 'ozon-thread-title');
+    panel.innerHTML = '<header class="ozon-thread-head"><h2 id="ozon-thread-title" tabindex="-1">Создать FCRM из треда</h2><button type="button" data-thread-close class="ozon-ext-btn ozon-ext-btn-surface">Закрыть</button></header>' +
+      '<p data-thread-status role="status">Загружаю типы задач и компоненты FCRM…</p>' +
+      '<form data-thread-source><label>Ссылки на треды chatZone<textarea name="urls" rows="3" required aria-describedby="ozon-thread-url-hint" placeholder="https://chatzone.o3t.ru/o3/pl/…"></textarea></label>' +
+      '<small id="ozon-thread-url-hint">До 10 ссылок, каждая с новой строки.</small>' +
+      '<label>Тип задачи<input name="issueType"></label><label>Компонент FCRM<input name="component"></label>' +
+      '<label>Дополнительная информация<textarea name="additionalInfo" rows="3"></textarea></label>' +
+      '<div class="ozon-thread-actions"><button class="ozon-ext-btn" type="submit" disabled>Подготовить черновик</button>' +
+      '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-load-fields hidden>Повторить загрузку полей Jira</button></div></form>' +
+      '<section data-thread-review hidden><h3 tabindex="-1">Черновик задачи FCRM</h3>' +
+      '<p data-thread-context></p><label>Название<input name="draftSummary" maxlength="255"></label>' +
+      '<label>Описание<textarea name="draftDescription" rows="9"></textarea></label>' +
+      '<label>Тематика FCRM<input name="draftTheme" placeholder="FCRM-1234"></label>' +
+      '<div class="ozon-thread-actions"><button class="ozon-ext-btn" type="button" data-thread-create>Создать в Jira</button>' +
+      '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-confirm-duplicate hidden>Создать отдельную задачу</button></div></section>' +
+      '<ul data-thread-duplicate-links hidden></ul><p data-thread-question hidden></p><form data-thread-followup hidden><label>Уточнение<textarea name="reply" rows="3"></textarea></label>' +
+      '<div class="ozon-thread-actions"><button class="ozon-ext-btn ozon-ext-btn-surface" type="submit" disabled>Отправить уточнение</button></div></form>' +
+      '<p><a data-thread-key target="_blank" rel="noopener noreferrer" hidden></a></p>' +
+      '<div class="ozon-thread-actions"><button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-recover hidden>Проверить Jira</button>' +
+      '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-retry-links hidden>Повторить добавление связей</button>' +
+      '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-back hidden>Вернуться к исходным данным</button>' +
+      '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-new hidden>Подготовить другую задачу</button></div>';
+    const form = panel.querySelector('[data-thread-source]');
+    const status = panel.querySelector('[data-thread-status]');
+    const submit = form.querySelector('[type="submit"]');
+    const retryFields = form.querySelector('[data-thread-load-fields]');
+    const heading = panel.querySelector('h2');
+    const back = panel.querySelector('[data-thread-back]');
+    const newTask = panel.querySelector('[data-thread-new]');
+    const close = panel.querySelector('[data-thread-close]');
+    const review = panel.querySelector('[data-thread-review]');
+    const context = panel.querySelector('[data-thread-context]');
+    const summary = review.querySelector('[name="draftSummary"]');
+    const description = review.querySelector('[name="draftDescription"]');
+    const theme = review.querySelector('[name="draftTheme"]');
+    const question = panel.querySelector('[data-thread-question]');
+    const duplicateLinks = panel.querySelector('[data-thread-duplicate-links]');
+    const followup = panel.querySelector('[data-thread-followup]');
+    const reply = followup.querySelector('[name="reply"]');
+    const continueButton = followup.querySelector('[type="submit"]');
+    const create = panel.querySelector('[data-thread-create]');
+    const confirmDuplicate = panel.querySelector('[data-thread-confirm-duplicate]');
+    const recover = panel.querySelector('[data-thread-recover]');
+    const retryLinks = panel.querySelector('[data-thread-retry-links]');
+    const keyLink = panel.querySelector('[data-thread-key]');
+    let busy = false;
+    let ready = false;
     let requestSnapshot = null;
-    let createdIssueKey = '';
-    let uncertainResult = false;
-    const followup = document.createElement('form');
-    followup.style.cssText = 'display:none;flex-direction:column;gap:10px;margin-top:18px;';
-    const reply = document.createElement('textarea');
-    reply.rows = 3;
-    reply.placeholder = 'Уточните детали или объясните отличия от найденных дублей';
-    reply.setAttribute('aria-label', reply.placeholder);
-    reply.style.cssText = 'box-sizing:border-box;width:100%;min-height:88px;padding:10px;border:1px solid #dce3eb;border-radius:9px;resize:vertical;font:inherit;';
-    const continueButton = document.createElement('button');
-    continueButton.type = 'submit';
-    continueButton.textContent = 'Продолжить';
-    continueButton.disabled = true;
-    continueButton.style.cssText = 'padding:9px 12px;background:#005bff;color:white;border:0;border-radius:9px;font:inherit;cursor:pointer;';
-    reply.oninput = () => {
-      continueButton.disabled = threadCreationBusy || !reply.value.trim();
-      reply.style.height = '88px';
-      reply.style.height = Math.min(220, Math.max(88, reply.scrollHeight)) + 'px';
-    };
-    followup.append(reply, continueButton);
-    panel.appendChild(followup);
-    panel.querySelector('[data-thread-close]').onclick = () => {
-      if (threadCreationBusy) panel.hidden = true;
+    let draft = null;
+    let pendingWrite = null;
+    let created = null;
+    let initialClarification = false;
+    let loadSearchThemes = null;
+
+    function say(text) { status.textContent = text; }
+    function focus(target) { if (!panel.hidden) target.focus({preventScroll:true}); }
+    function updateControls() {
+      const locked = busy || Boolean(pendingWrite) || Boolean(created);
+      submit.disabled = busy || !ready;
+      continueButton.disabled = busy || Boolean(pendingWrite && !created) || !reply.value.trim();
+      create.disabled = locked || initialClarification || !summary.value.trim() || !description.value.trim();
+      confirmDuplicate.disabled = create.disabled;
+      recover.disabled = busy;
+      retryLinks.disabled = busy;
+      back.disabled = locked;
+      newTask.disabled = busy;
+      for (const field of form.querySelectorAll('input,textarea')) field.readOnly = busy;
+      form.querySelectorAll('.ozon-ext-search-select-trigger').forEach(button => { button.disabled = busy; });
+      for (const field of [summary, description, theme]) field.readOnly = busy || Boolean(pendingWrite) || Boolean(created);
+      form.setAttribute('aria-busy', String(busy));
+      review.setAttribute('aria-busy', String(busy));
+    }
+    function closePanel() {
+      if (busy || pendingWrite || created) panel.hidden = true;
       else panel.remove();
+      (launcher.isConnected ? launcher : document.getElementById('ozon-thread-create'))?.focus({preventScroll:true});
+    }
+    close.onclick = closePanel;
+    panel.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && !event.defaultPrevented) {
+        event.preventDefault();
+        closePanel();
+      }
+    });
+    function showSources() {
+      requestSnapshot = null;
+      draft = null;
+      pendingWrite = null;
+      created = null;
+      initialClarification = false;
+      form.hidden = false;
+      review.hidden = true;
+      question.hidden = true;
+      followup.hidden = true;
+      back.hidden = true;
+      newTask.hidden = true;
+      keyLink.hidden = true;
+      recover.hidden = true;
+      retryLinks.hidden = true;
+      confirmDuplicate.hidden = true;
+      duplicateLinks.hidden = true;
+      create.hidden = false;
+      heading.textContent = 'Создать FCRM из треда';
+      reply.value = '';
+      say('Выберите тип задачи и компонент FCRM.');
+      updateControls();
+      focus(form.querySelector('[name="urls"]'));
+    }
+    back.onclick = showSources;
+    newTask.onclick = () => {
+      form.reset();
+      showSources();
     };
     document.body.appendChild(panel);
-    try {
-      const [types, components] = await Promise.all([loadIssueCreateMeta('FCRM'), loadIssueCreateComponents('FCRM')]);
-      const availableTypes = types.filter(type => !type.subtask && !/sub.?task|подзадач/i.test(type.name));
-      const makeSelect = (name, options, placeholder) => {
-        const original = form.querySelector('[name="' + name + '"]');
-        const wrapper = document.createElement('div');
-        wrapper.className = 'ozon-ext-search-select';
-        wrapper.style.position = 'relative';
-        wrapper.innerHTML = '<button type="button" class="ozon-ext-search-select-trigger" aria-expanded="false"><span class="ozon-ext-search-select-value"></span><span class="ozon-ext-search-select-caret" aria-hidden="true"></span></button><div class="ozon-ext-combo-popover ozon-ext-search-select-popover" hidden><input type="search" autocomplete="off"><div class="ozon-ext-combo-list"></div></div>';
-        original.replaceWith(wrapper);
-        const trigger = wrapper.querySelector('button');
-        const label = trigger.querySelector('span');
-        label.textContent = placeholder;
-        const menu = wrapper.querySelector('.ozon-ext-combo-popover');
-        const search = menu.querySelector('input');
-        const list = menu.querySelector('.ozon-ext-combo-list');
-        menu.style.setProperty('display', 'none', 'important');
-        search.placeholder = placeholder;
-        search.setAttribute('aria-label', placeholder);
-        let selected = null;
-        const close = () => {
-          menu.hidden = true;
-          menu.style.setProperty('display', 'none', 'important');
-          trigger.setAttribute('aria-expanded', 'false');
-        };
-        const draw = () => {
-          list.replaceChildren();
-          const query = search.value.trim().toLocaleLowerCase('ru');
-          options.filter(item => item.name.toLocaleLowerCase('ru').includes(query)).forEach(item => {
-            const option = document.createElement('button');
-            option.type = 'button';
-            option.className = 'ozon-ext-combo-item ozon-ext-search-select-option' + (selected?.id === item.id ? ' active' : '');
-            option.textContent = item.name;
-            option.style.cssText = 'background:transparent;border:0;text-align:left;width:100%;';
-            option.onclick = () => { selected = item; label.textContent = item.name; close(); trigger.focus(); };
-            list.appendChild(option);
-          });
-          if (!list.children.length) list.textContent = 'Ничего не найдено';
-        };
-        trigger.onclick = () => {
-          if (!menu.hidden) { close(); return; }
-          panel.querySelectorAll('.ozon-ext-search-select-trigger[aria-expanded="true"]').forEach(other => other.click());
-          menu.hidden = false;
-          menu.style.setProperty('display', 'flex', 'important');
-          trigger.setAttribute('aria-expanded', 'true');
-          search.value = '';
-          draw();
-          search.focus();
-        };
-        search.oninput = draw;
-        wrapper.addEventListener('keydown', event => {
-          if (event.key === 'Escape') { close(); trigger.focus(); event.preventDefault(); }
-          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-            const items = Array.from(list.querySelectorAll('button'));
-            const index = items.indexOf(document.activeElement);
-            const next = event.key === 'ArrowDown' ? index + 1 : index <= 0 ? items.length - 1 : index - 1;
-            items[(next + items.length) % items.length]?.focus();
-            event.preventDefault();
-          }
-          if (event.key === 'Enter' && document.activeElement === search) {
-            event.preventDefault();
-            list.querySelector('button')?.click();
-          }
-        });
-        wrapper.addEventListener('focusout', event => { if (!wrapper.contains(event.relatedTarget)) close(); });
-        return () => selected;
-      };
-      const getType = makeSelect('issueType', availableTypes, 'Поиск типа задачи');
-      const getComponent = makeSelect('component', components, 'Поиск компонента');
-      panel.querySelectorAll('datalist').forEach(el => el.remove());
-      status.textContent = 'Укажите одну или несколько ссылок. Задача будет создана сразу после обработки обсуждений.';
-      submit.disabled = false;
-      form.onsubmit = async event => {
-        event.preventDefault();
-        if (threadCreationBusy) return;
-        const values = new FormData(form);
-        const urls = Array.from(new Set(String(values.get('urls') || '').trim().split(/[\\s,;]+/).filter(Boolean)));
-        const type = getType();
-        const component = getComponent();
-        if (!urls.length) { status.textContent = 'Добавьте хотя бы одну ссылку на тред chatZone.'; return; }
-        const invalidUrl = urls.find(url => {
-          try { const parsed = new URL(url); return parsed.protocol !== 'https:' || !['chatzone.o3t.ru', 'chatzone.o3.ru'].includes(parsed.hostname) || !/\\/pl\\/[^/]+\\/?$/.test(parsed.pathname); } catch (_) { return true; }
-        });
-        if (invalidUrl) { status.textContent = 'Не удалось распознать ссылку на тред: ' + invalidUrl; return; }
-        if (!type) { status.textContent = 'Выберите тип задачи из выпадающего списка.'; return; }
-        if (!component) { status.textContent = 'Выберите компонент FCRM из выпадающего списка.'; return; }
-        threadCreationBusy = true;
-        submit.disabled = true;
-        status.textContent = 'Подбираю примеры задач…';
-        let exampleIssueKeys = [];
-        try {
-          const quoteJql = value => '"' + String(value).split(String.fromCharCode(92)).join(String.fromCharCode(92,92)).split('"').join(String.fromCharCode(92) + '"') + '"';
-          const exampleJql = 'project = FCRM AND issuetype = ' + quoteJql(type.name) + ' AND component = ' + quoteJql(component.name) + ' ORDER BY created DESC';
-          const exampleResponse = await fetch('/rest/api/2/search?jql=' + encodeURIComponent(exampleJql) + '&fields=issuetype,components&maxResults=2', {credentials:'same-origin', headers:{Accept:'application/json'}});
-          if (exampleResponse.ok) {
-            const exampleData = await exampleResponse.json();
-            exampleIssueKeys = (exampleData.issues || []).filter(issue => /^FCRM-[0-9]+$/i.test(issue.key || '') && String(issue.fields?.issuetype?.name || '').toLowerCase() === String(type.name).toLowerCase() && (issue.fields?.components || []).some(item => String(item.name || '').toLowerCase() === String(component.name).toLowerCase())).map(issue => issue.key).slice(0, 2);
-          }
-        } catch (_) { /* Примеры необязательны для создания задачи. */ }
-        requestSnapshot = { urls: Array.from(urls), issueTypeName: String(type.name || '').trim(), componentName: String(component.name || '').trim(), issueTypeId: String(type.id || ''), componentId: String(component.id || ''), exampleIssueKeys, additionalInfo: String(values.get('additionalInfo') || '') };
-        await runRequest(requestSnapshot);
-      };
-      followup.onsubmit = async event => {
-        event.preventDefault();
-        if (threadCreationBusy || !reply.value.trim() || !requestSnapshot) return;
-        await runRequest(Object.assign({}, requestSnapshot, {
-          continuation: true,
-          existingIssueKey: createdIssueKey,
-          uncertainResult,
-          conversation: conversation.slice(),
-          clarification: reply.value.trim()
-        }));
-      };
-      const runRequest = async input => {
-        threadCreationBusy = true;
-        followup.style.display = 'none';
-        continueButton.disabled = true;
-        form.hidden = true;
-        form.style.setProperty('display', 'none', 'important');
-        panel.setAttribute('aria-busy', 'true');
-        resultView.replaceChildren();
-        skeleton.hidden = false;
-        skeleton.style.setProperty('display', 'block', 'important');
-        submit.disabled = true;
-        const resultLink = panel.querySelector('[data-thread-result]');
-        resultLink.hidden = true;
-        const update = showLinksSnackbar('Собираю обсуждения chatZone и создаю FCRM. Можно продолжать работу.');
-        status.textContent = 'DeepSeek читает обсуждения и создаёт задачу…';
-        let rejectedBeforeCreation = false;
-        try {
-          const text = await new Promise((resolve, reject) => {
-            if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) { rejectedBeforeCreation = true; reject(new Error('Доступно в установленном расширении Chrome')); return; }
-            chrome.runtime.sendMessage({type:'o3ds:chat',mode:'thread',issueKey:'FCRM',approvedDescription:JSON.stringify(input)}, response => {
-              const error = chrome.runtime.lastError;
-              if (error || !response?.ok) { if (response?.errorCode === 'THREAD_INPUT_INVALID') rejectedBeforeCreation = true; reject(new Error(error?.message || response?.error || 'Нет ответа DeepSeek')); }
-              else resolve(response.text || 'DeepSeek не вернул результат');
-            });
-          });
-          const key = /<created_issue>\\s*(FCRM-[0-9]+)\\s*<\\/created_issue>/i.exec(String(text))?.[1];
-          if (key && !createdIssueKey) createdIssueKey = key;
-          conversation.push({ clarification: input.clarification || '', response: String(text) });
-          reply.value = '';
-          const message = String(text).replace(/<\\/?created_issue>/gi, '');
-          status.textContent = 'Обработка завершена';
-          resultView.innerHTML = renderStructuredAnswer(String(text), 'thread', renderAnswerMarkup);
-          if (createdIssueKey && !key) {
-            resultView.innerHTML = renderStructuredAnswer('<created_issue>' + createdIssueKey + '</created_issue>' + String(text), 'thread', renderAnswerMarkup);
-          }
-          update(renderStructuredAnswer(String(text), 'thread', renderAnswerMarkup), true);
-          if (key) {
-            submit.textContent = 'Создано ' + key;
-          } else {
-            status.textContent += ' Проверьте результат в Jira перед повторным созданием.';
-          }
-        } catch (error) {
-          uncertainResult = !rejectedBeforeCreation;
-          const message = 'Ошибка: ' + String(error.message || error) + (rejectedBeforeCreation ? '' : '. Проверьте Jira перед повторной попыткой: задача могла уже создаться.');
-          status.textContent = message;
-          resultView.textContent = message;
-          update(message);
-        } finally {
-          threadCreationBusy = false;
-          skeleton.hidden = true;
-          skeleton.style.setProperty('display', 'none', 'important');
-          form.hidden = !rejectedBeforeCreation;
-          form.style.setProperty('display', rejectedBeforeCreation ? 'flex' : 'none', 'important');
-          submit.disabled = false;
-          followup.style.display = rejectedBeforeCreation ? 'none' : 'flex';
-          continueButton.disabled = !reply.value.trim();
-          panel.setAttribute('aria-busy', 'false');
+    focus(heading);
+
+    function requestFromExtension(message) {
+      return new Promise((resolve, reject) => {
+        if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
+          reject(new Error('Откройте установленное расширение.'));
+          return;
         }
-      };
-    } catch (error) {
-      status.textContent = 'Не удалось загрузить поля FCRM: ' + String(error.message || error);
+        try {
+          chrome.runtime.sendMessage(message, response => {
+            const failed = chrome.runtime.lastError;
+            if (failed || !response) { reject(new Error('Расширение не ответило. Обновите страницу Jira.')); return; }
+            resolve(response);
+          });
+        } catch (_) { reject(new Error('Расширение не ответило. Обновите страницу Jira.')); }
+      });
     }
+    function sourceThemes() {
+      if (loadSearchThemes) return loadSearchThemes;
+      const jql = 'project = FCRM AND labels = fcrm_umb_epic AND statusCategory != Done ORDER BY updated DESC';
+      const params = new URLSearchParams({jql,fields:'summary',maxResults:'25'});
+      loadSearchThemes = fetch('/rest/api/2/search?' + params, {
+        credentials:'same-origin',headers:{Accept:'application/json'},signal:AbortSignal.timeout(4000)
+      }).then(response => response.ok ? response.json() : null)
+        .then(data => Array.isArray(data?.issues) ? data.issues.slice(0,25).flatMap(issue => (
+          /^FCRM-\\d+$/.test(issue.key) && typeof issue.fields?.summary === 'string'
+            ? [{key:issue.key,title:issue.fields.summary.slice(0,255)}] : []
+        )) : []).catch(() => []);
+      return loadSearchThemes;
+    }
+    function readDraft() {
+      return {summary:summary.value.trim(),description:description.value.trim(),themeKey:theme.value.trim().toUpperCase()};
+    }
+    function readResult(text) {
+      let result;
+      try { result = JSON.parse(text); } catch (_) { throw new Error('DeepSeek вернул черновик в неожиданном формате. Повторите запрос.'); }
+      if (result?.status === 'clarification') {
+        const detail = typeof result.message === 'string' ? result.message.trim().slice(0,500) : '';
+        return {question:detail || 'Какие детали нужно учесть в черновике?'};
+      }
+      if (result?.status !== 'draft' || typeof result.summary !== 'string' || !result.summary.trim() || typeof result.description !== 'string' || !result.description.trim()) {
+        throw new Error('DeepSeek вернул неполный черновик. Повторите запрос.');
+      }
+      return {
+        summary:result.summary.trim().slice(0,255),
+        description:result.description.trim(),
+        themeKey:/^FCRM-\\d+$/.test(result.themeKey) ? result.themeKey : '',
+        question:typeof result.message === 'string' ? result.message.trim().slice(0,500) : '',
+        mentionedIssueKeys:Array.isArray(result.mentionedIssueKeys) ? result.mentionedIssueKeys.filter(key => /^FCRM-\\d+$/.test(key)).slice(0,12) : [],
+        urls:Array.isArray(result.urls) && result.urls.length > 0 && result.urls.length <= requestSnapshot.urls.length && result.urls.every(url => typeof url === 'string') ? result.urls : requestSnapshot.urls
+      };
+    }
+    function modelFailure(response) {
+      if (response?.errorCode === 'THREAD_INPUT_INVALID') return 'Проверьте ссылки на треды и поля задачи.';
+      const hint = String(response?.error || '').toLowerCase();
+      if (/сесси|bearer|\\b40[13]\\b|авторизац|войдите/.test(hint)) return 'Проверьте вход в DeepSeek и chatZone в этом браузере.';
+      if (/chatzone|тред|нескольких|сообщени/.test(hint)) return 'Не удалось прочитать все обсуждения. Проверьте ссылки и доступ к ним в chatZone.';
+      if (/формат|неполный|json/.test(hint)) return 'DeepSeek вернул неполный черновик. Повторите запрос.';
+      return 'DeepSeek не подготовил черновик. Повторите запрос.';
+    }
+    async function requestDraft(clarification) {
+      if (busy || !requestSnapshot || (pendingWrite && !created)) return;
+      const previousDraft = draft && (created ? draft : readDraft());
+      const clarificationWithQuestion = clarification && !question.hidden && question.textContent
+        ? question.textContent + '\\nОтвет: ' + clarification : clarification;
+      busy = true;
+      confirmDuplicate.hidden = true;
+      duplicateLinks.hidden = true;
+      updateControls();
+      say('Читаю обсуждения chatZone…');
+      const requestId = crypto.randomUUID();
+      const progress = {
+        source:'Читаю обсуждения chatZone…',
+        model:'Готовлю черновик FCRM…',
+        format:'Проверяю черновик…'
+      };
+      let progressActive = true;
+      const timer = window.setInterval(() => requestFromExtension({type:'o3ds:thread-status',requestId}).then(value => {
+        if (progressActive && progress[value.phase]) say(progress[value.phase]);
+      }).catch(() => {}), 3000);
+      let nextFocus = status;
+      try {
+        const themes = await sourceThemes();
+        const response = await requestFromExtension({
+          type:'o3ds:chat', mode:'thread', issueKey:'FCRM', requestId,
+          approvedDescription:JSON.stringify({
+            ...requestSnapshot, themes, clarification:clarificationWithQuestion, previousDraft:previousDraft ? {
+              summary:previousDraft.summary,description:previousDraft.description,themeKey:previousDraft.themeKey
+            } : undefined,
+            continuation:!created && Boolean(clarification)
+          })
+        });
+        if (!response.ok) throw new Error(modelFailure(response));
+        const result = readResult(response.text);
+        form.hidden = true;
+        followup.hidden = false;
+        back.hidden = Boolean(created);
+        reply.value = '';
+        if (!result.summary) {
+          initialClarification = !created;
+          question.textContent = result.question;
+          question.hidden = false;
+          say('Для черновика нужно уточнение.');
+          nextFocus = reply;
+        } else {
+          initialClarification = false;
+          draft = result;
+          summary.value = result.summary;
+          description.value = result.description;
+          theme.value = result.themeKey;
+          context.textContent = requestSnapshot.issueTypeName + ' · ' + requestSnapshot.componentName;
+          review.querySelector('h3').textContent = created ? 'Предложение к задаче ' + created.key : 'Черновик задачи FCRM';
+          review.hidden = false;
+          question.textContent = result.question;
+          question.hidden = !result.question;
+          create.hidden = Boolean(created);
+          say(created ? 'Предложение готово. Проверьте его перед изменением задачи в Jira.' : 'Черновик готов. Проверьте поля перед созданием задачи в Jira.');
+          nextFocus = review.querySelector('h3');
+        }
+      } catch (error) {
+        say(error.message);
+        status.tabIndex = -1;
+      } finally {
+        progressActive = false;
+        window.clearInterval(timer);
+        busy = false;
+        updateControls();
+        focus(nextFocus);
+      }
+    }
+    function showWritten(result) {
+      created = result;
+      recover.hidden = true;
+      review.hidden = true;
+      create.hidden = true;
+      confirmDuplicate.hidden = true;
+      question.hidden = true;
+      back.hidden = true;
+      newTask.hidden = false;
+      followup.hidden = false;
+      keyLink.hidden = false;
+      keyLink.href = '/browse/' + encodeURIComponent(result.key);
+      keyLink.textContent = 'Открыть ' + result.key + ' в Jira';
+      retryLinks.hidden = !result.linkFailures.length;
+      say((result.existing ? 'Найдена задача ' : 'Создана задача ') + result.key + '.' +
+        (result.linkFailures.length ? ' Часть связей Jira не подтвердила.' : ''));
+    }
+    async function writeTask(action, allowPossibleDuplicate = false) {
+      if (busy || action === 'create' && create.disabled) return;
+      if (action === 'create') {
+        const values = readDraft();
+        if (values.themeKey && !/^FCRM-\\d+$/.test(values.themeKey)) {
+          say('Укажите ключ тематики в формате FCRM-1234 или оставьте поле пустым.');
+          focus(theme);
+          return;
+        }
+        pendingWrite = {
+          ...values, urls:draft.urls, issueTypeId:requestSnapshot.issueTypeId,
+          componentId:requestSnapshot.componentId, mentionedIssueKeys:draft.mentionedIssueKeys, allowPossibleDuplicate
+        };
+      }
+      if (!pendingWrite) return;
+      busy = true;
+      confirmDuplicate.hidden = true;
+      updateControls();
+      duplicateLinks.hidden = true;
+      say(action === 'create' ? 'Проверяю возможные дубли и создаю задачу FCRM…' : action === 'recover' ? 'Проверяю результат в Jira…' : 'Проверяю и добавляю связи в Jira…');
+      let nextFocus = status;
+      try {
+        const result = await threadWriter[action](pendingWrite);
+        if (action !== 'retryLinks') draft = {...draft, ...pendingWrite};
+        showWritten(result);
+        nextFocus = keyLink;
+      } catch (error) {
+        status.tabIndex = -1;
+        if (error.code === 'THREAD_POSSIBLE_DUPLICATE') {
+          pendingWrite = null;
+          confirmDuplicate.hidden = false;
+          duplicateLinks.replaceChildren();
+          for (const key of error.issueKeys || []) {
+            if (!/^FCRM-\\d+$/.test(key)) continue;
+            const row = document.createElement('li');
+            const link = document.createElement('a');
+            link.href = '/browse/' + encodeURIComponent(key);
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.textContent = key;
+            row.append(link);
+            duplicateLinks.append(row);
+          }
+          duplicateLinks.hidden = !duplicateLinks.childElementCount;
+          say(error.message);
+          nextFocus = confirmDuplicate;
+        } else if (error.code === 'THREAD_CREATE_UNKNOWN' || error.code === 'THREAD_CREATED_DIFFERENT' || action === 'recover') {
+          recover.hidden = false;
+          say('Jira не подтвердила результат создания. Проверьте Jira перед повторной попыткой.');
+          nextFocus = recover;
+        } else if (action === 'retryLinks') {
+          say('Не удалось подтвердить связи. Повторите добавление или откройте задачу в Jira.');
+          nextFocus = retryLinks;
+        } else {
+          pendingWrite = null;
+          say(error.code === 'THREAD_REQUIRED_FIELD' || error.code === 'THREAD_DUPLICATE'
+            ? error.message : 'Jira не завершила создание задачи. Проверьте поля, доступ и соединение.');
+        }
+      } finally {
+        busy = false;
+        updateControls();
+        focus(nextFocus);
+      }
+    }
+    create.onclick = () => writeTask('create');
+    confirmDuplicate.onclick = () => writeTask('create', true);
+    recover.onclick = () => writeTask('recover');
+    retryLinks.onclick = () => writeTask('retryLinks');
+    followup.onsubmit = event => {
+      event.preventDefault();
+      const clarification = reply.value.trim();
+      if (clarification) requestDraft(clarification);
+    };
+    [summary, description, theme, reply].forEach(field => field.addEventListener('input', () => { confirmDuplicate.hidden = true; duplicateLinks.hidden = true; updateControls(); }));
+    async function loadFields() {
+      retryFields.hidden = true;
+      say('Загружаю типы задач и компоненты FCRM…');
+      try {
+        const [types, components] = await Promise.all([loadIssueCreateMeta('FCRM'), loadIssueCreateComponents('FCRM')]);
+        const availableTypes = types.filter(type => !type.subtask && !/sub.?task|подзадач/i.test(type.name));
+        if (!availableTypes.length || !components.length) throw new Error();
+        const makeSelect = (name, options, placeholder) => {
+          const original = form.querySelector('[name="' + name + '"]');
+          const wrapper = document.createElement('div');
+          wrapper.className = 'ozon-ext-search-select';
+          wrapper.style.position = 'relative';
+          wrapper.innerHTML = '<button type="button" class="ozon-ext-search-select-trigger" aria-expanded="false"><span class="ozon-ext-search-select-value"></span><span class="ozon-ext-search-select-caret" aria-hidden="true"></span></button><div class="ozon-ext-combo-popover ozon-ext-search-select-popover" hidden><input type="search" autocomplete="off"><div class="ozon-ext-combo-list"></div></div>';
+          original.replaceWith(wrapper);
+          const trigger = wrapper.querySelector('button');
+          const label = trigger.querySelector('span');
+          label.textContent = placeholder;
+          trigger.setAttribute('aria-label', placeholder);
+          const menu = wrapper.querySelector('.ozon-ext-combo-popover');
+          const search = menu.querySelector('input');
+          const list = menu.querySelector('.ozon-ext-combo-list');
+          menu.style.setProperty('display', 'none', 'important');
+          search.placeholder = placeholder;
+          search.setAttribute('aria-label', placeholder);
+          let selected = null;
+          const close = () => {
+            menu.hidden = true;
+            menu.style.setProperty('display', 'none', 'important');
+            trigger.setAttribute('aria-expanded', 'false');
+          };
+          const draw = () => {
+            list.replaceChildren();
+            const query = search.value.trim().toLocaleLowerCase('ru');
+            options.filter(item => item.name.toLocaleLowerCase('ru').includes(query)).forEach(item => {
+              const option = document.createElement('button');
+              option.type = 'button';
+              option.className = 'ozon-ext-combo-item ozon-ext-search-select-option' + (selected?.id === item.id ? ' active' : '');
+              option.textContent = item.name;
+              option.style.cssText = 'background:transparent;border:0;text-align:left;width:100%;';
+              option.onclick = () => {
+                selected = item;
+                label.textContent = item.name;
+                trigger.setAttribute('aria-label', placeholder + ': ' + item.name);
+                close();
+                trigger.focus();
+              };
+              list.appendChild(option);
+            });
+            if (!list.children.length) list.textContent = 'Ничего не найдено';
+          };
+          trigger.onclick = () => {
+            if (!menu.hidden) { close(); return; }
+            panel.querySelectorAll('.ozon-ext-search-select-trigger[aria-expanded="true"]').forEach(other => other.click());
+            menu.hidden = false;
+            menu.style.setProperty('display', 'flex', 'important');
+            trigger.setAttribute('aria-expanded', 'true');
+            search.value = '';
+            draw();
+            search.focus();
+          };
+          search.oninput = draw;
+          wrapper.addEventListener('keydown', event => {
+            if (event.key === 'Escape') { close(); trigger.focus(); event.preventDefault(); }
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+              const items = Array.from(list.querySelectorAll('button'));
+              const index = items.indexOf(document.activeElement);
+              const next = event.key === 'ArrowDown' ? index + 1 : index <= 0 ? items.length - 1 : index - 1;
+              items[(next + items.length) % items.length]?.focus();
+              event.preventDefault();
+            }
+            if (event.key === 'Enter' && document.activeElement === search) {
+              event.preventDefault();
+              list.querySelector('button')?.click();
+            }
+          });
+          wrapper.addEventListener('focusout', event => { if (!wrapper.contains(event.relatedTarget)) close(); });
+          return () => selected;
+        };
+        const getType = makeSelect('issueType', availableTypes, 'Поиск типа задачи');
+        const getComponent = makeSelect('component', components, 'Поиск компонента');
+        ready = true;
+        say('Выберите тип задачи и компонент FCRM.');
+        updateControls();
+        form.onsubmit = event => {
+          event.preventDefault();
+          if (busy) return;
+          const values = new FormData(form);
+          const urls = Array.from(new Set(String(values.get('urls') || '').trim().split(/[\\s,;]+/).filter(Boolean)));
+          const type = getType();
+          const component = getComponent();
+          if (!urls.length || urls.length > 10) { say('Укажите от 1 до 10 ссылок на треды chatZone.'); return; }
+          const invalidUrl = urls.some(value => {
+            try {
+              const url = new URL(value);
+              return url.protocol !== 'https:' || url.username || url.password || url.port ||
+                !['chatzone.o3t.ru','chatzone.o3.ru'].includes(url.hostname) || !/^\\/(?:[^/]+\\/)*pl\\/[a-z0-9]{26}\\/?$/.test(url.pathname);
+            } catch (_) { return true; }
+          });
+          if (invalidUrl) { say('Проверьте ссылки на сообщения chatZone.'); return; }
+          if (!type || !component) { say('Выберите тип задачи и компонент из списков.'); return; }
+          requestSnapshot = {
+            urls, issueTypeName:type.name, componentName:component.name, issueTypeId:String(type.id),
+            componentId:String(component.id), additionalInfo:String(values.get('additionalInfo') || '').trim()
+          };
+          requestDraft('');
+        };
+      } catch (_) {
+        say('Не удалось загрузить поля FCRM. Проверьте наличие доступа к проекту Jira.');
+        retryFields.hidden = false;
+      }
+    }
+    retryFields.onclick = loadFields;
+    await loadFields();
   }
 
   function generationIconHtml() {
@@ -8460,8 +8687,8 @@ export function generateContentScriptJs(
   }
 
   function renderDashboardNavigation() {
-    const tabs = [['product','Продуктовый бэклог'],['development','Команды разработки'],['strategy','Стратегическое планирование'],['report','Отчёт по спринту']];
-    return '<div class="ozon-ext-view-tabs">' + nativeBoardButton() + '<nav role="tablist" aria-label="Представление">' + tabs.map(([view,label]) => '<button type="button" role="tab" data-dashboard-view="' + view + '" aria-selected="' + (activeDashboardView === view) + '">' + label + '</button>').join('') + '</nav>' +
+    const tabs = [['product','Продуктовый бэклог'],['development','Команды разработки'],['strategy','Стратегическое планирование'],['report','Отчёт по спринту'],['prompts','Промпты']];
+    return '<div class="ozon-ext-view-tabs">' + nativeBoardButton() + '<nav role="tablist" aria-label="Представление">' + tabs.map(([view,label]) => '<button type="button" role="tab" id="ozon-tab-' + view + '" data-dashboard-view="' + view + '" aria-selected="' + (activeDashboardView === view) + '">' + label + '</button>').join('') + '</nav>' +
       '<button type="button" class="ozon-ext-btn ozon-ext-btn-surface ozon-ext-fullscreen-toggle" data-toggle-fullscreen aria-controls="ozon-structure-root" aria-label="' + fullscreenButtonLabel(dashboardFullscreen) + '" title="' + fullscreenButtonLabel(dashboardFullscreen) + (dashboardFullscreen ? ' (Esc)' : '') + '">' + fullscreenButtonContent(dashboardFullscreen) + '</button></div>';
   }
 
@@ -8474,6 +8701,7 @@ export function generateContentScriptJs(
       event.stopPropagation();
       const view = button.getAttribute('data-dashboard-view');
       if (view === activeDashboardView) return;
+      const moveTabFocus = (view === 'prompts' || activeDashboardView === 'prompts') && document.activeElement === button;
       const development = developmentDashboard.getState();
       const currentSprints = activeDashboardView === 'development' && view === 'report'
         ? development.sprints.filter(sprint => development.selected.includes(String(sprint.id)) && /^(active|closed)$/i.test(sprint.state)) : [];
@@ -8485,6 +8713,7 @@ export function generateContentScriptJs(
       activeSearchSelectId = '';
       activeTableCombo = null;
       renderStructure();
+      if (moveTabFocus) root.querySelector('[aria-selected="true"]')?.focus({preventScroll:true});
       if (view === 'strategy') strategicDashboard.prepareFilters();
       if (view === 'product') prepareProductFilters();
       if (view === 'report') sprintReport.open(sprintBoards.size===1 ? {board:[...sprintBoards][0],sprints:currentSprints.map(sprint=>String(sprint.id))} : undefined);
@@ -8508,6 +8737,75 @@ export function generateContentScriptJs(
     visibleMotionSurfaces = next;
   }
 
+
+  const promptCatalog = {loading:false,entries:null,error:false};
+
+  function renderPromptCatalog(root) {
+    const hasTabFocus = document.activeElement === root.querySelector('#ozon-tab-prompts');
+    root.innerHTML = renderDashboardNavigation() +
+      '<section id="ozon-prompt-catalog" role="tabpanel" aria-labelledby="ozon-tab-prompts"><h2>Промпты DeepSeek</h2><p role="status" tabindex="-1"></p><div data-prompt-entries></div></section>';
+    bindDashboardNavigation(root);
+    const tab = root.querySelector('#ozon-tab-prompts');
+    tab.setAttribute('aria-controls', 'ozon-prompt-catalog');
+    if (hasTabFocus) tab.focus({preventScroll:true});
+    const panel = root.querySelector('#ozon-prompt-catalog');
+    const status = panel.querySelector('[role="status"]');
+    const entries = panel.querySelector('[data-prompt-entries]');
+    if (promptCatalog.loading) { status.textContent = 'Загружаю промпты…'; return; }
+    if (promptCatalog.error) {
+      status.textContent = 'Промпты расширения недоступны.';
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'ozon-ext-btn ozon-ext-btn-surface';
+      retry.textContent = 'Повторить';
+      retry.onclick = () => {
+        loadPromptCatalog();
+        root.querySelector('#ozon-tab-prompts')?.focus({preventScroll:true});
+      };
+      panel.appendChild(retry);
+      return;
+    }
+    if (!promptCatalog.entries) { loadPromptCatalog(); return; }
+    if (!promptCatalog.entries.length) { status.textContent = 'Доступных промптов пока нет.'; return; }
+    for (const entry of promptCatalog.entries) {
+      const details = document.createElement('details');
+      const title = document.createElement('summary');
+      title.textContent = entry.title;
+      details.appendChild(title);
+      for (const [label,text] of [['Системный промпт',entry.system],['Шаблон запроса',entry.user]]) {
+        if (!text) continue;
+        const heading = document.createElement('h3');
+        const body = document.createElement('pre');
+        heading.textContent = label;
+        body.textContent = text;
+        details.append(heading,body);
+      }
+      entries.appendChild(details);
+    }
+  }
+
+  function loadPromptCatalog() {
+    if (promptCatalog.loading) return;
+    promptCatalog.loading = true;
+    promptCatalog.error = false;
+    renderStructure();
+    const finish = entries => {
+      promptCatalog.loading = false;
+      promptCatalog.error = !Array.isArray(entries);
+      promptCatalog.entries = Array.isArray(entries) ? entries.filter(entry =>
+        typeof entry?.title === 'string' && typeof entry.system === 'string' && typeof entry.user === 'string'
+      ) : null;
+      if (activeDashboardView === 'prompts') renderStructure();
+    };
+    if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) { finish(null); return; }
+    try {
+      chrome.runtime.sendMessage({type:'o3ds:prompt-catalog'}, response => {
+        const failed = chrome.runtime.lastError;
+        finish(!failed && response?.ok ? response.entries : null);
+      });
+    } catch (_) { finish(null); }
+  }
+
   function renderStructure() {
     let root = document.getElementById('ozon-structure-root');
     if (!isTargetBoardPage() || !isStructureVisible) {
@@ -8523,6 +8821,11 @@ export function generateContentScriptJs(
     }
     root.hidden = false;
     structureRenderPending = false;
+
+    if (activeDashboardView === 'prompts') {
+      renderPromptCatalog(root);
+      return;
+    }
 
     if (activeDashboardView === 'report') {
       const top = root.querySelector('.ozon-report-scroll')?.scrollTop || 0;

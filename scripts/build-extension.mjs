@@ -66,6 +66,8 @@ const sprintReportDashboard = loadTranspiledModule(await readFile('src/services/
 const jiraGroupingUi = loadTranspiledModule(await readFile('src/services/jiraGroupingUi.ts','utf8'));
 const jiraPeopleUi = loadTranspiledModule(await readFile('src/services/jiraPeopleUi.ts','utf8'));
 const extensionUpdate = loadTranspiledModule(await readFile('src/services/extensionUpdate.ts', 'utf8'));
+const deepseek = loadTranspiledModule(await readFile('src/services/deepseek.ts', 'utf8'));
+const fcrmThreadWriter = loadTranspiledModule(await readFile('src/services/fcrmThreadWriter.ts', 'utf8'));
 new Function('exports', 'require', 'module', compiled)(module.exports, (specifier) => {
   if (specifier === './structuredAnswer') return structuredAnswer;
   if (specifier === './answerMarkup') return answerMarkup;
@@ -79,6 +81,8 @@ new Function('exports', 'require', 'module', compiled)(module.exports, (specifie
   if (specifier === '../services/jiraGroupingUi') return jiraGroupingUi;
   if (specifier === '../services/jiraPeopleUi') return jiraPeopleUi;
   if (specifier === '../services/extensionUpdate') return extensionUpdate;
+  if (specifier === '../services/deepseek') return deepseek;
+  if (specifier === '../services/fcrmThreadWriter') return fcrmThreadWriter;
   return createRequire(import.meta.url)(specifier);
 }, module);
 const generator = module.exports;
@@ -92,7 +96,6 @@ function loadTranspiledModule(sourceText, customRequire = createRequire(import.m
   return loaded.exports;
 }
 
-const deepseek = loadTranspiledModule(await readFile('src/services/deepseek.ts', 'utf8'));
 const deepseekExtensionSource = await readFile('src/services/deepseekExtension.ts', 'utf8');
 const deepseekExtension = loadTranspiledModule(deepseekExtensionSource, (specifier) => {
   if (specifier === './deepseek') return deepseek;
