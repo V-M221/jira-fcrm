@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const { webcrypto } = require('node:crypto');
+const { createHash, webcrypto } = require('node:crypto');
 const ts = require('typescript');
 
 const moduleExports = {};
@@ -32,7 +32,9 @@ async function checkStepper() {
     if(u.pathname.includes('/createmeta/')) return reply({total:4,values:['summary','description','components','labels'].map(fieldId=>({fieldId}))});
     if(u.pathname.endsWith('/components')) return reply([{id:'20'}]);
     if(u.pathname.endsWith('/issue')&&method==='POST') {
-      controls.lastReceipt={key:'FCRM-814',fields:JSON.parse(opts.body).fields};
+      const {fields} = JSON.parse(opts.body);
+      assert.equal(Object.hasOwn(fields,'labels'),false);
+      controls.lastReceipt={key:'FCRM-814',fields};
       throw new Error('connection lost after request');
     }
     if(u.pathname.endsWith('/issue/FCRM-814')) return reply(controls.lastReceipt);
@@ -52,6 +54,13 @@ async function checkStepper() {
   const exact=await subject.inspect(draft);
   assert.equal(exact.state,'existing');
   assert.equal(exact.issues[0].title,'Задача из того же треда');
+  const legacyMarker = 'fcrm_thread_' + createHash('sha256').update(url.split('/').at(-1)).digest('hex');
+  const legacy = issue('FCRM-801','Задача со старой меткой');
+  legacy.fields.labels = [legacyMarker];
+  controls.exact = [legacy];
+  const legacyExact = await subject.inspect(draft);
+  assert.equal(legacyExact.state,'existing');
+  assert.equal(legacyExact.issues[0].key,'FCRM-801');
   assert.equal(controls.journalWrites,0);
   assert.ok(operations.every(([method])=>method==='GET'));
   controls.exact=[];
@@ -74,11 +83,12 @@ async function checkStepper() {
   const start=content.indexOf('    function setStep(number');
   const end=content.indexOf('    function draftReady()',start);
   assert.ok(start>=0&&end>start);
-  const controlsForStep=Array.from({length:3},()=>({focus(){},pane:{hidden:true},caption:{},dataset:{},
+  const controlsForStep=Array.from({length:3},()=>({focus(){},pane:{hidden:true,prepend(node){node.parent=this;}},caption:{},dataset:{},
     attrs:new Map(),setAttribute(k,v){this.attrs.set(k,v);},removeAttribute(k){this.attrs.delete(k);},
     querySelector(q){return q==='[data-thread-step-body]'?this.pane:q==='[data-thread-step-summary]'?this.caption:this;}
   }));
-  const context=vm.createContext({steps:controlsForStep,step:1,panel:{hidden:false},
+  const status={};
+  const context=vm.createContext({steps:controlsForStep,step:1,panel:{hidden:false},status,focus:target=>target.focus(),
     requestSnapshot:{urls:[url],issueTypeName:'Задача',componentName:'Компонент'},
     summary:{value:'Ручное название'},normalizedSummary:s=>s.trim()});
   vm.runInContext(content.slice(start,end),context);
@@ -87,6 +97,7 @@ async function checkStepper() {
     assert.deepEqual(controlsForStep.map(x=>x.pane.hidden),Array.from({length:3},(_,i)=>i!==number-1));
     assert.equal(controlsForStep.filter(x=>x.attrs.get('aria-current')==='step').length,1);
     assert.equal(context.summary.value,'Ручное название');
+    assert.equal(status.parent,controlsForStep[number-1].pane);
   }
   console.log('Stepper regression PASS: single open step, read-only inspection, exact match, updated duplicate set, and uncertain response.');
 }

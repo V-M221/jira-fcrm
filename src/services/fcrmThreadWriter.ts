@@ -2,7 +2,10 @@
  * Jira owns creation. DeepSeek supplies a draft, never a Jira result or create payload.
  * This factory is embedded in the Jira content script via Function#toString.
  */
-export function createFcrmThreadWriter(applyTheme?: (key: string, themeKey: string) => Promise<unknown>) {
+export function createFcrmThreadWriter(
+  applyTheme?: (key: string, themeKey: string) => Promise<unknown>,
+  applyDevelopmentLink?: (sourceKey: string, proposal: {key: string; kind: 'development'}) => Promise<unknown>
+) {
   type Input = {
     urls: string[];
     issueTypeId: string;
@@ -12,8 +15,13 @@ export function createFcrmThreadWriter(applyTheme?: (key: string, themeKey: stri
     themeKey?: string;
     confirmedDuplicateKeys?: string[];
     mentionedIssueKeys?: string[];
+    issueLinks?: IssueLinkProposal[];
   };
   type Source = {id: string; url: string; marker: string};
+  type IssueLinkProposal = {key: string; kind: 'development' | 'related'};
+  type LinkProposal = IssueLinkProposal | {key: string; kind: 'theme'};
+  type IssueLinkType = {name: string; inward: string; outward: string};
+  type LinkOutcome = {key: string; kind: LinkProposal['kind'] | 'source'; confirmed: boolean};
   type Candidate = {key: string; title: string; reason: string};
   type Inspection = {state: 'ready' | 'existing' | 'possible-duplicate' | 'uncertain'; issues: Candidate[]};
   type Fields = {
@@ -25,7 +33,7 @@ export function createFcrmThreadWriter(applyTheme?: (key: string, themeKey: stri
     components?: {id: string}[];
     issuelinks?: {
       id: string;
-      type?: {inward?: string; outward?: string};
+      type?: Partial<IssueLinkType>;
       inwardIssue?: {key: string};
       outwardIssue?: {key: string};
     }[];
@@ -43,7 +51,7 @@ export function createFcrmThreadWriter(applyTheme?: (key: string, themeKey: stri
     defaultValue?: unknown;
   };
   type MetaFields = Record<string, MetaField>;
-  type JournalRecord = {key?: string; verified?: boolean};
+  type JournalRecord = {key?: string; verified?: boolean; receipt?: false};
   type Journal = Record<string, JournalRecord>;
   type RemoteLink = {object?: {url?: string}};
 
@@ -52,6 +60,9 @@ export function createFcrmThreadWriter(applyTheme?: (key: string, themeKey: stri
   const project = 'FCRM';
   const isIssueKey = (key: unknown): key is string => typeof key === 'string' && /^FCRM-\d+$/.test(key);
   const issuePath = (key: string) => 'issue/' + encodeURIComponent(key);
+  const projectTask = /^(задача проекта|project task)$/i;
+  const inProject = /^(в проекте|in project)$/i;
+  const related = /^(связанная задача|relates(?: to)?)$/i;
 
   function failure(message: string, code: string, status?: number) {
     return Object.assign(new Error(message), {code, status});
@@ -229,7 +240,7 @@ export function createFcrmThreadWriter(applyTheme?: (key: string, themeKey: stri
     if (found.length > 1) {
       throw failure('Найдено несколько задач с исходными тредами. Выберите существующую задачу в Jira.', 'THREAD_DUPLICATE');
     }
-    return found[0]?.key;
+    return found[0];
   }
 
   async function findMentionedIssues(inputKeys: string[] | undefined) {
@@ -352,7 +363,6 @@ export function createFcrmThreadWriter(applyTheme?: (key: string, themeKey: stri
       summary,
       description: descriptionWithSources(description, sources)
     };
-    if (canSet('labels')) fields.labels = sources.map(source => source.marker);
     const hasDefault = (meta: MetaField) => meta.hasDefaultValue === true || meta.defaultValue != null;
     for (const [field, meta] of Object.entries(metadata)) {
       if (!meta.required || hasDefault(meta) || Object.prototype.hasOwnProperty.call(fields, field)) continue;
@@ -409,38 +419,122 @@ export function createFcrmThreadWriter(applyTheme?: (key: string, themeKey: stri
     return failures;
   }
 
-  async function checkTheme(key: string, themeKey: string) {
-    const [source, target] = await Promise.all([readIssue(key, 'issuelinks'), readIssue(themeKey, 'issuelinks')]);
-    const linkFrom = (fields: Fields, targetKey: string, caption: RegExp) => (fields.issuelinks || []).find(link =>
-      link.inwardIssue?.key === targetKey && caption.test(link.type?.inward?.trim() || '') ||
-      link.outwardIssue?.key === targetKey && caption.test(link.type?.outward?.trim() || ''));
-    const link = linkFrom(source, themeKey, /^(задача проекта|project task)$/i);
-    return !!link?.id && linkFrom(target, key, /^(в проекте|in project)$/i)?.id === link.id;
+  function normalizeIssueLinks(proposals: IssueLinkProposal[] = [], themeKey?: string) {
+    if (!Array.isArray(proposals) || proposals.length > 10) {
+      throw failure('Выберите до 10 связей с задачами Jira.', 'THREAD_LINK_INVALID');
+    }
+    const selected = new Map<string, IssueLinkProposal>();
+    for (const proposal of proposals) {
+      const key = typeof proposal?.key === 'string' ? proposal.key.trim().toUpperCase() : '';
+      const kind = proposal?.kind;
+      const validDevelopment = kind === 'development' && /^(OB|OBFRONT|FTD|FACS)-\d+$/.test(key);
+      const validRelated = kind === 'related' && /^(FCRM|OB|OBFRONT|FTD|FACS)-\d+$/.test(key);
+      if ((!validDevelopment && !validRelated) || key === themeKey ||
+          (selected.has(key) && selected.get(key)?.kind !== kind)) {
+        throw failure('Проверьте выбранные ключи и типы связей Jira.', 'THREAD_LINK_INVALID');
+      }
+      selected.set(key, {key, kind});
+    }
+    return [...selected.values()];
   }
 
-  async function finish(key: string, sources: Source[], themeKey: string | undefined, write: boolean) {
-    const linkFailures = await linkSources(key, sources, write);
-    if (themeKey) {
-      let confirmed = await checkTheme(key, themeKey).catch(() => false);
-      if (!confirmed && write && applyTheme) {
-        try {
-          await applyTheme(key, themeKey);
-        } catch {
-          // Verify the relation after the attempt, including a lost response.
-        }
-        confirmed = await checkTheme(key, themeKey).catch(() => false);
-      }
-      if (!confirmed) linkFailures.push(themeKey);
+  async function verifyLinkTarget(key: string) {
+    const target = await readIssue(key, 'project,summary');
+    if (target.project?.key !== key.split('-')[0] || typeof target.summary !== 'string' || !target.summary.trim()) {
+      throw failure('Jira не подтвердила выбранную задачу ' + key + '.', 'THREAD_LINK_INVALID');
     }
-    return {key, linkFailures, existing: !write};
+  }
+
+  function linkFrom(fields: Fields, targetKey: string, caption: RegExp, typeName?: string) {
+    return (fields.issuelinks || []).filter(link =>
+      (!typeName || link.type?.name === typeName) &&
+      (link.inwardIssue?.key === targetKey && caption.test(link.type?.inward?.trim() || '') ||
+       link.outwardIssue?.key === targetKey && caption.test(link.type?.outward?.trim() || ''))
+    );
+  }
+
+  async function checkIssueLink(sourceKey: string, proposal: LinkProposal, typeName?: string) {
+    const [source, target] = await Promise.all([
+      readIssue(sourceKey, 'issuelinks'),
+      readIssue(proposal.key, 'issuelinks')
+    ]);
+    if (!Array.isArray(source.issuelinks) || !Array.isArray(target.issuelinks)) {
+      throw failure('Jira не подтвердила текущие связи.', 'THREAD_LINKS_INVALID');
+    }
+    const sourceCaption = proposal.kind === 'theme' ? projectTask : proposal.kind === 'development' ? inProject : related;
+    const targetCaption = proposal.kind === 'theme' ? inProject : proposal.kind === 'development' ? projectTask : related;
+    const sourceLinks = linkFrom(source, proposal.key, sourceCaption, typeName);
+    const targetLinks = linkFrom(target, sourceKey, targetCaption, typeName);
+    return {
+      confirmed: sourceLinks.some(link => !!link.id && targetLinks.some(other => other.id === link.id)),
+      present: sourceLinks.length > 0 || targetLinks.length > 0
+    };
+  }
+
+  async function resolveRelatedType() {
+    const data = await request<{issueLinkTypes: IssueLinkType[]}>('issueLinkType');
+    const types = (data.issueLinkTypes || []).filter(type =>
+      !!type?.name && related.test(type.inward?.trim() || '') && related.test(type.outward?.trim() || ''));
+    if (types.length !== 1) {
+      throw failure('Jira не подтвердила однозначный тип «Связанная задача».', 'THREAD_LINKS_INVALID');
+    }
+    return types[0].name;
+  }
+
+  async function verifyOrApplyIssueLink(
+    sourceKey: string,
+    proposal: LinkProposal,
+    write: boolean,
+    relatedType: () => Promise<string>
+  ) {
+    if (sourceKey === proposal.key) return false;
+    const typeName = proposal.kind === 'related' ? await relatedType() : undefined;
+    const before = await checkIssueLink(sourceKey, proposal, typeName);
+    if (before.confirmed || !write || before.present) return before.confirmed;
+    try {
+      await verifyLinkTarget(proposal.key);
+      if (proposal.kind === 'theme') {
+        await applyTheme?.(sourceKey, proposal.key);
+      } else if (proposal.kind === 'development') {
+        await applyDevelopmentLink?.(sourceKey, {key: proposal.key, kind: 'development'});
+      } else {
+        await request('issueLink', 'POST', {
+          type: {name: typeName},
+          inwardIssue: {key: proposal.key},
+          outwardIssue: {key: sourceKey}
+        }, false);
+      }
+    } catch {
+      // A failure to receive the response can still mean Jira saved the link.
+    }
+    return (await checkIssueLink(sourceKey, proposal, typeName)).confirmed;
+  }
+
+  async function finish(
+    issue: {key: string; title: string},
+    sources: Source[],
+    proposals: LinkProposal[],
+    write: boolean
+  ) {
+    const missingSources = await linkSources(issue.key, sources, write);
+    const linkOutcomes: LinkOutcome[] = sources.map(({url}) =>
+      ({key: url, kind: 'source', confirmed: !missingSources.includes(url)}));
+    let relatedTypeRequest: Promise<string> | undefined;
+    const relatedType = () => relatedTypeRequest ||= resolveRelatedType();
+    for (const proposal of proposals) {
+      const confirmed = await verifyOrApplyIssueLink(issue.key, proposal, write, relatedType).catch(() => false);
+      linkOutcomes.push({...proposal, confirmed});
+    }
+    const linkFailures = linkOutcomes.filter(link => !link.confirmed).map(link => link.key);
+    return {key: issue.key, title: issue.title, linkFailures, linkOutcomes, existing: false, canRetryLinks: linkFailures.length > 0};
   }
 
   async function reconcile(journal: Journal, sources: Source[]) {
     try {
-      const key = await locateIssue(journal, sources);
-      if (key) return key;
+      const candidate = await locateIssue(journal, sources);
+      if (candidate) return candidate;
     } catch {
-      // A failed or empty search does not prove there was no creation.
+      // A failed or empty index search does not prove there was no creation.
     }
     throw unknown();
   }
@@ -454,12 +548,30 @@ export function createFcrmThreadWriter(applyTheme?: (key: string, themeKey: stri
         normalize(saved.description || '') !== normalize(descriptionWithSources(input.description, sources))) {
       throw failure('В Jira найдена ' + key + ', но её поля отличаются от черновика. Откройте задачу и проверьте результат.', 'THREAD_CREATED_DIFFERENT');
     }
+    return {key, title: saved.summary};
   }
 
-  async function recoverCreation(journal: Journal, input: Input, sources: Source[], themeKey?: string) {
-    const key = await reconcile(journal, sources);
-    await verifyCreatedIssue(key, input, sources);
-    return finish(key, sources, themeKey, false);
+  function existingResult(issue: {key: string; title: string}) {
+    return {key: issue.key, title: issue.title, existing: true, canRetryLinks: false, linkFailures: [], linkOutcomes: []};
+  }
+
+  function hasOwnReceipt(journal: Journal, sources: Source[], key: string) {
+    return sources.every(({marker}) => journal[marker]?.key === key && journal[marker].receipt !== false);
+  }
+
+  async function recoverCreation(journal: Journal, input: Input, sources: Source[], proposals: LinkProposal[]) {
+    const found = await reconcile(journal, sources);
+    if (!hasOwnReceipt(journal, sources, found.key)) {
+      if (hasPendingCreation(journal, sources)) {
+        // The exact source identifies an existing task, but only a Jira receipt authorizes repairing its links.
+        const verified = await verifyCreatedIssue(found.key, input, sources).catch(() => null);
+        if (verified) writeJournal(journal, sources, {key: found.key, verified: true, receipt: false});
+      }
+      return existingResult(found);
+    }
+    const issue = await verifyCreatedIssue(found.key, input, sources);
+    writeJournal(journal, sources, {key: issue.key, verified: true});
+    return finish(issue, sources, proposals, false);
   }
 
   function normalizeThemeKey(value?: string) {
@@ -468,6 +580,13 @@ export function createFcrmThreadWriter(applyTheme?: (key: string, themeKey: stri
       throw failure('Выберите корректный ключ тематики FCRM.', 'THREAD_THEME_INVALID');
     }
     return themeKey || undefined;
+  }
+
+  function getLinkProposals(input: Input): LinkProposal[] {
+    const themeKey = normalizeThemeKey(input.themeKey);
+    const proposals: LinkProposal[] = normalizeIssueLinks(input.issueLinks, themeKey);
+    if (themeKey) proposals.unshift({kind: 'theme', key: themeKey});
+    return proposals;
   }
 
   function withWriteLock<T>(operation: () => Promise<T>): Promise<T> {
@@ -479,16 +598,17 @@ export function createFcrmThreadWriter(applyTheme?: (key: string, themeKey: stri
 
   async function create(input: Input) {
     const sources = await normalizeSources(input.urls);
-    const themeKey = normalizeThemeKey(input.themeKey);
+    const proposals = getLinkProposals(input);
     return withWriteLock(async () => {
       const journal = readJournal();
       if (hasPendingCreation(journal, sources)) {
-        return recoverCreation(journal, input, sources, themeKey);
+        return recoverCreation(journal, input, sources, proposals);
       }
       const existing = await locateIssue(journal, sources);
-      if (existing) return finish(existing, sources, themeKey, false);
+      if (existing) return existingResult(existing);
 
       const fields = await buildFields(input, sources);
+      await Promise.all(proposals.map(proposal => verifyLinkTarget(proposal.key)));
       await verifyDuplicateConfirmation(input);
       writeJournal(journal, sources, {});
       let receipt: {key?: string};
@@ -499,35 +619,38 @@ export function createFcrmThreadWriter(applyTheme?: (key: string, themeKey: stri
           writeJournal(journal, sources, null);
           throw error;
         }
-        return recoverCreation(journal, input, sources, themeKey);
+        return recoverCreation(journal, input, sources, proposals);
       }
       const key = receipt?.key;
-      if (!isIssueKey(key)) return recoverCreation(journal, input, sources, themeKey);
+      if (!isIssueKey(key)) return recoverCreation(journal, input, sources, proposals);
       try {
         writeJournal(journal, sources, {key});
       } catch {
         throw unknown();
       }
-      await verifyCreatedIssue(key, input, sources);
+      const issue = await verifyCreatedIssue(key, input, sources);
       writeJournal(journal, sources, {key, verified: true});
-      return finish(key, sources, themeKey, true);
+      return finish(issue, sources, proposals, true);
     });
   }
 
   async function recover(input: Input) {
     const sources = await normalizeSources(input.urls);
-    const themeKey = input.themeKey?.trim().toUpperCase();
-    return recoverCreation(readJournal(), input, sources, isIssueKey(themeKey) ? themeKey : undefined);
+    return withWriteLock(() => recoverCreation(readJournal(), input, sources, getLinkProposals(input)));
   }
 
   async function retryLinks(input: Input) {
     const sources = await normalizeSources(input.urls);
-    const themeKey = normalizeThemeKey(input.themeKey);
+    const proposals = getLinkProposals(input);
     return withWriteLock(async () => {
-      const key = await reconcile(readJournal(), sources);
-      await verifyCreatedIssue(key, input, sources);
-      const result = await finish(key, sources, themeKey, true);
-      return {...result, existing: true};
+      const journal = readJournal();
+      const key = journal[sources[0].marker]?.key;
+      if (!isIssueKey(key) || !hasOwnReceipt(journal, sources, key)) {
+        throw failure('Добавить связи можно только к задаче, созданной этим запросом.', 'THREAD_LINKS_UNOWNED');
+      }
+      const issue = await verifyCreatedIssue(key, input, sources);
+      writeJournal(journal, sources, {key, verified: true});
+      return finish(issue, sources, proposals, true);
     });
   }
 

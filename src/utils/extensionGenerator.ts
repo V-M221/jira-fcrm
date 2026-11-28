@@ -15,7 +15,7 @@ import { createExtensionUpdateNotice, EXTENSION_UPDATE_INTERVAL, EXTENSION_UPDAT
 import { createJiraDraftLinkClient } from '../services/deepseek';
 import { createFcrmThreadWriter } from '../services/fcrmThreadWriter';
 
-export const EXTENSION_VERSION = '3.5.193';
+export const EXTENSION_VERSION = '3.5.194';
 
 export function fcrmReviewRowClass(key:string, status:string):string {
   if (!/^FCRM-\d+$/i.test(key)) return '';
@@ -32,7 +32,7 @@ export function generateManifestJson(config: ExtensionConfig): string {
     version: EXTENSION_VERSION,
     description: `Компактный реестр Jira Structure (v3.2): свернутые по умолчанию спринты и компоненты, Input-Select поиск для Эпиков (FCRM) и Компонентов (по проекту задачи), группировка связей OB/OBFRONT/FTD, кнопка «Улучшить» у заголовка задачи через DeepSeek и MCP jit.`,
     permissions: ['storage', 'activeTab'],
-    host_permissions: ['https://jit.o3.ru/*', 'https://deepseek.o3t.ru/*', 'https://chatzone.o3t.ru/*', 'https://chatzone.o3.ru/*'],
+    host_permissions: ['https://jit.o3.ru/*', 'https://deepseek.o3t.ru/*', 'https://chatzone.o3t.ru/*', 'https://chatzone.o3.ru/*', 'https://confluence.o3.ru/*', 'https://confluence.o3t.ru/*'],
     action: {
       default_title: 'Ozon Bank В· FCRM Structure',
       default_popup: 'popup.html',
@@ -468,8 +468,37 @@ body.ozon-native-board-visible > :is(.ozon-component-editor,#ozon-thread-sidebar
 .ozon-ext-status-count + .ozon-ext-status-count::before { content:'·';margin-right:8px;color:#CBD5E1; }
 .ozon-ext-view-tabs { display:flex;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid #E2E8F0;background:#fff;flex-shrink:0; }
 
-#ozon-thread-sidebar {position:fixed;right:0;top:40px;bottom:0;width:min(500px,100vw);box-sizing:border-box;z-index:100050;background:#fff;box-shadow:-8px 0 28px #07102622;padding:16px;overflow:auto;font:13px/1.5 var(--ozon-font-sans,sans-serif);color:#071026;}
+#ozon-thread-sidebar {position:fixed;right:0;top:40px;bottom:0;width:min(840px,calc(100vw - 28px));box-sizing:border-box;z-index:100050;background:#fff;box-shadow:-8px 0 28px #07102622;padding:22px 26px;overflow:auto;font:14px/1.55 var(--ozon-font-sans,sans-serif);color:#071026;}
 #ozon-thread-sidebar [hidden] {display:none!important;}
+@media (min-width:1060px) {#ozon-thread-sidebar {width:clamp(720px,68vw,840px);}}
+@media (max-width:760px) {#ozon-thread-sidebar {width:100vw;padding:14px;}}
+#ozon-thread-sidebar .ozon-thread-head h2 {font-size:18px;}
+#ozon-thread-sidebar [data-thread-status] {margin:0 0 16px;padding:10px 12px;border:1px solid #d7e0ec;border-left:3px solid #94a3b8;border-radius:8px;background:#f5f8fd;color:#334155;}
+#ozon-thread-sidebar [data-thread-status][data-tone="progress"] {border-left-color:#005bff;background:#edf4ff;color:#173b7a;}
+#ozon-thread-sidebar [data-thread-status][data-tone="error"] {border-color:#fac9c6;border-left-color:#bd302b;background:#fff3f2;color:#89221e;}
+#ozon-thread-sidebar [data-thread-status][data-tone="success"] {border-color:#c3e8d3;border-left-color:#24764c;background:#eefaf3;color:#1b5b3a;}
+#ozon-thread-sidebar [data-thread-status][data-tone="warning"] {border-color:#f2d9a7;border-left-color:#a35e09;background:#fff8e8;color:#76440a;}
+#ozon-thread-sidebar [name="draftDescription"] {min-height:240px;line-height:1.6;}
+#ozon-thread-sidebar :is(input,textarea):disabled {background:#f5f7fa;color:#475569;opacity:1;cursor:wait;}
+#ozon-thread-sidebar [data-thread-context-sources] {margin:0 0 12px;color:#475569;}
+#ozon-thread-sidebar [data-thread-context-sources] summary {cursor:pointer;font-weight:600;}
+#ozon-thread-sidebar [data-thread-context-sources] a {color:#005bff;}
+#ozon-thread-sidebar [data-thread-theme-reason] {margin:0 0 8px;color:#475569;}
+#ozon-thread-sidebar [data-thread-related] {min-width:0;margin:8px 0 0;padding:10px 12px;border:1px solid #d7e0ec;border-radius:8px;}
+#ozon-thread-sidebar [data-thread-related] legend {padding:0 4px;font-weight:650;}
+#ozon-thread-sidebar .ozon-thread-proposal {display:flex;align-items:flex-start;gap:8px;margin:8px 0;font-weight:400;}
+#ozon-thread-sidebar .ozon-thread-proposal input {width:16px;height:16px;margin:4px 0 0;flex:0 0 auto;accent-color:#005bff;}
+#ozon-thread-sidebar .ozon-thread-proposal small {display:block;}
+#ozon-thread-sidebar [data-thread-result] {padding:16px;border:1px solid #d7e0ec;border-radius:10px;background:#f8fafc;}
+#ozon-thread-sidebar [data-thread-result] h3 {margin:0;font-size:16px;}
+#ozon-thread-sidebar [data-thread-result-title] {margin:0;font-size:17px;font-weight:650;}
+#ozon-thread-sidebar a[data-thread-key] {width:fit-content;padding:6px 10px;border:1px solid #a8c8fb;border-radius:8px;background:#e6f0ff;font-weight:650;text-decoration:none;}
+#ozon-thread-sidebar [data-thread-link-outcomes] h4 {margin:6px 0;}
+#ozon-thread-sidebar [data-thread-link-outcomes] ul {padding-left:20px;margin:6px 0;}
+#ozon-thread-sidebar [data-thread-link-outcomes] li {margin:4px 0;}
+#ozon-thread-sidebar [data-thread-link-outcomes] a,#ozon-thread-sidebar [data-thread-linked-sources] a {color:#005bff;overflow-wrap:anywhere;}
+#ozon-thread-sidebar [data-thread-link-outcomes] [data-confirmed="true"] {color:#1b5b3a;}
+#ozon-thread-sidebar [data-thread-link-outcomes] [data-confirmed="false"] {color:#89221e;}
 #ozon-thread-sidebar .ozon-thread-steps {list-style:none;margin:0;padding:0;}
 #ozon-thread-sidebar [data-thread-step] {position:relative;padding:0 0 16px 38px;}
 #ozon-thread-sidebar [data-thread-step]:not(:last-child)::before {content:"";position:absolute;inset:28px auto 0 13px;width:2px;background:#d7e0ec;}
@@ -2476,7 +2505,8 @@ export function generateContentScriptJs(
 
 
   const threadThemeLinks = (${createJiraDraftLinkClient.toString()})();
-  const threadWriter = (${createFcrmThreadWriter.toString()})((key, themeKey) => threadThemeLinks.apply(key, {kind:'theme',key:themeKey,reason:''}));
+  const threadWriter = (${createFcrmThreadWriter.toString()})((key, themeKey) => threadThemeLinks.apply(key, {kind:'theme',key:themeKey,reason:''}),
+    (key, proposal) => threadThemeLinks.apply(key, {kind:'development',key:proposal.key,reason:''}));
 
   async function openThreadCreationSidebar(event) {
     const launcher = event.currentTarget;
@@ -2498,14 +2528,16 @@ export function generateContentScriptJs(
       '<label>Дополнительная информация<textarea name="additionalInfo" rows="3"></textarea></label>' +
       '<div class="ozon-thread-actions"><button class="ozon-ext-btn" type="submit" disabled>Подготовить черновик</button>' +
       '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-load-fields hidden>Повторить загрузку полей Jira</button></div></form>' + stepEnd +
-      stepStart(2,'Черновик') + '<section data-thread-review hidden>' +
+      stepStart(2,'Черновик') + '<details data-thread-context-sources hidden><summary>Дополнительные источники</summary><ul></ul></details>' +
+      '<section data-thread-review hidden>' +
       '<label>Название<textarea name="draftSummary" rows="2" maxlength="255"></textarea></label>' +
       '<label>Описание<textarea name="draftDescription" rows="9"></textarea></label>' +
-      '<div><strong>Тематика FCRM</strong><p data-thread-theme-current>Не выбрана</p>' +
+      '<div><strong>Тематика FCRM</strong><p data-thread-theme-current>Не выбрана</p><p data-thread-theme-reason hidden></p>' +
       '<div class="ozon-thread-actions"><button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-theme-toggle aria-controls="ozon-thread-theme-menu" aria-expanded="false">Выбрать тематику</button>' +
       '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-theme-clear hidden>Без тематики</button></div>' +
       '<div id="ozon-thread-theme-menu" data-thread-theme-menu hidden><label>Поиск по названию или ключу<input type="search" name="draftThemeSearch" autocomplete="off"></label>' +
-      '<p data-thread-theme-status role="status"></p><div data-thread-theme-results role="group" aria-label="Подходящие тематики"></div></div></div></section>' +
+      '<p data-thread-theme-status role="status"></p><div data-thread-theme-results role="group" aria-label="Подходящие тематики"></div></div></div>' +
+      '<fieldset data-thread-related><legend>Предлагаемые связи</legend><div data-thread-linked-sources></div><div data-thread-issue-proposals></div></fieldset></section>' +
       '<form data-thread-followup hidden><div data-thread-question hidden><h3 data-thread-question-heading></h3>' +
       '<p id="ozon-thread-question-text" data-thread-question-text></p><p id="ozon-thread-question-reason" data-thread-question-reason hidden></p>' +
       '<small id="ozon-thread-question-policy" data-thread-question-policy></small></div>' +
@@ -2514,19 +2546,32 @@ export function generateContentScriptJs(
       '<div class="ozon-thread-actions"><button class="ozon-ext-btn" type="button" data-thread-inspect hidden>Проверить перед созданием</button>' +
       '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-back>Изменить исходные данные</button></div>' + stepEnd +
       stepStart(3,'Проверка и создание') +
-      '<dl data-thread-final-fields></dl><details data-thread-final-description><summary>Описание задачи</summary><p class="ozon-thread-final-description"></p></details>' +
+      '<div data-thread-verification><dl data-thread-final-fields></dl><details data-thread-final-description><summary>Описание задачи</summary><p class="ozon-thread-final-description"></p></details></div>' +
       '<p data-thread-duplicate-note hidden></p><ul data-thread-duplicate-links hidden></ul>' +
       '<div class="ozon-thread-actions" data-thread-create-actions><button class="ozon-ext-btn" type="button" data-thread-create>Создать в Jira</button>' +
       '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-confirm-duplicate hidden>Создать отдельную задачу</button></div>' +
-      '<p><a data-thread-key target="_blank" rel="noopener noreferrer" hidden></a></p>' +
+      '<section data-thread-result aria-labelledby="ozon-thread-result-heading" hidden><h3 id="ozon-thread-result-heading" tabindex="-1"></h3><p data-thread-result-title hidden></p>' +
+      '<a data-thread-key target="_blank" rel="noopener noreferrer" hidden></a><ul data-thread-existing-matches hidden></ul><div data-thread-link-outcomes hidden></div></section>' +
       '<div class="ozon-thread-actions"><button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-recover hidden>Проверить Jira</button>' +
       '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-retry-links hidden>Повторить добавление связей</button>' +
       '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-redo-inspect hidden>Повторить проверку</button>' +
       '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-edit>Вернуться к черновику</button>' +
-      '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-new hidden>Подготовить другую задачу</button></div>' +
+      '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-new hidden>Создать другую</button>' +
+      '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-return hidden>Вернуться к доске</button></div>' +
       '<details data-thread-post-review hidden><summary>Уточнить созданную задачу</summary><div data-thread-suggestion hidden><h3 tabindex="-1">Предложение к задаче</h3><p data-thread-suggestion-title></p><p class="ozon-thread-final-description" data-thread-suggestion-body></p></div></details>' + stepEnd + '</ol>';
     const form = panel.querySelector('[data-thread-source]');
     const status = panel.querySelector('[data-thread-status]');
+    const verification = panel.querySelector('[data-thread-verification]');
+    const resultCard = panel.querySelector('[data-thread-result]');
+    const resultHeading = resultCard.querySelector('h3');
+    const resultTitle = resultCard.querySelector('[data-thread-result-title]');
+    const resultLinks = resultCard.querySelector('[data-thread-link-outcomes]');
+    const existingMatches = resultCard.querySelector('[data-thread-existing-matches]');
+    const returnToBoard = panel.querySelector('[data-thread-return]');
+    const linkedSources = panel.querySelector('[data-thread-linked-sources]');
+    const issueProposals = panel.querySelector('[data-thread-issue-proposals]');
+    const contextSources = panel.querySelector('[data-thread-context-sources]');
+    const contextSourceList = contextSources.querySelector('ul');
     const submit = form.querySelector('[type="submit"]');
     const retryFields = form.querySelector('[data-thread-load-fields]');
     const heading = panel.querySelector('h2');
@@ -2546,6 +2591,7 @@ export function generateContentScriptJs(
     const summary = review.querySelector('[name="draftSummary"]');
     const description = review.querySelector('[name="draftDescription"]');
     const themeCurrent = review.querySelector('[data-thread-theme-current]');
+    const themeReason = review.querySelector('[data-thread-theme-reason]');
     const themeToggle = review.querySelector('[data-thread-theme-toggle]');
     const themeClear = review.querySelector('[data-thread-theme-clear]');
     const themeMenu = review.querySelector('[data-thread-theme-menu]');
@@ -2580,14 +2626,20 @@ export function generateContentScriptJs(
     let reviewResult = null;
     let inspectionFailed = false;
     let loadSearchThemes = null;
+    let catalogUnavailable = false;
+    let resetFields = () => {};
     let selectedTheme = null;
+    const selectedIssueLinks = new Map();
     let themeOverridden = false;
     let themeSearchSerial = 0;
     let themeSearchTimer = 0;
 
 
-    function say(text) { status.textContent = text; }
-    function focus(target) { if (!panel.hidden && target) target.focus({preventScroll:true}); }
+    function say(text, tone = busy ? 'progress' : 'info') {
+      status.textContent = text;
+      status.dataset.tone = tone;
+    }
+    function focus(target) { if (!panel.hidden && target) target.focus(); }
     function setStep(number, moveFocus = true) {
       step = number;
       steps.forEach((item, index) => {
@@ -2602,7 +2654,9 @@ export function generateContentScriptJs(
           caption.textContent = index === 0 ? ['Тредов: ' + requestSnapshot.urls.length, requestSnapshot.issueTypeName, requestSnapshot.componentName].join(' · ') : normalizedSummary(summary.value);
         }
       });
-      if (moveFocus && !panel.hidden) steps[step - 1].querySelector('h3').focus();
+      const active = steps[step - 1];
+      active.querySelector('[data-thread-step-body]').prepend(status);
+      if (moveFocus) focus(active.querySelector('h3'));
     }
     function draftReady() {
       return Boolean(draft) && !initialClarification && Boolean(normalizedSummary(summary.value) && description.value.trim());
@@ -2610,6 +2664,10 @@ export function generateContentScriptJs(
     function updateControls() {
       const locked = busy || Boolean(pendingWrite) || Boolean(created);
       const state = reviewResult?.state;
+      const terminal = Boolean(created) || state === 'existing';
+      verification.hidden = terminal;
+      returnToBoard.hidden = !terminal && state !== 'uncertain';
+      returnToBoard.disabled = busy;
       submit.disabled = busy || !ready;
       continueButton.disabled = busy || Boolean(pendingWrite && !created) || !reply.value.trim();
       inspect.hidden = !draft || initialClarification;
@@ -2621,7 +2679,7 @@ export function generateContentScriptJs(
       confirmDuplicate.disabled = create.disabled;
       redoInspect.hidden = !inspectionFailed;
       redoInspect.disabled = locked;
-      edit.hidden = Boolean(pendingWrite) || Boolean(created);
+      edit.hidden = Boolean(pendingWrite) || terminal;
       edit.disabled = busy;
       recover.hidden = state !== 'uncertain' || Boolean(created);
       recover.disabled = busy;
@@ -2631,11 +2689,11 @@ export function generateContentScriptJs(
       back.disabled = locked;
       themeToggle.disabled = locked;
       themeClear.disabled = locked;
-      reply.readOnly = busy;
       if (locked && !themeMenu.hidden) closeThemeMenu();
-      for (const field of form.querySelectorAll('input,textarea')) field.readOnly = busy;
-      form.querySelectorAll('.ozon-ext-search-select-trigger').forEach(button => { button.disabled = busy; });
-      for (const field of [summary, description]) field.readOnly = locked;
+      if (busy) form.querySelectorAll('.ozon-ext-search-select-trigger[aria-expanded="true"]').forEach(button => button.click());
+      for (const field of form.querySelectorAll('input,textarea,.ozon-ext-search-select button')) field.disabled = busy;
+      for (const field of [summary, description, themeInput, ...issueProposals.querySelectorAll('input')]) field.disabled = locked;
+      reply.disabled = busy;
       form.setAttribute('aria-busy', String(busy));
       review.setAttribute('aria-busy', String(busy));
     }
@@ -2645,6 +2703,7 @@ export function generateContentScriptJs(
       (launcher.isConnected ? launcher : document.getElementById('ozon-thread-create'))?.focus({preventScroll:true});
     }
     close.onclick = closePanel;
+    returnToBoard.onclick = closePanel;
     panel.addEventListener('keydown', event => {
       if (event.key === 'Escape' && !event.defaultPrevented) {
         event.preventDefault();
@@ -2657,6 +2716,7 @@ export function generateContentScriptJs(
       inspectionFailed = false;
       duplicateNote.hidden = true;
       duplicateLinks.hidden = true;
+      resultCard.hidden = true;
     }
     function showSources() {
       clearInspection();
@@ -2676,21 +2736,28 @@ export function generateContentScriptJs(
       draft = null;
       initialClarification = false;
       loadSearchThemes = null;
+      catalogUnavailable = false;
       themeOverridden = false;
       setTheme(null);
       closeThemeMenu();
       review.hidden = true;
       followup.hidden = true;
+      selectedIssueLinks.clear();
+      linkedSources.replaceChildren();
+      issueProposals.replaceChildren();
+      renderContextSources([]);
       reply.value = '';
       showQuestion();
     }
     newTask.onclick = () => {
       form.reset();
+      resetFields();
       requestSnapshot = null;
       pendingWrite = null;
       created = null;
       resetDraft();
       inspect.parentNode.before(followup);
+      review.before(contextSources);
       keyLink.hidden = true;
       retryLinks.hidden = true;
       postReview.hidden = true;
@@ -2723,12 +2790,14 @@ export function generateContentScriptJs(
     function themeTerms(query) {
       return (query.toLocaleLowerCase('ru').match(/[\\p{L}\\p{N}]+/gu) || []).slice(0,5);
     }
-    async function findThemes(query = '') {
-      const scope = 'project = FCRM AND labels = fcrm_umb_epic AND statusCategory != Done';
+    async function findThemes(query = '', component = '') {
+      const backslash = String.fromCharCode(92);
+      const quotedComponent = '"' + component.replaceAll(backslash,backslash + backslash).replaceAll('"',backslash + '"') + '"';
+      const scope = 'project = FCRM AND labels = fcrm_umb_epic AND statusCategory != Done' + (component ? ' AND component = ' + quotedComponent : '');
       const search = /^FCRM-\\d+$/i.test(query)
         ? ' AND key = ' + query.toUpperCase()
         : themeTerms(query).map(term => ' AND summary ~ "' + term.slice(0,60) + '*"').join('');
-      const params = new URLSearchParams({jql:scope + search + ' ORDER BY updated DESC',fields:'summary',maxResults:'25'});
+      const params = new URLSearchParams({jql:scope + search + ' ORDER BY updated DESC',fields:'summary,description,components',maxResults:'25'});
       const response = await fetch('/rest/api/2/search?' + params, {
         credentials:'same-origin',headers:{Accept:'application/json'},signal:AbortSignal.timeout(4000)
       });
@@ -2737,26 +2806,39 @@ export function generateContentScriptJs(
       if (!Array.isArray(data?.issues)) throw new Error('Не удалось загрузить тематики Jira.');
       return data.issues.slice(0,25).flatMap(issue => (
         /^FCRM-\\d+$/.test(issue.key) && typeof issue.fields?.summary === 'string' && issue.fields.summary.trim()
-          ? [{key:issue.key,title:issue.fields.summary.trim().slice(0,255)}] : []
+          ? [{key:issue.key,title:issue.fields.summary.trim().slice(0,255),
+            description:typeof issue.fields.description === 'string' ? issue.fields.description.slice(0,1600) : '',
+            components:Array.isArray(issue.fields.components) ? issue.fields.components.map(component => component.name).filter(name => typeof name === 'string').slice(0,5) : []}] : []
       ));
     }
     function sourceThemes() {
       if (!loadSearchThemes) {
-        loadSearchThemes = findThemes().catch(() => {
-          loadSearchThemes = null;
-          return [];
+        loadSearchThemes = Promise.allSettled([
+          findThemes('', requestSnapshot.componentName), findThemes()
+        ]).then(results => {
+          const catalog = new Map();
+          for (const result of results) if (result.status === 'fulfilled') {
+            for (const theme of result.value) if (!catalog.has(theme.key)) catalog.set(theme.key,theme);
+          }
+          catalogUnavailable = results.every(result => result.status === 'rejected');
+          if (catalogUnavailable) loadSearchThemes = null;
+          return [...catalog.values()].slice(0,25);
         });
       }
       return loadSearchThemes;
     }
     function themeLabel(item) { return item.title + ' · ' + item.key; }
-    function setTheme(item, manual = false) {
+    function setTheme(item, manual = false, reason = '') {
       selectedTheme = item;
+      const removedLink = item ? selectedIssueLinks.delete(item.key) : false;
       if (manual) themeOverridden = true;
       themeCurrent.textContent = item ? themeLabel(item) : 'Не выбрана';
+      themeReason.textContent = removedLink ? 'Отдельная связь снята: задача уже выбрана тематикой.' : item && !manual ? reason : '';
+      themeReason.hidden = !themeReason.textContent;
       themeToggle.textContent = item ? 'Изменить тематику' : 'Выбрать тематику';
       themeClear.hidden = !item;
       if (manual) {
+        if (draft && !review.hidden) renderDraftLinks();
         confirmDuplicate.hidden = true;
         duplicateLinks.hidden = true;
       }
@@ -2861,13 +2943,149 @@ export function generateContentScriptJs(
       }
     }
 
+
+    function safeSourceUrl(value) {
+      try {
+        const url = new URL(value);
+        return url.protocol === 'https:' && !url.username && !url.password && !url.port &&
+          ['chatzone.o3t.ru','chatzone.o3.ru'].includes(url.hostname) &&
+          /\\/pl\\/[a-z0-9]{26}\\/?$/.test(url.pathname) ? url.href : '';
+      } catch (_) { return ''; }
+    }
+    function linkFor(key, label) {
+      const href = /^(FCRM|OB|OBFRONT|FTD|FACS)-\\d+$/.test(key) ? '/browse/' + encodeURIComponent(key) : safeSourceUrl(key);
+      const element = document.createElement(href ? 'a' : 'span');
+      element.textContent = label;
+      if (href) {
+        element.href = href;
+        element.target = '_blank';
+        element.rel = 'noopener noreferrer';
+      }
+      return element;
+    }
+    function parseProposals(value) {
+      const proposals = new Map();
+      for (const item of Array.isArray(value) ? value : []) {
+        if (!item || typeof item.key !== 'string' || typeof item.title !== 'string' || !item.title.trim()) continue;
+        const key = item.key.trim().toUpperCase();
+        const pattern = item.kind === 'development' ? /^(OB|OBFRONT|FTD|FACS)-\\d+$/ : /^(FCRM|OB|OBFRONT|FTD|FACS)-\\d+$/;
+        if (!['development','related'].includes(item.kind) || !pattern.test(key) || proposals.has(key)) continue;
+        proposals.set(key,{
+          key,kind:item.kind,title:item.title.trim().slice(0,255),
+          reason:typeof item.reason === 'string' ? item.reason.trim().slice(0,240) : ''
+        });
+        if (proposals.size === 10) break;
+      }
+      return proposals;
+    }
+    function renderDraftLinks() {
+      linkedSources.replaceChildren();
+      const sourceList = document.createElement('ul');
+      for (const url of draft.urls) {
+        const item = document.createElement('li');
+        item.append(linkFor(url,url));
+        sourceList.appendChild(item);
+      }
+      const caption = document.createElement('p');
+      caption.textContent = 'Исходные треды будут приложены к задаче.';
+      linkedSources.append(caption,sourceList);
+      const proposals = new Map(draft.links);
+      if (selectedTheme) proposals.delete(selectedTheme.key);
+      for (const [key,previous] of selectedIssueLinks) {
+        const current = proposals.get(key);
+        if (current && current.kind !== previous.kind) {
+          selectedIssueLinks.delete(key);
+        } else if (!current && proposals.size < 10) {
+          proposals.set(key,previous);
+        } else if (!current) {
+          selectedIssueLinks.delete(key);
+        }
+      }
+      issueProposals.replaceChildren();
+      if (!proposals.size) {
+        const empty = document.createElement('p');
+        empty.textContent = 'Связи с задачами Jira не предложены.';
+        issueProposals.appendChild(empty);
+        return;
+      }
+      for (const item of proposals.values()) {
+        const row = document.createElement('label');
+        row.className = 'ozon-thread-proposal';
+        const check = document.createElement('input');
+        check.type = 'checkbox';
+        check.checked = selectedIssueLinks.has(item.key);
+        const text = document.createElement('span');
+        const kind = item.kind === 'development' ? 'В проекте' : 'Связанная задача';
+        text.append(document.createTextNode(item.title + ' · '),linkFor(item.key,item.key));
+        const detail = document.createElement('small');
+        detail.textContent = item.reason ? kind + ' · ' + item.reason : kind;
+        text.appendChild(detail);
+        check.addEventListener('change', () => {
+          if (busy || pendingWrite || created) return;
+          if (check.checked) selectedIssueLinks.set(item.key,item);
+          else selectedIssueLinks.delete(item.key);
+        });
+        row.append(check,text);
+        issueProposals.appendChild(row);
+      }
+    }
+
+
+    function renderContextSources(value) {
+      contextSourceList.replaceChildren();
+      let read = 0;
+      let unavailable = 0;
+      for (const source of Array.isArray(value) ? value.slice(0,32) : []) {
+        if (!source || !['jira','confluence','logs'].includes(source.kind) || !['read','unavailable'].includes(source.status)) continue;
+        const row = document.createElement('li');
+        const type = {jira:'Jira',confluence:'Confluence',logs:'Логи'}[source.kind];
+        const title = typeof source.title === 'string' ? source.title.trim().slice(0,200) : '';
+        let href = '';
+        try {
+          const url = new URL(source.url);
+          const trusted = source.kind === 'jira' ? url.hostname === 'jit.o3.ru' :
+            source.kind === 'confluence' ? ['confluence.o3.ru','confluence.o3t.ru'].includes(url.hostname) :
+            /^(?:logs?|logging|logviewer|seq)(?:[-.][a-z0-9-]+)?\\.o3t?\\.ru$/.test(url.hostname);
+          if (trusted && url.protocol === 'https:' && !url.username && !url.password && !url.port) href = url.href;
+        } catch (_) {}
+        const reference = document.createElement(href ? 'a' : 'span');
+        reference.textContent = source.kind === 'logs' && href ? 'Логи · ' + new URL(href).hostname : title || type;
+        if (href) {
+          reference.href = href;
+          reference.target = '_blank';
+          reference.rel = 'noopener noreferrer';
+        }
+        const state = document.createElement('span');
+        const reason = typeof source.reason === 'string' ? source.reason.trim().slice(0,180) : '';
+        if (source.status === 'read') {
+          read += 1;
+          state.textContent = ' · прочитан';
+        } else {
+          unavailable += 1;
+          state.textContent = ' · недоступен' + (reason ? ' (' + reason + ')' : '');
+        }
+        row.append(reference,state);
+        contextSourceList.appendChild(row);
+      }
+      if (catalogUnavailable) {
+        unavailable += 1;
+        const item = document.createElement('li');
+        item.textContent = 'Каталог тематик Jira · не удалось загрузить';
+        contextSourceList.appendChild(item);
+      }
+      contextSources.hidden = !read && !unavailable;
+      contextSources.open = unavailable > 0;
+      contextSources.querySelector('summary').textContent = 'Дополнительные источники: прочитано ' + read + (unavailable ? ', недоступно ' + unavailable : '');
+    }
+
     function readResult(text) {
       let result;
       try { result = JSON.parse(text); } catch (_) { throw new Error('DeepSeek вернул черновик в неожиданном формате. Повторите запрос.'); }
       const questionReason = typeof result?.questionReason === 'string' ? result.questionReason.trim().slice(0,180) : '';
+      const themeReason = typeof result?.themeReason === 'string' ? result.themeReason.trim().slice(0,240) : '';
       if (result?.status === 'clarification') {
         const detail = typeof result.message === 'string' ? result.message.trim().slice(0,500) : '';
-        return {question:detail || 'Какие детали нужно учесть в черновике?', questionReason};
+        return {question:detail || 'Какие детали нужно учесть в черновике?', questionReason, sources:result.sources};
       }
       if (result?.status !== 'draft' || typeof result.summary !== 'string' || !result.summary.trim() || typeof result.description !== 'string' || !result.description.trim()) {
         throw new Error('DeepSeek вернул неполный черновик. Повторите запрос.');
@@ -2878,6 +3096,9 @@ export function generateContentScriptJs(
         themeKey:/^FCRM-\\d+$/.test(result.themeKey) ? result.themeKey : '',
         question:typeof result.message === 'string' ? result.message.trim().slice(0,500) : '',
         questionReason,
+        themeReason,
+        sources:result.sources,
+        links:parseProposals(result.links),
         mentionedIssueKeys:Array.isArray(result.mentionedIssueKeys) ? result.mentionedIssueKeys.filter(key => /^FCRM-\\d+$/.test(key)).slice(0,12) : [],
         urls:Array.isArray(result.urls) && result.urls.length > 0 && result.urls.length <= requestSnapshot.urls.length && result.urls.every(url => typeof url === 'string') ? result.urls : requestSnapshot.urls
       };
@@ -2893,6 +3114,8 @@ export function generateContentScriptJs(
     async function requestDraft(clarification) {
       if (busy || !requestSnapshot || (pendingWrite && !created)) return;
       const previousDraft = draft && (created ? draft : readDraft());
+      const keepSummary = !created && previousDraft && previousDraft.summary !== draft.summary;
+      const keepDescription = !created && previousDraft && previousDraft.description !== draft.description;
       const clarificationWithQuestion = clarification && !question.hidden && questionText.textContent
         ? questionText.textContent + '\\nОтвет: ' + clarification : clarification;
       busy = true;
@@ -2900,6 +3123,7 @@ export function generateContentScriptJs(
       duplicateLinks.hidden = true;
       updateControls();
       say('Читаю обсуждения chatZone…');
+      focus(status);
       const requestId = crypto.randomUUID();
       const progress = {
         source:'Читаю обсуждения chatZone…',
@@ -2924,6 +3148,7 @@ export function generateContentScriptJs(
         });
         if (!response.ok) throw new Error(modelFailure(response));
         const result = readResult(response.text);
+        renderContextSources(result.sources);
         followup.hidden = false;
         reply.value = '';
         if (created) {
@@ -2933,10 +3158,10 @@ export function generateContentScriptJs(
             suggestion.querySelector('[data-thread-suggestion-title]').textContent = result.summary;
             suggestion.querySelector('[data-thread-suggestion-body]').textContent = result.description;
             suggestion.hidden = false;
-            say('Предложение готово. Проверьте его перед изменением задачи в Jira.');
+            say('Предложение готово. Проверьте его перед изменением задачи в Jira.', 'success');
             nextFocus = suggestion.querySelector('h3');
           } else {
-            say('Для предложения нужно уточнение.');
+            say('Для предложения нужно уточнение.', 'warning');
             nextFocus = reply;
           }
         } else {
@@ -2944,22 +3169,22 @@ export function generateContentScriptJs(
           initialClarification = !result.summary;
           showQuestion(result.question, result.questionReason, initialClarification);
           if (initialClarification) {
-            say('Для черновика нужно уточнение.');
+            say('Для черновика нужно уточнение.', 'warning');
             nextFocus = reply;
           } else {
             draft = result;
-            summary.value = result.summary;
-            description.value = result.description;
-            if (!themeOverridden) setTheme(themes.find(item => item.key === result.themeKey) || null);
+            summary.value = keepSummary ? previousDraft.summary : result.summary;
+            description.value = keepDescription ? previousDraft.description : result.description;
+            if (!themeOverridden) setTheme(themes.find(item => item.key === result.themeKey) || null, false, result.themeReason);
             review.hidden = false;
             fitSummary();
-            say('Черновик готов. Проверьте поля и перейдите к проверке Jira.');
+            renderDraftLinks();
+            say(keepSummary || keepDescription ? 'Черновик уточнён. Ваши правки сохранены.' : 'Черновик готов. Проверьте поля и перейдите к проверке Jira.', 'success');
             nextFocus = steps[1].querySelector('h3');
           }
         }
       } catch (error) {
-        say(error.message);
-        status.tabIndex = -1;
+        say(error.message, 'error');
       } finally {
         progressActive = false;
         window.clearInterval(timer);
@@ -2972,7 +3197,8 @@ export function generateContentScriptJs(
     function writeInput() {
       return {
         ...readDraft(), urls:draft.urls, issueTypeId:requestSnapshot.issueTypeId,
-        componentId:requestSnapshot.componentId, mentionedIssueKeys:draft.mentionedIssueKeys
+        componentId:requestSnapshot.componentId, mentionedIssueKeys:draft.mentionedIssueKeys,
+        issueLinks:[...selectedIssueLinks.values()].map(({key,kind}) => ({key,kind}))
       };
     }
     function showFinalFields() {
@@ -2980,7 +3206,8 @@ export function generateContentScriptJs(
       const fields = [
         ['Название',checkedInput.summary], ['Тип',requestSnapshot.issueTypeName],
         ['Компонент',requestSnapshot.componentName], ['Тематика',selectedTheme ? themeLabel(selectedTheme) : 'Не выбрана'],
-        ['Треды chatZone',String(checkedInput.urls.length)]
+        ['Треды chatZone',String(checkedInput.urls.length)],
+        ['Связи с задачами',checkedInput.issueLinks.map(item => item.key).join(', ') || 'Не выбраны']
       ];
       for (const [label,value] of fields) {
         const name = document.createElement('dt');
@@ -3036,37 +3263,90 @@ export function generateContentScriptJs(
         }
         reviewResult = result;
         showDuplicates(result);
+        if (result.state === 'existing') {
+          const matches = result.issues.filter(issue => /^FCRM-\\d+$/.test(issue.key));
+          duplicateNote.hidden = true;
+          duplicateLinks.hidden = true;
+          if (matches.length === 1) {
+            showResultCard({key:matches[0].key,title:matches[0].title,existing:true});
+          } else {
+            showResultCard({existing:true});
+            resultHeading.textContent = 'Найдены задачи с этими источниками';
+            for (const item of matches) {
+              const row = document.createElement('li');
+              row.append(linkFor(item.key,item.title ? item.title + ' · ' + item.key : item.key));
+              if (item.reason) row.append(document.createTextNode(' · ' + item.reason));
+              existingMatches.appendChild(row);
+            }
+            existingMatches.hidden = false;
+          }
+          focus(keyLink.hidden ? resultHeading : keyLink);
+        }
         if (result.state === 'uncertain') pendingWrite = checkedInput;
         const messages = {
           ready:'Совпадений не найдено. Задачу можно создать.',
-          existing:'В Jira найдена задача с теми же источниками.',
+          existing:result.issues.length > 1 ? 'В Jira найдены задачи с этими источниками.' : 'В Jira найдена задача с теми же источниками.',
           'possible-duplicate':'В Jira найдены возможные дубли.',
           uncertain:'Результат предыдущего создания требует проверки.'
         };
-        say(messages[result.state]);
+        say(messages[result.state], result.state === 'possible-duplicate' || result.state === 'uncertain' ? 'warning' : 'success');
       } catch (error) {
         inspectionFailed = true;
-        say(error?.code === 'THREAD_DUPLICATE' ? error.message : 'Jira не завершила проверку. Повторите её перед созданием.');
+        say(error?.code === 'THREAD_DUPLICATE' ? error.message : 'Jira не завершила проверку. Повторите её перед созданием.', 'error');
       } finally {
         busy = false;
         updateControls();
       }
     }
+
+    function showResultCard(result) {
+      resultCard.hidden = false;
+      resultHeading.textContent = result.existing ? 'Найдена задача в Jira' : 'Задача создана в Jira';
+      resultTitle.textContent = result.title || (!result.existing ? checkedInput?.summary || '' : '');
+      resultTitle.hidden = !resultTitle.textContent;
+      keyLink.hidden = !result.key;
+      if (result.key) {
+        keyLink.href = '/browse/' + encodeURIComponent(result.key);
+        keyLink.textContent = 'Открыть ' + result.key + ' в Jira';
+      }
+      existingMatches.replaceChildren();
+      existingMatches.hidden = true;
+      resultLinks.replaceChildren();
+      const outcomes = Array.isArray(result.linkOutcomes) ? result.linkOutcomes :
+        (result.linkFailures || []).map(key => ({key, kind:safeSourceUrl(key) ? 'source' : 'related', confirmed:false}));
+      for (const [confirmed, title] of [[true,'Связи подтверждены Jira'],[false,'Связи требуют проверки']]) {
+        const list = document.createElement('ul');
+        for (const item of outcomes) {
+          if (!item || item.confirmed !== confirmed || typeof item.key !== 'string') continue;
+          const row = document.createElement('li');
+          const type = {source:'Тред chatZone',theme:'Тематика',development:'В проекте',related:'Связанная задача'}[item.kind];
+          row.append(document.createTextNode((type || 'Связь') + ' · '),linkFor(item.key,item.key));
+          row.dataset.confirmed = String(confirmed);
+          list.appendChild(row);
+        }
+        if (!list.childElementCount) continue;
+        const subtitle = document.createElement('h4');
+        subtitle.textContent = title;
+        resultLinks.append(subtitle,list);
+      }
+      resultLinks.hidden = !resultLinks.childElementCount;
+    }
     function showWritten(result) {
+      const previous = created;
       created = result;
       showQuestion();
-      postReview.hidden = Boolean(result.existing);
-      postReview.append(followup);
-      followup.hidden = Boolean(result.existing);
-      suggestion.hidden = true;
+      postReview.hidden = Boolean(result.existing) && result.canRetryLinks !== true;
+      postReview.append(contextSources,followup);
+      followup.hidden = postReview.hidden;
+      if (!previous) suggestion.hidden = true;
       duplicateNote.hidden = true;
       duplicateLinks.hidden = true;
-      keyLink.hidden = false;
-      keyLink.href = '/browse/' + encodeURIComponent(result.key);
-      keyLink.textContent = 'Открыть ' + result.key + ' в Jira';
-      retryLinks.hidden = !result.linkFailures.length;
-      say((result.existing ? 'Найдена задача ' : 'Создана задача ') + result.key + '.' +
-        (result.linkFailures.length ? ' Часть связей Jira не подтвердила.' : ''));
+      showResultCard(result.existing && result.canRetryLinks !== true ? {...result,linkOutcomes:[],linkFailures:[]} : result);
+      const safeToRetry = !result.existing || result.canRetryLinks === true;
+      const failures = safeToRetry ? result.linkFailures || [] : [];
+      retryLinks.hidden = !failures.length || !safeToRetry;
+      say(failures.length ? 'Часть связей Jira не подтвердила.' : 'Jira подтвердила результат.',
+        failures.length ? 'warning' : 'success');
     }
     async function writeTask(action, acceptDuplicates = false) {
       if (busy || step !== 3) return;
@@ -3081,13 +3361,15 @@ export function generateContentScriptJs(
       busy = true;
       updateControls();
       say(action === 'create' ? 'Создаю задачу FCRM…' : action === 'recover' ? 'Проверяю результат в Jira…' : 'Проверяю и добавляю связи в Jira…');
+      focus(status);
       let nextFocus = status;
       let refresh = false;
       try {
         const result = await threadWriter[action](pendingWrite);
         if (action !== 'retryLinks') draft = {...draft, ...pendingWrite};
         reviewResult = null;
-        showWritten(action === 'retryLinks' && created ? {...result, existing:created.existing} : result);
+        showWritten(action === 'retryLinks' && created ? {...result, existing:created.existing,
+          title:result.title || created.title, canRetryLinks:created.canRetryLinks} : result);
         nextFocus = keyLink;
       } catch (error) {
         if (error.code === 'THREAD_POSSIBLE_DUPLICATE') {
@@ -3096,10 +3378,10 @@ export function generateContentScriptJs(
         } else if (error.code === 'THREAD_CREATE_UNKNOWN' || error.code === 'THREAD_CREATED_DIFFERENT' || action === 'recover') {
           reviewResult = {state:'uncertain',issues:[]};
           showDuplicates(reviewResult);
-          say('Jira не подтвердила результат создания. Проверьте Jira перед повторной попыткой.');
+          say('Jira не подтвердила результат создания. Проверьте Jira перед повторной попыткой.', 'warning');
           nextFocus = recover;
         } else if (action === 'retryLinks') {
-          say('Не удалось подтвердить связи. Повторите добавление или откройте задачу в Jira.');
+          say('Не удалось подтвердить связи. Повторите добавление или откройте задачу в Jira.', 'error');
           nextFocus = retryLinks;
         } else {
           pendingWrite = null;
@@ -3116,14 +3398,14 @@ export function generateContentScriptJs(
       }
       if (refresh) {
         await checkTask(checkedInput);
-        if (reviewResult?.state === 'possible-duplicate') say('Список совпадений изменился. Проверьте его перед подтверждением.');
+        if (reviewResult?.state === 'possible-duplicate') say('Список совпадений изменился. Проверьте его перед подтверждением.', 'warning');
       }
     }
     function keepOnlyInspectionError(error) {
       duplicateNote.hidden = true;
       duplicateLinks.hidden = true;
       say(error.code === 'THREAD_REQUIRED_FIELD' || error.code === 'THREAD_DUPLICATE'
-        ? error.message : 'Jira не завершила создание задачи. Проверьте поля, доступ и соединение.');
+        ? error.message : 'Jira не завершила создание задачи. Проверьте поля, доступ и соединение.', 'error');
     }
     inspect.onclick = () => {
       if (step === 2 && draftReady()) checkTask(writeInput());
@@ -3216,10 +3498,17 @@ export function generateContentScriptJs(
             }
           });
           wrapper.addEventListener('focusout', event => { if (!wrapper.contains(event.relatedTarget)) close(); });
-          return () => selected;
+          return Object.assign(() => selected,{reset() {
+            selected = null;
+            label.textContent = placeholder;
+            trigger.setAttribute('aria-label',placeholder);
+            search.value = '';
+            close();
+          }});
         };
         const getType = makeSelect('issueType', availableTypes, 'Поиск типа задачи');
         const getComponent = makeSelect('component', components, 'Поиск компонента');
+        resetFields = () => { getType.reset(); getComponent.reset(); };
         ready = true;
         say('Выберите тип задачи и компонент FCRM.');
         updateControls();
@@ -3256,7 +3545,7 @@ export function generateContentScriptJs(
           requestDraft('');
         };
       } catch (_) {
-        say('Не удалось загрузить поля FCRM. Проверьте наличие доступа к проекту Jira.');
+        say('Не удалось загрузить поля FCRM. Проверьте наличие доступа к проекту Jira.', 'error');
         retryFields.hidden = false;
       }
     }
