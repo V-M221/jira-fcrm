@@ -166,7 +166,7 @@ async function checkDrafts() {
 
   getMode = 'poll';
   answerForRun = {status:'clarification',question:'Где разместить кнопку?',questionReason:'Без этого нельзя описать карту действий.'};
-  assert.deepEqual(JSON.parse(await run()),{status:'clarification',message:'Где разместить кнопку?',questionReason:'Без этого нельзя описать карту действий.',sources:result.sources});
+  assert.deepEqual(JSON.parse(await run()),{status:'clarification',message:'Где разместить кнопку?',questionReason:'Без этого нельзя описать карту действий.',sources:result.sources,urls:result.urls,mentionedIssueKeys:result.mentionedIssueKeys});
   assert.equal(taskPolls,3);
   assert.equal(outputReads,2);
 
@@ -404,10 +404,12 @@ async function checkSelectedLinks() {
   const themeKey = 'FCRM-123';
   const developmentKey = 'OB-45';
   const relatedKey = 'FCRM-42';
+  const duplicateKey = 'FCRM-44';
   const uncheckedKey = 'FCRM-53';
   const descriptions = new Map();
   const themeType = {name:'Project',inward:'Задача проекта',outward:'В проекте'};
   const relatedType = {name:'Relates',inward:'Relates to',outward:'Relates to'};
+  const duplicateType = {name:'Dupes',inward:'Дублировано с',outward:'Дубликат'};
   const relationships = new Map();
   const operations = [];
   const journal = new Map();
@@ -444,9 +446,15 @@ async function checkSelectedLinks() {
         descriptions.set(issueKey,fields);
         return json({key:issueKey},201);
       }
-      if (path === 'issueLinkType') return json({issueLinkTypes:[relatedType,themeType]});
+      if (path === 'issueLinkType') return json({issueLinkTypes:[relatedType,themeType,duplicateType]});
       if (path === 'issueLink') {
-        assert.deepEqual(JSON.parse(options.body),{type:{name:'Relates'},inwardIssue:{key:relatedKey},outwardIssue:{key:issueKey}});
+        const payload = JSON.parse(options.body);
+        if (payload.type.name === 'Dupes') {
+          assert.deepEqual(payload,{type:{name:'Dupes'},inwardIssue:{key:issueKey},outwardIssue:{key:duplicateKey}});
+          savePair(issueKey,duplicateKey,duplicateType);
+          return json({},201);
+        }
+        assert.deepEqual(payload,{type:{name:'Relates'},inwardIssue:{key:relatedKey},outwardIssue:{key:issueKey}});
         if (!acceptRelatedWrite) return json({},503);
         savePair(relatedKey,issueKey,relatedType);
         throw new Error('Jira saved the link before the response was lost');
@@ -460,7 +468,7 @@ async function checkSelectedLinks() {
       }
       const key = path.slice('issue/'.length);
       if (key === relatedKey && !hasRelatedAccess) return json({},403);
-      assert.ok([issueKey,themeKey,developmentKey,relatedKey].includes(key),'Unexpected Jira request: ' + path);
+      assert.ok([issueKey,themeKey,developmentKey,relatedKey,duplicateKey].includes(key),'Unexpected Jira request: ' + path);
       const fields = descriptions.get(key) || {project:{key:key.split('-')[0]},summary:'Задача ' + key};
       return json({key,fields:{...fields,issuelinks:relationships.get(key) || []}});
     }
@@ -475,7 +483,9 @@ async function checkSelectedLinks() {
     savePair(source,proposal.key,themeType);
   });
   const input = {urls:[threadUrl],issueTypeId:'10',componentId:'20',summary:'Копирование номера карты',description:'Черновик',
-    themeKey,issueLinks:[{key:developmentKey,kind:'development'},{key:relatedKey,kind:'related'}]};
+    themeKey,issueLinks:[{key:developmentKey,kind:'development'},{key:relatedKey,kind:'related'},{key:duplicateKey,kind:'duplicate'}]};
+  await assert.rejects(writer.create({...input,issueLinks:[{key:developmentKey,kind:'duplicate'}]}),{code:'THREAD_LINK_INVALID'});
+  assert.equal(operations.length,0);
   missingMetadata = true;
   await assert.rejects(writer.create(input),{code:'THREAD_REQUIRED_FIELD'});
   missingMetadata = false;
@@ -486,9 +496,14 @@ async function checkSelectedLinks() {
   const result = await writer.create(input);
   assert.equal(result.title,input.summary);
   assert.deepEqual(Array.from(result.linkOutcomes,({key,kind,confirmed}) => [key,kind,confirmed]),[
-    [threadUrl,'source',true],[themeKey,'theme',true],[developmentKey,'development',true],[relatedKey,'related',false]
+    [threadUrl,'source',true],[themeKey,'theme',true],[developmentKey,'development',true],[relatedKey,'related',false],[duplicateKey,'duplicate',true]
   ]);
   assert.equal(posts,1);
+  const sourceDuplicate=relationships.get(issueKey).find(link=>link.outwardIssue?.key === duplicateKey);
+  const targetDuplicate=relationships.get(duplicateKey).find(link=>link.inwardIssue?.key === issueKey);
+  assert.equal(sourceDuplicate.type.outward,'Дубликат');
+  assert.equal(targetDuplicate.type.inward,'Дублировано с');
+  assert.equal(sourceDuplicate.id,targetDuplicate.id);
   const beforeRetry = operations.length;
   acceptRelatedWrite = true;
   const updated = await writer.retryLinks(input);
@@ -524,7 +539,16 @@ async function checkThreadControls() {
   const summary = {...elements(),value:'  Длинное название\n задачи\tFCRM  ',scrollHeight:92};
   const question = elements(), questionHeading = elements(), questionReason = elements(), questionPolicy = elements();
   const themeResults = {items:[],replaceChildren(){this.items=[];},appendChild(item){this.items.push(item);}};
-  const choices = [{key:'FCRM-12',title:'Поиск в карточке'},{key:'FCRM-120',title:'Поиск по номеру'}];
+  const group = {key:'FCRM-7',fields:{summary:'Веха платежей'}};
+  const issues = [{key:'FCRM-12',fields:{summary:'Поиск в карточке',
+    issuelinks:[{outwardIssue:group,type:{outward:'Задача проекта'}}]}},
+    {key:'FCRM-120',fields:{summary:'Поиск по номеру'}},
+  ];
+  const themeQueries = [];
+  const themeNode = tag => ({...elements(),tag,dataset:{},children:[],handlers:{},
+    appendChild(child){this.children.push(child);},append(...children){this.children.push(...children);},
+    addEventListener(event,fn){this.handlers[event]=fn;},
+  });
   let runSearch;
   const themeInput = {value:'fcrm-12'};
   const status = elements();
@@ -533,12 +557,27 @@ async function checkThreadControls() {
     CSS:{supports:()=>false},summary,description:{value:'Описание'},selectedTheme:{key:'FCRM-12'},
     question,questionHeading,questionReason,questionPolicy,questionText:elements(),reply:elements(),replyLabel:elements(),created:false,
     themeResults,themeInput,themeStatus:elements(),themeSearchSerial:0,themeSearchTimer:0,themeMenu:{hidden:false},panel:{isConnected:true},
-    themeTerms:query=>query.toLowerCase().match(/[\p{L}\p{N}]+/gu) || [],themeLabel:item=>item.title+' · '+item.key,
-    loadSearchThemes:Promise.resolve(choices),findThemes:async()=>choices,
+    themeLabel:item=>item.title+' · '+item.key,loadThemeTree:null,URLSearchParams,AbortSignal,
+    fetch:async (path,options)=>{
+      assert.equal(options.credentials,'same-origin');
+      const url=new URL(path,'https://jira.example');
+      assert.equal(url.pathname,'/rest/api/2/search');
+      const jql=url.searchParams.get('jql');
+      assert.match(jql,/project = FCRM AND labels = fcrm_umb_epic/);
+      themeQueries.push(jql);
+      if (jql.includes('summary ~ "карточка"')) {
+        assert.match(jql,/summary ~ "карточка" OR summary ~ "карточка\*"/);
+        return json({issues:[issues[0]]});
+      }
+      if (jql.includes('summary ~ "карточке"')) return json({issues:[issues[0]]});
+      return json({issues:jql.includes('summary ~') ? [] : issues});
+    },
     window:{clearTimeout(){},setTimeout(fn){runSearch=fn;return 1;}},
-    document:{createElement:()=>({...elements(),dataset:{},addEventListener(){}})},
+    setTheme(item){target.selectedTheme=item;},closeThemeMenu(){themeInput.closed=true;},
+    document:{createElement:themeNode},
   });
-  vm.runInContext(extract('normalizedSummary','readResult') + extract('queueThemeSearch','normalizedSummary').split('    themeToggle.addEventListener')[0],target);
+  vm.runInContext(extract('themeTerms','sourceThemes') + extract('normalizedSummary','readResult') +
+    extract('renderThemeTree','normalizedSummary').split('    themeToggle.addEventListener')[0],target);
   vm.runInContext(extract('setStep','draftReady'),target);
   for (const step of [1,2,3,2]) {
     steps.forEach(item => {item.heading.focused=false;});
@@ -559,11 +598,34 @@ async function checkThreadControls() {
   assert.equal(questionReason.hidden,true);
   vm.runInContext('queueThemeSearch()',target);
   await runSearch();
-  assert.deepEqual(themeResults.items.map(item=>item.textContent),['Поиск в карточке · FCRM-12']);
+  assert.equal(themeResults.items.length,1);
+  const branch=themeResults.items[0];
+  assert.equal(branch.tag,'details');
+  assert.equal(branch.open,true);
+  assert.equal(branch.children[0].textContent,'Веха платежей · FCRM-7');
+  const choice=branch.children[1].children[0].children[0];
+  assert.equal(choice.dataset.threadThemeOption,'FCRM-12');
+  assert.equal(choice.textContent,'Поиск в карточке · FCRM-12');
+  choice.handlers.click();
+  assert.equal(target.selectedTheme.key,'FCRM-12');
+  assert.equal(themeInput.closed,true);
   themeInput.value='карточке';
   vm.runInContext('queueThemeSearch()',target);
   await runSearch();
-  assert.deepEqual(themeResults.items.map(item=>item.textContent),['Поиск в карточке · FCRM-12']);
+  assert.equal(themeResults.items.length,1);
+  assert.equal(themeResults.items[0].children[1].children[0].children[0].dataset.threadThemeOption,'FCRM-12');
+  themeInput.value='карточка';
+  assert.equal(issues[0].fields.summary.toLowerCase().includes(themeInput.value),false);
+  vm.runInContext('queueThemeSearch()',target);
+  await runSearch();
+  assert.equal(themeResults.items.length,1);
+  assert.equal(themeResults.items[0].children[1].children[0].children[0].dataset.threadThemeOption,'FCRM-12');
+  assert.equal(themeQueries.filter(jql=>jql.includes('summary ~ "карточка"')).length,1);
+  themeInput.value='веха платежей';
+  vm.runInContext('queueThemeSearch()',target);
+  await runSearch();
+  assert.equal(themeResults.items.length,1);
+  assert.equal(themeResults.items[0].children[1].children[0].children[0].dataset.threadThemeOption,'FCRM-12');
   assert.match(extract('checkTask','showResultCard'),/threadWriter\.inspect\(checkedInput\)/);
   assert.doesNotMatch(extract('checkTask','showResultCard'),/threadWriter\.create/);
   assert.match(script,/create\.onclick = \(\) => writeTask\('create'\)/);

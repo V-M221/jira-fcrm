@@ -18,7 +18,7 @@ export function createFcrmThreadWriter(
     issueLinks?: IssueLinkProposal[];
   };
   type Source = {id: string; url: string; marker: string};
-  type IssueLinkProposal = {key: string; kind: 'development' | 'related'};
+  type IssueLinkProposal = {key: string; kind: 'development' | 'related' | 'duplicate'};
   type LinkProposal = IssueLinkProposal | {key: string; kind: 'theme'};
   type IssueLinkType = {name: string; inward: string; outward: string};
   type LinkOutcome = {key: string; kind: LinkProposal['kind'] | 'source'; confirmed: boolean};
@@ -63,6 +63,8 @@ export function createFcrmThreadWriter(
   const projectTask = /^(задача проекта|project task)$/i;
   const inProject = /^(в проекте|in project)$/i;
   const related = /^(связанная задача|relates(?: to)?)$/i;
+  const duplicates = /^(дубликат|duplicates)$/i;
+  const duplicatedBy = /^(дублировано с|is duplicated by)$/i;
 
   function failure(message: string, code: string, status?: number) {
     return Object.assign(new Error(message), {code, status});
@@ -429,7 +431,8 @@ export function createFcrmThreadWriter(
       const kind = proposal?.kind;
       const validDevelopment = kind === 'development' && /^(OB|OBFRONT|FTD|FACS)-\d+$/.test(key);
       const validRelated = kind === 'related' && /^(FCRM|OB|OBFRONT|FTD|FACS)-\d+$/.test(key);
-      if ((!validDevelopment && !validRelated) || key === themeKey ||
+      const validDuplicate = kind === 'duplicate' && isIssueKey(key);
+      if ((!validDevelopment && !validRelated && !validDuplicate) || key === themeKey ||
           (selected.has(key) && selected.get(key)?.kind !== kind)) {
         throw failure('Проверьте выбранные ключи и типы связей Jira.', 'THREAD_LINK_INVALID');
       }
@@ -443,6 +446,14 @@ export function createFcrmThreadWriter(
     if (target.project?.key !== key.split('-')[0] || typeof target.summary !== 'string' || !target.summary.trim()) {
       throw failure('Jira не подтвердила выбранную задачу ' + key + '.', 'THREAD_LINK_INVALID');
     }
+    return target.summary.trim();
+  }
+
+  async function resolveLinkTarget(key: string) {
+    if (!/^(FCRM|OB|OBFRONT|FTD|FACS)-\d+$/.test(key)) {
+      throw failure('Проверьте ключ задачи Jira.', 'THREAD_LINK_INVALID');
+    }
+    return {key, title:await verifyLinkTarget(key)};
   }
 
   function linkFrom(fields: Fields, targetKey: string, caption: RegExp, typeName?: string) {
@@ -461,8 +472,8 @@ export function createFcrmThreadWriter(
     if (!Array.isArray(source.issuelinks) || !Array.isArray(target.issuelinks)) {
       throw failure('Jira не подтвердила текущие связи.', 'THREAD_LINKS_INVALID');
     }
-    const sourceCaption = proposal.kind === 'theme' ? projectTask : proposal.kind === 'development' ? inProject : related;
-    const targetCaption = proposal.kind === 'theme' ? inProject : proposal.kind === 'development' ? projectTask : related;
+    const sourceCaption = proposal.kind === 'theme' ? projectTask : proposal.kind === 'development' ? inProject : proposal.kind === 'duplicate' ? duplicates : related;
+    const targetCaption = proposal.kind === 'theme' ? inProject : proposal.kind === 'development' ? projectTask : proposal.kind === 'duplicate' ? duplicatedBy : related;
     const sourceLinks = linkFrom(source, proposal.key, sourceCaption, typeName);
     const targetLinks = linkFrom(target, sourceKey, targetCaption, typeName);
     return {
@@ -471,24 +482,24 @@ export function createFcrmThreadWriter(
     };
   }
 
-  async function resolveRelatedType() {
-    const data = await request<{issueLinkTypes: IssueLinkType[]}>('issueLinkType');
-    const types = (data.issueLinkTypes || []).filter(type =>
-      !!type?.name && related.test(type.inward?.trim() || '') && related.test(type.outward?.trim() || ''));
-    if (types.length !== 1) {
-      throw failure('Jira не подтвердила однозначный тип «Связанная задача».', 'THREAD_LINKS_INVALID');
+  function resolveLinkType(types: IssueLinkType[], kind: 'related' | 'duplicate') {
+    const [inward, outward] = kind === 'duplicate' ? [duplicatedBy, duplicates] : [related, related];
+    const matches = types.filter(type => !!type?.name && inward.test(type.inward?.trim() || '') && outward.test(type.outward?.trim() || ''));
+    if (matches.length !== 1) {
+      throw failure('Jira не подтвердила выбранный тип связи.', 'THREAD_LINKS_INVALID');
     }
-    return types[0].name;
+    return matches[0].name;
   }
 
   async function verifyOrApplyIssueLink(
     sourceKey: string,
     proposal: LinkProposal,
     write: boolean,
-    relatedType: () => Promise<string>
+    linkType: (kind: 'related' | 'duplicate') => Promise<string>
   ) {
     if (sourceKey === proposal.key) return false;
-    const typeName = proposal.kind === 'related' ? await relatedType() : undefined;
+    const customLink = proposal.kind === 'related' || proposal.kind === 'duplicate';
+    const typeName = customLink ? await linkType(proposal.kind as 'related' | 'duplicate') : undefined;
     const before = await checkIssueLink(sourceKey, proposal, typeName);
     if (before.confirmed || !write || before.present) return before.confirmed;
     try {
@@ -500,8 +511,8 @@ export function createFcrmThreadWriter(
       } else {
         await request('issueLink', 'POST', {
           type: {name: typeName},
-          inwardIssue: {key: proposal.key},
-          outwardIssue: {key: sourceKey}
+          inwardIssue: {key: proposal.kind === 'duplicate' ? sourceKey : proposal.key},
+          outwardIssue: {key: proposal.kind === 'duplicate' ? proposal.key : sourceKey}
         }, false);
       }
     } catch {
@@ -519,10 +530,13 @@ export function createFcrmThreadWriter(
     const missingSources = await linkSources(issue.key, sources, write);
     const linkOutcomes: LinkOutcome[] = sources.map(({url}) =>
       ({key: url, kind: 'source', confirmed: !missingSources.includes(url)}));
-    let relatedTypeRequest: Promise<string> | undefined;
-    const relatedType = () => relatedTypeRequest ||= resolveRelatedType();
+    let typesRequest: Promise<{issueLinkTypes: IssueLinkType[]}> | undefined;
+    const linkType = async (kind: 'related' | 'duplicate') => {
+      typesRequest ||= request<{issueLinkTypes: IssueLinkType[]}>('issueLinkType');
+      return resolveLinkType((await typesRequest).issueLinkTypes || [], kind);
+    };
     for (const proposal of proposals) {
-      const confirmed = await verifyOrApplyIssueLink(issue.key, proposal, write, relatedType).catch(() => false);
+      const confirmed = await verifyOrApplyIssueLink(issue.key, proposal, write, linkType).catch(() => false);
       linkOutcomes.push({...proposal, confirmed});
     }
     const linkFailures = linkOutcomes.filter(link => !link.confirmed).map(link => link.key);
@@ -654,5 +668,5 @@ export function createFcrmThreadWriter(
     });
   }
 
-  return {inspect, create, recover, retryLinks};
+  return {inspect, create, recover, retryLinks, resolveLinkTarget};
 }

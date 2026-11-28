@@ -15,7 +15,7 @@ import { createExtensionUpdateNotice, EXTENSION_UPDATE_INTERVAL, EXTENSION_UPDAT
 import { createJiraDraftLinkClient } from '../services/deepseek';
 import { createFcrmThreadWriter } from '../services/fcrmThreadWriter';
 
-export const EXTENSION_VERSION = '3.5.195';
+export const EXTENSION_VERSION = '3.5.196';
 
 export function fcrmReviewRowClass(key:string, status:string):string {
   if (!/^FCRM-\d+$/i.test(key)) return '';
@@ -468,17 +468,24 @@ body.ozon-native-board-visible > :is(.ozon-component-editor,#ozon-thread-sidebar
 .ozon-ext-status-count + .ozon-ext-status-count::before { content:'·';margin-right:8px;color:#CBD5E1; }
 .ozon-ext-view-tabs { display:flex;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid #E2E8F0;background:#fff;flex-shrink:0; }
 
-#ozon-thread-sidebar {position:fixed;right:0;top:40px;bottom:0;width:min(840px,calc(100vw - 28px));box-sizing:border-box;z-index:100050;background:#fff;box-shadow:-8px 0 28px #07102622;padding:22px 26px;overflow:auto;font:14px/1.55 var(--ozon-font-sans,sans-serif);color:#071026;}
+#ozon-thread-sidebar {position:fixed;right:0;top:40px;bottom:0;width:min(var(--thread-width,clamp(720px,76vw,1040px)),100vw);box-sizing:border-box;z-index:100050;background:#fff;box-shadow:-8px 0 28px #07102622;padding:22px 26px;overflow:auto;font:14px/1.55 var(--ozon-font-sans,sans-serif);color:#071026;}
 #ozon-thread-sidebar [hidden] {display:none!important;}
-@media (min-width:1060px) {#ozon-thread-sidebar {width:clamp(720px,68vw,840px);}}
-@media (max-width:760px) {#ozon-thread-sidebar {width:100vw;padding:14px;}}
+
+#ozon-thread-sidebar {--thread-gap:16px;scrollbar-color:#b8c7da transparent;scrollbar-width:thin;animation:ozon-thread-enter 160ms ease-out;}
+@keyframes ozon-thread-enter {from {transform:translateX(10px);opacity:.86} to {transform:translateX(0);opacity:1}}
+#ozon-thread-sidebar [data-thread-width] {position:fixed;top:50%;left:max(0px,calc(100vw - var(--thread-width,clamp(720px,76vw,1040px))));width:10px;height:56px;z-index:2;border:1px solid #d7e0ec;border-left:0;border-radius:0 6px 6px 0;background:#f2f5fa;color:#627b9a;cursor:ew-resize;touch-action:none;transform:translateY(-50%);display:grid;place-items:center;font-size:12px;user-select:none;}
+#ozon-thread-sidebar [data-thread-width]:focus-visible {outline:2px solid #005bff;outline-offset:2px;}
+#ozon-thread-sidebar [data-thread-step-body] {animation:ozon-thread-body 130ms ease-out;}
+@keyframes ozon-thread-body {from {opacity:.72} to {opacity:1}}
+@media (prefers-reduced-motion:reduce) {#ozon-thread-sidebar,#ozon-thread-sidebar [data-thread-step-body] {animation:none;}}
+@media (max-width:760px) {#ozon-thread-sidebar {width:100vw;padding:16px;}#ozon-thread-sidebar [data-thread-width] {display:none;}}
 #ozon-thread-sidebar .ozon-thread-head h2 {font-size:18px;}
 #ozon-thread-sidebar [data-thread-status] {margin:0 0 16px;padding:10px 12px;border:1px solid #d7e0ec;border-left:3px solid #94a3b8;border-radius:8px;background:#f5f8fd;color:#334155;}
 #ozon-thread-sidebar [data-thread-status][data-tone="progress"] {border-left-color:#005bff;background:#edf4ff;color:#173b7a;}
 #ozon-thread-sidebar [data-thread-status][data-tone="error"] {border-color:#fac9c6;border-left-color:#bd302b;background:#fff3f2;color:#89221e;}
-#ozon-thread-sidebar [data-thread-status][data-tone="success"] {border-color:#c3e8d3;border-left-color:#24764c;background:#eefaf3;color:#1b5b3a;}
+#ozon-thread-sidebar [data-thread-status][data-tone="success"] {border-color:#d7e0ec;border-left-color:#8eaed9;background:#f4f7fb;color:#304662;}
 #ozon-thread-sidebar [data-thread-status][data-tone="warning"] {border-color:#f2d9a7;border-left-color:#a35e09;background:#fff8e8;color:#76440a;}
-#ozon-thread-sidebar [name="draftDescription"] {min-height:240px;line-height:1.6;}
+#ozon-thread-sidebar [name="draftDescription"] {min-height:156px;line-height:1.6;field-sizing:content;border:0;border-radius:0 0 8px 8px;}
 #ozon-thread-sidebar :is(input,textarea):disabled {background:#f5f7fa;color:#475569;opacity:1;cursor:wait;}
 #ozon-thread-sidebar [data-thread-context-sources] {margin:0 0 12px;color:#475569;}
 #ozon-thread-sidebar [data-thread-context-sources] summary {cursor:pointer;font-weight:600;}
@@ -486,7 +493,16 @@ body.ozon-native-board-visible > :is(.ozon-component-editor,#ozon-thread-sidebar
 #ozon-thread-sidebar [data-thread-theme-reason] {margin:0 0 8px;color:#475569;}
 #ozon-thread-sidebar [data-thread-related] {min-width:0;margin:8px 0 0;padding:10px 12px;border:1px solid #d7e0ec;border-radius:8px;}
 #ozon-thread-sidebar [data-thread-related] legend {padding:0 4px;font-weight:650;}
-#ozon-thread-sidebar .ozon-thread-proposal {display:flex;align-items:flex-start;gap:8px;margin:8px 0;font-weight:400;}
+#ozon-thread-sidebar .ozon-thread-proposal {display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:start;gap:8px;margin:0;padding:10px 0;border-bottom:1px solid #e2e8f0;}
+#ozon-thread-sidebar .ozon-thread-proposal select {padding:6px 8px;border:1px solid #a8bbd2;border-radius:6px;background:#fff;color:#071026;font:inherit;}
+#ozon-thread-sidebar .ozon-thread-link-add {display:flex;gap:8px;align-items:center;margin-top:8px;}
+#ozon-thread-sidebar .ozon-thread-link-add button {flex-shrink:0;}
+#ozon-thread-sidebar [data-thread-early-duplicates] {gap:6px;}
+#ozon-thread-sidebar [data-thread-early-duplicates] ul {margin:0;padding:0;list-style:none;}
+#ozon-thread-sidebar [data-thread-early-duplicates] li {padding:10px 12px;border:1px solid #d7e0ec;border-radius:8px;margin-bottom:6px;}
+#ozon-thread-sidebar [data-thread-early-duplicates] small {display:block;}
+#ozon-thread-sidebar [data-thread-early-duplicates] p {margin:0;}
+@media (max-width:540px) {#ozon-thread-sidebar .ozon-thread-proposal {grid-template-columns:auto minmax(0,1fr);}#ozon-thread-sidebar .ozon-thread-proposal select {grid-column:2;}#ozon-thread-sidebar .ozon-thread-proposal button {grid-column:2;justify-self:start;}}
 #ozon-thread-sidebar .ozon-thread-proposal input {width:16px;height:16px;margin:4px 0 0;flex:0 0 auto;accent-color:#005bff;}
 #ozon-thread-sidebar .ozon-thread-proposal small {display:block;}
 #ozon-thread-sidebar [data-thread-result] {padding:16px;border:1px solid #d7e0ec;border-radius:10px;background:#f8fafc;}
@@ -514,17 +530,24 @@ body.ozon-native-board-visible > :is(.ozon-component-editor,#ozon-thread-sidebar
 #ozon-thread-sidebar [data-thread-final-fields] {margin:0 0 12px;display:grid;grid-template-columns:max-content minmax(0,1fr);gap:6px 12px;}
 #ozon-thread-sidebar [data-thread-final-fields] dt {font-weight:600;}
 #ozon-thread-sidebar [data-thread-final-fields] dd {margin:0;overflow-wrap:anywhere;}
-#ozon-thread-sidebar .ozon-thread-final-description {white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto;padding:8px;border:1px solid #d7e0ec;border-radius:8px;background:#f5f8fd;}
+#ozon-thread-sidebar .ozon-thread-final-description {overflow-wrap:anywhere;padding:12px;border:1px solid #d7e0ec;border-radius:8px;background:#f6f8fb;}
 #ozon-thread-sidebar [data-thread-duplicate-links] {margin:8px 0 12px;padding-left:20px;overflow-wrap:anywhere;}
 #ozon-thread-sidebar [data-thread-duplicate-links] li {margin-bottom:6px;}
 #ozon-thread-sidebar [data-thread-duplicate-links] a {color:#005bff;text-decoration:underline;}
 #ozon-thread-sidebar [data-thread-post-review] {margin-top:16px;}
-#ozon-thread-sidebar [data-thread-create-actions] {margin:12px 0;}
+#ozon-thread-sidebar [data-thread-create-actions] {margin:var(--thread-gap) 0;}
+#ozon-thread-sidebar .ozon-thread-editor {border:1px solid #a8bbd2;border-radius:8px;overflow:hidden;}
+#ozon-thread-sidebar .ozon-thread-editor-nav {display:flex;gap:4px;padding:6px 8px;background:#f2f5fa;border-bottom:1px solid #d7e0ec;}
+#ozon-thread-sidebar .ozon-thread-editor-nav button[aria-pressed=true] {color:#005bff;background:#e6effd;}
+#ozon-thread-sidebar [data-thread-description-preview] {padding:12px;min-height:156px;overflow-wrap:anywhere;}
+#ozon-thread-sidebar :is([data-thread-description-preview],.ozon-thread-final-description) :is(h3,h4) {margin:0 0 6px;font-size:15px;}
+#ozon-thread-sidebar :is([data-thread-description-preview],.ozon-thread-final-description) :is(p,ul,ol) {margin:0 0 10px;}
+#ozon-thread-sidebar :is([data-thread-description-preview],.ozon-thread-final-description) :last-child {margin-bottom:0;}
 #ozon-thread-sidebar h2,#ozon-thread-sidebar h3 {margin:0;font-size:15px;line-height:1.3;}
 #ozon-thread-sidebar h3 {margin-top:12px;}
 #ozon-thread-sidebar .ozon-thread-head {display:flex;align-items:center;justify-content:space-between;gap:12px;}
 #ozon-thread-sidebar p {margin:10px 0;overflow-wrap:anywhere;}
-#ozon-thread-sidebar :is(form,section) {display:flex;flex-direction:column;gap:10px;}
+#ozon-thread-sidebar :is(form,section) {display:flex;flex-direction:column;gap:var(--thread-gap);}
 #ozon-thread-sidebar label {display:grid;gap:4px;font-weight:600;}
 #ozon-thread-sidebar small {color:#475569;}
 #ozon-thread-sidebar :is(input,textarea) {display:block;box-sizing:border-box;width:100%;min-width:0;border:1px solid #a8bbd2;border-radius:8px;padding:8px 10px;color:#071026;background:#fff;font:inherit;font-weight:400;}
@@ -532,7 +555,9 @@ body.ozon-native-board-visible > :is(.ozon-component-editor,#ozon-thread-sidebar
 #ozon-thread-sidebar [name="draftSummary"] {field-sizing:content;min-height:calc(3em + 18px);overflow-wrap:anywhere;}
 #ozon-thread-sidebar [data-thread-theme-current] {margin:4px 0 8px;}
 #ozon-thread-sidebar [data-thread-theme-menu] {margin-top:8px;border:1px solid #d7e0ec;border-radius:8px;padding:8px;}
-#ozon-thread-sidebar [data-thread-theme-results] {display:grid;gap:4px;max-height:230px;overflow:auto;}
+#ozon-thread-sidebar [data-thread-theme-results] {display:grid;gap:4px;max-height:300px;overflow:auto;scrollbar-width:thin;scrollbar-color:#b8c7da transparent;}
+#ozon-thread-sidebar [data-thread-theme-results] summary,#ozon-thread-sidebar .ozon-thread-theme-group {padding:6px 8px;color:#304662;cursor:pointer;}
+#ozon-thread-sidebar .ozon-thread-theme-children {margin-inline-start:10px;padding-inline-start:8px;border-inline-start:1px solid #d7e0ec;}
 #ozon-thread-sidebar [data-thread-theme-option] {width:100%;min-height:32px;padding:6px 8px;border:1px solid transparent;border-radius:6px;background:#f5f7fa;text-align:start;color:#071026;font:inherit;overflow-wrap:anywhere;cursor:pointer;}
 #ozon-thread-sidebar [data-thread-theme-option]:hover,#ozon-thread-sidebar [data-thread-theme-option][aria-pressed="true"] {background:#e5f0ff;border-color:#a8c8fb;}
 #ozon-thread-sidebar [data-thread-followup] {margin:12px 0;}
@@ -2519,7 +2544,7 @@ export function generateContentScriptJs(
     const stepStart = (number,title) => '<li data-thread-step="' + number + '"><div class="ozon-thread-step-heading"><span class="ozon-thread-step-marker" aria-hidden="true">' + number +
       '</span><h3 tabindex="-1">' + title + '</h3></div><p data-thread-step-summary hidden></p><div data-thread-step-body' + (number === 1 ? '' : ' hidden') + '>';
     const stepEnd = '</div></li>';
-    panel.innerHTML = '<header class="ozon-thread-head"><h2 id="ozon-thread-title" tabindex="-1">Создать FCRM из треда</h2><button type="button" data-thread-close class="ozon-ext-btn ozon-ext-btn-surface">Закрыть</button></header>' +
+    panel.innerHTML = '<div data-thread-width role="separator" tabindex="0" aria-label="Ширина панели" aria-orientation="vertical">⋮</div><header class="ozon-thread-head"><h2 id="ozon-thread-title" tabindex="-1">Создать FCRM из треда</h2><button type="button" data-thread-close class="ozon-ext-btn ozon-ext-btn-surface">Закрыть</button></header>' +
       '<p data-thread-status role="status" tabindex="-1">Загружаю типы задач и компоненты FCRM…</p><ol class="ozon-thread-steps" aria-label="Этапы создания задачи">' +
       stepStart(1,'Исходные данные') +
       '<form data-thread-source><label>Ссылки на треды chatZone<textarea name="urls" rows="3" required aria-describedby="ozon-thread-url-hint" placeholder="https://chatzone.o3t.ru/o3/pl/…"></textarea></label>' +
@@ -2531,13 +2556,17 @@ export function generateContentScriptJs(
       stepStart(2,'Черновик') + '<details data-thread-context-sources hidden><summary>Дополнительные источники</summary><ul></ul></details>' +
       '<section data-thread-review hidden>' +
       '<label>Название<textarea name="draftSummary" rows="2" maxlength="255"></textarea></label>' +
-      '<label>Описание<textarea name="draftDescription" rows="9"></textarea></label>' +
+      '<div><strong>Описание</strong><div class="ozon-thread-editor"><div class="ozon-thread-editor-nav" role="group" aria-label="Режим описания">' +
+      '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-description-edit aria-pressed="false">Jira Wiki</button>' +
+      '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-description-read aria-pressed="true">Предпросмотр</button></div>' +
+      '<div data-thread-description-preview></div><textarea name="draftDescription" rows="7" aria-label="Описание" hidden></textarea></div></div>' +
       '<div><strong>Тематика FCRM</strong><p data-thread-theme-current>Не выбрана</p><p data-thread-theme-reason hidden></p>' +
       '<div class="ozon-thread-actions"><button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-theme-toggle aria-controls="ozon-thread-theme-menu" aria-expanded="false">Выбрать тематику</button>' +
       '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-theme-clear hidden>Без тематики</button></div>' +
       '<div id="ozon-thread-theme-menu" data-thread-theme-menu hidden><label>Поиск по названию или ключу<input type="search" name="draftThemeSearch" autocomplete="off"></label>' +
       '<p data-thread-theme-status role="status"></p><div data-thread-theme-results role="group" aria-label="Подходящие тематики"></div></div></div>' +
-      '<fieldset data-thread-related><legend>Предлагаемые связи</legend><div data-thread-linked-sources></div><div data-thread-issue-proposals></div></fieldset></section>' +
+      '<fieldset data-thread-related><legend>Связи с задачами Jira</legend><div data-thread-linked-sources></div><div class="ozon-thread-link-add"><input name="linkKey" aria-label="Ключ или ссылка Jira" placeholder="Ключ или ссылка Jira"><button type="button" class="ozon-ext-btn ozon-ext-btn-surface" data-thread-link-add>Добавить связь</button></div><small data-thread-link-status role="status"></small><div data-thread-issue-proposals></div></fieldset></section>' +
+      '<section data-thread-early-duplicates hidden><h3>Возможные дубли</h3><p data-thread-early-status role="status"></p><ul></ul></section>' +
       '<form data-thread-followup hidden><div data-thread-question hidden><h3 data-thread-question-heading></h3>' +
       '<p id="ozon-thread-question-text" data-thread-question-text></p><p id="ozon-thread-question-reason" data-thread-question-reason hidden></p>' +
       '<small id="ozon-thread-question-policy" data-thread-question-policy></small></div>' +
@@ -2546,7 +2575,7 @@ export function generateContentScriptJs(
       '<div class="ozon-thread-actions"><button class="ozon-ext-btn" type="button" data-thread-inspect hidden>Проверить перед созданием</button>' +
       '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-back>Изменить исходные данные</button></div>' + stepEnd +
       stepStart(3,'Проверка и создание') +
-      '<div data-thread-verification><dl data-thread-final-fields></dl><details data-thread-final-description><summary>Описание задачи</summary><p class="ozon-thread-final-description"></p></details></div>' +
+      '<div data-thread-verification><dl data-thread-final-fields></dl><details data-thread-final-description><summary>Описание задачи</summary><div class="ozon-thread-final-description"></div></details></div>' +
       '<p data-thread-duplicate-note hidden></p><ul data-thread-duplicate-links hidden></ul>' +
       '<div class="ozon-thread-actions" data-thread-create-actions><button class="ozon-ext-btn" type="button" data-thread-create>Создать в Jira</button>' +
       '<button class="ozon-ext-btn ozon-ext-btn-surface" type="button" data-thread-confirm-duplicate hidden>Создать отдельную задачу</button></div>' +
@@ -2570,6 +2599,12 @@ export function generateContentScriptJs(
     const returnToBoard = panel.querySelector('[data-thread-return]');
     const linkedSources = panel.querySelector('[data-thread-linked-sources]');
     const issueProposals = panel.querySelector('[data-thread-issue-proposals]');
+    const linkField = panel.querySelector('[name="linkKey"]');
+    const linkAdd = panel.querySelector('[data-thread-link-add]');
+    const linkStatus = panel.querySelector('[data-thread-link-status]');
+    const earlyDuplicates = panel.querySelector('[data-thread-early-duplicates]');
+    const earlyStatus = earlyDuplicates?.querySelector('[data-thread-early-status]');
+    const earlyMatches = earlyDuplicates?.querySelector('ul');
     const contextSources = panel.querySelector('[data-thread-context-sources]');
     const contextSourceList = contextSources.querySelector('ul');
     const submit = form.querySelector('[type="submit"]');
@@ -2590,6 +2625,10 @@ export function generateContentScriptJs(
     const suggestion = postReview.querySelector('[data-thread-suggestion]');
     const summary = review.querySelector('[name="draftSummary"]');
     const description = review.querySelector('[name="draftDescription"]');
+    const descriptionView = review.querySelector('[data-thread-description-preview]');
+    const descriptionEdit = review.querySelector('[data-thread-description-edit]');
+    const descriptionRead = review.querySelector('[data-thread-description-read]');
+    const widthControl = panel.querySelector('[data-thread-width]');
     const themeCurrent = review.querySelector('[data-thread-theme-current]');
     const themeReason = review.querySelector('[data-thread-theme-reason]');
     const themeToggle = review.querySelector('[data-thread-theme-toggle]');
@@ -2626,14 +2665,71 @@ export function generateContentScriptJs(
     let reviewResult = null;
     let inspectionFailed = false;
     let loadSearchThemes = null;
+    let loadThemeTree = null;
     let catalogUnavailable = false;
     let resetFields = () => {};
     let selectedTheme = null;
     const selectedIssueLinks = new Map();
+    const linkEdits = new Map();
+    const hiddenIssueLinks = new Set();
+    let loadingLink = false;
+    let earlySerial = 0;
+    let earlyTimer = 0;
     let themeOverridden = false;
     let themeSearchSerial = 0;
     let themeSearchTimer = 0;
 
+
+    function renderDescription(target, text) {
+      if (target) target.innerHTML = renderAnswerMarkup(text || '');
+    }
+    function viewDescription(editing, moveFocus = false) {
+      if (!descriptionEdit || !descriptionRead || !descriptionView) return;
+      description.hidden = !editing;
+      descriptionView.hidden = editing;
+      descriptionEdit.setAttribute('aria-pressed', String(editing));
+      descriptionRead.setAttribute('aria-pressed', String(!editing));
+      if (!editing) renderDescription(descriptionView, description.value);
+      if (editing && moveFocus) focus(description);
+    }
+    if (descriptionEdit) descriptionEdit.onclick = () => viewDescription(true, true);
+    if (descriptionRead) descriptionRead.onclick = () => viewDescription(false);
+    function bindPanelWidth() {
+      if (!widthControl) return;
+      const widthKey = 'ozon:fcrm-thread-sidebar-width';
+      const minimum = () => Math.min(560, window.innerWidth);
+      function updateWidth(value, save = false) {
+        const width = Math.round(Math.min(window.innerWidth, Math.max(minimum(), value)));
+        panel.style.setProperty('--thread-width', width + 'px');
+        widthControl.setAttribute('aria-valuemin', String(minimum()));
+        widthControl.setAttribute('aria-valuemax', String(window.innerWidth));
+        widthControl.setAttribute('aria-valuenow', String(width));
+        widthControl.setAttribute('aria-valuetext', width + ' пикселей');
+        if (save) try { localStorage.setItem(widthKey, String(width)); } catch (_) {}
+      }
+      let saved = 0;
+      try { saved = Number(localStorage.getItem(widthKey)); } catch (_) {}
+      if (Number.isFinite(saved) && saved > 0) updateWidth(saved);
+      widthControl.addEventListener('focus', () => updateWidth(panel.getBoundingClientRect().width));
+      widthControl.addEventListener('pointerdown', event => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        widthControl.setPointerCapture(event.pointerId);
+      });
+      widthControl.addEventListener('pointermove', event => {
+        if (widthControl.hasPointerCapture(event.pointerId)) updateWidth(window.innerWidth - event.clientX);
+      });
+      widthControl.addEventListener('pointerup', event => {
+        if (widthControl.hasPointerCapture(event.pointerId)) updateWidth(panel.getBoundingClientRect().width, true);
+      });
+      widthControl.addEventListener('keydown', event => {
+        const current = panel.getBoundingClientRect().width;
+        const values = {ArrowLeft:current + 32,ArrowRight:current - 32,Home:minimum(),End:window.innerWidth};
+        if (!(event.key in values)) return;
+        event.preventDefault();
+        updateWidth(values[event.key], true);
+      });
+    }
 
     function say(text, tone = busy ? 'progress' : 'info') {
       status.textContent = text;
@@ -2671,7 +2767,7 @@ export function generateContentScriptJs(
       submit.disabled = busy || !ready;
       continueButton.disabled = busy || Boolean(pendingWrite && !created) || !reply.value.trim();
       inspect.hidden = !draft || initialClarification;
-      inspect.disabled = locked || !draftReady();
+      inspect.disabled = locked || loadingLink || !draftReady();
       createActions.hidden = state !== 'ready' && state !== 'possible-duplicate';
       create.hidden = state !== 'ready';
       create.disabled = locked || step !== 3 || !checkedInput;
@@ -2688,11 +2784,15 @@ export function generateContentScriptJs(
       newTask.disabled = busy;
       back.disabled = locked;
       themeToggle.disabled = locked;
+      if (descriptionEdit) descriptionEdit.disabled = locked;
       themeClear.disabled = locked;
       if (locked && !themeMenu.hidden) closeThemeMenu();
       if (busy) form.querySelectorAll('.ozon-ext-search-select-trigger[aria-expanded="true"]').forEach(button => button.click());
       for (const field of form.querySelectorAll('input,textarea,.ozon-ext-search-select button')) field.disabled = busy;
-      for (const field of [summary, description, themeInput, ...issueProposals.querySelectorAll('input')]) field.disabled = locked;
+      if (linkField) linkField.disabled = locked || loadingLink;
+      if (linkAdd) linkAdd.disabled = locked || loadingLink;
+      earlyMatches?.querySelectorAll('button').forEach(button => { button.disabled = locked; });
+      for (const field of [summary, description, themeInput, ...issueProposals.querySelectorAll('input,select,button')]) field.disabled = locked;
       reply.disabled = busy;
       form.setAttribute('aria-busy', String(busy));
       review.setAttribute('aria-busy', String(busy));
@@ -2720,6 +2820,7 @@ export function generateContentScriptJs(
     }
     function showSources() {
       clearInspection();
+      clearEarlyDuplicates();
       setStep(1);
       say('Выберите тип задачи и компонент FCRM.');
       updateControls();
@@ -2728,6 +2829,7 @@ export function generateContentScriptJs(
     edit.onclick = () => {
       clearInspection();
       setStep(2);
+      queueEarlyDuplicates();
       fitSummary();
       say('Проверьте черновик перед созданием.');
       updateControls();
@@ -2736,6 +2838,7 @@ export function generateContentScriptJs(
       draft = null;
       initialClarification = false;
       loadSearchThemes = null;
+      loadThemeTree = null;
       catalogUnavailable = false;
       themeOverridden = false;
       setTheme(null);
@@ -2743,6 +2846,11 @@ export function generateContentScriptJs(
       review.hidden = true;
       followup.hidden = true;
       selectedIssueLinks.clear();
+      linkEdits.clear();
+      hiddenIssueLinks.clear();
+      clearEarlyDuplicates();
+      if (linkField) linkField.value = '';
+      if (linkStatus) linkStatus.textContent = '';
       linkedSources.replaceChildren();
       issueProposals.replaceChildren();
       renderContextSources([]);
@@ -2767,6 +2875,7 @@ export function generateContentScriptJs(
       showSources();
     };
     document.body.appendChild(panel);
+    bindPanelWidth();
     setStep(1, false);
     updateControls();
     focus(heading);
@@ -2790,23 +2899,33 @@ export function generateContentScriptJs(
     function themeTerms(query) {
       return (query.toLocaleLowerCase('ru').match(/[\\p{L}\\p{N}]+/gu) || []).slice(0,5);
     }
-    async function findThemes(query = '', component = '') {
+    async function findThemes(query = '', component = '', limit = 25) {
       const backslash = String.fromCharCode(92);
       const quotedComponent = '"' + component.replaceAll(backslash,backslash + backslash).replaceAll('"',backslash + '"') + '"';
       const scope = 'project = FCRM AND labels = fcrm_umb_epic AND statusCategory != Done' + (component ? ' AND component = ' + quotedComponent : '');
       const search = /^FCRM-\\d+$/i.test(query)
         ? ' AND key = ' + query.toUpperCase()
-        : themeTerms(query).map(term => ' AND summary ~ "' + term.slice(0,60) + '*"').join('');
-      const params = new URLSearchParams({jql:scope + search + ' ORDER BY updated DESC',fields:'summary,description,components',maxResults:'25'});
+        : themeTerms(query).map(term => {
+          const word = term.slice(0,60);
+          return ' AND (summary ~ "' + word + '" OR summary ~ "' + word + '*")';
+        }).join('');
+      const params = new URLSearchParams({jql:scope + search + ' ORDER BY updated DESC',fields:'summary,description,components,issuelinks',maxResults:String(limit)});
       const response = await fetch('/rest/api/2/search?' + params, {
         credentials:'same-origin',headers:{Accept:'application/json'},signal:AbortSignal.timeout(4000)
       });
       if (!response.ok) throw new Error('Не удалось загрузить тематики Jira.');
       const data = await response.json();
       if (!Array.isArray(data?.issues)) throw new Error('Не удалось загрузить тематики Jira.');
-      return data.issues.slice(0,25).flatMap(issue => (
+      return data.issues.slice(0,limit).flatMap(issue => (
         /^FCRM-\\d+$/.test(issue.key) && typeof issue.fields?.summary === 'string' && issue.fields.summary.trim()
           ? [{key:issue.key,title:issue.fields.summary.trim().slice(0,255),
+            milestone:/(?:^|[\\s\\[])\\s*веха\\s*(?=[:—–\\]-]|$)/i.test(issue.fields.summary),
+            parents:(Array.isArray(issue.fields.issuelinks) ? issue.fields.issuelinks : []).flatMap(link => {
+              const target = link.inwardIssue || link.outwardIssue;
+              const role = link.inwardIssue ? link.type?.inward : link.type?.outward;
+              return /^FCRM-\\d+$/.test(target?.key || '') && /задача проекта|project task/i.test(role || '')
+                ? [{key:target.key,title:typeof target.fields?.summary === 'string' ? target.fields.summary : target.key}] : [];
+            }).slice(0,4),
             description:typeof issue.fields.description === 'string' ? issue.fields.description.slice(0,1600) : '',
             components:Array.isArray(issue.fields.components) ? issue.fields.components.map(component => component.name).filter(name => typeof name === 'string').slice(0,5) : []}] : []
       ));
@@ -2822,7 +2941,7 @@ export function generateContentScriptJs(
           }
           catalogUnavailable = results.every(result => result.status === 'rejected');
           if (catalogUnavailable) loadSearchThemes = null;
-          return [...catalog.values()].slice(0,25);
+          return [...catalog.values()].filter(theme => !theme.milestone).slice(0,25);
         });
       }
       return loadSearchThemes;
@@ -2850,6 +2969,65 @@ export function generateContentScriptJs(
       themeToggle.setAttribute('aria-expanded', 'false');
       if (restoreFocus) focus(themeToggle);
     }
+    function renderThemeTree(items, expanded) {
+      const nodes = new Map(items.map(item => [item.key,{item,children:new Set()}]));
+      const nested = new Set();
+      for (const item of items) {
+        for (const parent of item.parents || []) {
+          if (parent.key === item.key) continue;
+          if (!nodes.has(parent.key)) nodes.set(parent.key,{item:{...parent,milestone:true},children:new Set()});
+          nodes.get(parent.key).children.add(item.key);
+          nested.add(item.key);
+        }
+      }
+      const rendered = new Set();
+      function renderNode(key) {
+        if (rendered.has(key)) return null;
+        rendered.add(key);
+        const {item,children} = nodes.get(key);
+        const childrenNodes = [...children].flatMap(child => {
+          const node = renderNode(child);
+          return node ? [node] : [];
+        });
+        const canSelect = !item.milestone;
+        const entry = document.createElement(childrenNodes.length ? 'details' : 'div');
+        if (childrenNodes.length) {
+          entry.open = expanded || Boolean(selectedTheme && (item.key === selectedTheme.key || children.has(selectedTheme.key)));
+          const branch = document.createElement('summary');
+          branch.textContent = themeLabel(item);
+          entry.appendChild(branch);
+        }
+        if (canSelect) {
+          const option = document.createElement('button');
+          option.type = 'button';
+          option.dataset.threadThemeOption = item.key;
+          option.textContent = childrenNodes.length ? 'Выбрать ' + themeLabel(item) : themeLabel(item);
+          option.setAttribute('aria-pressed', String(item.key === selectedTheme?.key));
+          option.addEventListener('click', () => {
+            setTheme(item,true);
+            closeThemeMenu(true);
+          });
+          entry.appendChild(option);
+        } else if (!childrenNodes.length) {
+          const note = document.createElement('span');
+          note.className = 'ozon-thread-theme-group';
+          note.textContent = themeLabel(item);
+          entry.appendChild(note);
+        }
+        if (childrenNodes.length) {
+          const subgroup = document.createElement('div');
+          subgroup.className = 'ozon-thread-theme-children';
+          subgroup.append(...childrenNodes);
+          entry.appendChild(subgroup);
+        }
+        return entry;
+      }
+      for (const key of [...nodes.keys()].sort((a,b) => Number(nested.has(a)) - Number(nested.has(b)))) {
+        const row = renderNode(key);
+        if (row) themeResults.appendChild(row);
+      }
+    }
+
     function queueThemeSearch() {
       window.clearTimeout(themeSearchTimer);
       const request = ++themeSearchSerial;
@@ -2860,30 +3038,19 @@ export function generateContentScriptJs(
         const terms = themeTerms(query);
         const exactKey = /^FCRM-\\d+$/i.test(query) ? query.toUpperCase() : '';
         const matches = item => exactKey ? item.key === exactKey : terms.every(term => themeLabel(item).toLocaleLowerCase('ru').includes(term));
-        const cached = query && loadSearchThemes ? await loadSearchThemes : [];
-        let remote = [];
-        let failed = false;
-        try { remote = await findThemes(query); } catch (_) { failed = true; }
+        if (!loadThemeTree) loadThemeTree = findThemes('', '', 100).catch(() => null);
+        const [cached, remote] = await Promise.all([loadThemeTree, query ? findThemes(query).catch(() => null) : Promise.resolve([])]);
         if (request !== themeSearchSerial || themeMenu.hidden || !panel.isConnected) return;
+        if (!cached) loadThemeTree = null;
         const candidates = new Map();
-        for (const item of [...cached, ...remote]) if (matches(item)) candidates.set(item.key, item);
+        for (const item of cached || []) if (matches(item) || item.parents.some(matches)) candidates.set(item.key,item);
+        for (const item of remote || []) if (!exactKey || matches(item) || item.parents.some(matches)) candidates.set(item.key,item);
         if (!candidates.size) {
-          themeStatus.textContent = failed ? 'Не удалось загрузить тематики Jira. Попробуйте изменить запрос или открыть поиск снова.' : 'Подходящих тематик нет.';
+          themeStatus.textContent = !cached || !remote ? 'Не удалось полностью загрузить тематики Jira. Повторите поиск.' : 'Подходящих тематик нет.';
           return;
         }
-        themeStatus.textContent = failed ? 'Jira недоступна. Показаны недавние результаты.' : '';
-        for (const item of candidates.values()) {
-          const option = document.createElement('button');
-          option.type = 'button';
-          option.dataset.threadThemeOption = item.key;
-          option.textContent = themeLabel(item);
-          option.setAttribute('aria-pressed', String(item.key === selectedTheme?.key));
-          option.addEventListener('click', () => {
-            setTheme(item, true);
-            closeThemeMenu(true);
-          });
-          themeResults.appendChild(option);
-        }
+        themeStatus.textContent = !cached || !remote ? 'Загружена часть каталога Jira.' : '';
+        renderThemeTree([...candidates.values()], Boolean(query));
       }, query ? 260 : 0);
     }
     themeToggle.addEventListener('click', () => {
@@ -2905,7 +3072,7 @@ export function generateContentScriptJs(
         closeThemeMenu(true);
         return;
       }
-      const options = Array.from(themeResults.querySelectorAll('button'));
+      const options = Array.from(themeResults.querySelectorAll('button')).filter(button => button.getClientRects().length);
       if (!options.length) return;
       if (event.key === 'Enter' && event.target === themeInput) {
         event.preventDefault();
@@ -2978,56 +3145,188 @@ export function generateContentScriptJs(
       }
       return proposals;
     }
+    function issueLinkKind(kind) {
+      return {development:'В проекте',related:'Связанная задача',duplicate:'Дубликат'}[kind] || 'Связь';
+    }
     function renderDraftLinks() {
       linkedSources.replaceChildren();
-      const sourceList = document.createElement('ul');
-      for (const url of draft.urls) {
-        const item = document.createElement('li');
-        item.append(linkFor(url,url));
-        sourceList.appendChild(item);
-      }
-      const caption = document.createElement('p');
-      caption.textContent = 'Исходные треды будут приложены к задаче.';
-      linkedSources.append(caption,sourceList);
-      const proposals = new Map(draft.links);
-      if (selectedTheme) proposals.delete(selectedTheme.key);
-      for (const [key,previous] of selectedIssueLinks) {
-        const current = proposals.get(key);
-        if (current && current.kind !== previous.kind) {
-          selectedIssueLinks.delete(key);
-        } else if (!current && proposals.size < 10) {
-          proposals.set(key,previous);
-        } else if (!current) {
-          selectedIssueLinks.delete(key);
+      if (draft.urls.length) {
+        const sources = document.createElement('details');
+        const summary = document.createElement('summary');
+        summary.textContent = 'Треды chatZone · ' + draft.urls.length;
+        const list = document.createElement('ul');
+        for (const url of draft.urls) {
+          const item = document.createElement('li');
+          item.append(linkFor(url,url));
+          list.appendChild(item);
         }
+        sources.append(summary,list);
+        linkedSources.appendChild(sources);
       }
+      const proposals = new Map([...linkEdits, ...[...draft.links].filter(([key]) => !linkEdits.has(key))]);
+      if (selectedTheme) proposals.delete(selectedTheme.key);
+      for (const key of hiddenIssueLinks) proposals.delete(key);
       issueProposals.replaceChildren();
-      if (!proposals.size) {
-        const empty = document.createElement('p');
-        empty.textContent = 'Связи с задачами Jira не предложены.';
-        issueProposals.appendChild(empty);
-        return;
-      }
-      for (const item of proposals.values()) {
-        const row = document.createElement('label');
+      for (const item of [...proposals.values()].slice(0,10)) {
+        const row = document.createElement('div');
         row.className = 'ozon-thread-proposal';
         const check = document.createElement('input');
         check.type = 'checkbox';
+        check.setAttribute('aria-label','Добавить связь с ' + item.key);
         check.checked = selectedIssueLinks.has(item.key);
         const text = document.createElement('span');
-        const kind = item.kind === 'development' ? 'В проекте' : 'Связанная задача';
         text.append(document.createTextNode(item.title + ' · '),linkFor(item.key,item.key));
-        const detail = document.createElement('small');
-        detail.textContent = item.reason ? kind + ' · ' + item.reason : kind;
-        text.appendChild(detail);
+        if (item.reason) {
+          const reason = document.createElement('small');
+          reason.textContent = item.reason;
+          text.appendChild(reason);
+        }
+        const type = document.createElement('select');
+        type.setAttribute('aria-label','Тип связи с ' + item.key);
+        const kinds = item.key.startsWith('FCRM-') ? ['related','duplicate'] : ['related','development'];
+        for (const kind of kinds) {
+          const option = document.createElement('option');
+          option.value = kind;
+          option.textContent = issueLinkKind(kind);
+          type.appendChild(option);
+        }
+        type.value = item.kind;
+        type.addEventListener('change', () => {
+          if (busy || pendingWrite || created) return;
+          const edited = {...item,kind:type.value};
+          linkEdits.set(item.key,edited);
+          if (check.checked) selectedIssueLinks.set(item.key,edited);
+        });
         check.addEventListener('change', () => {
           if (busy || pendingWrite || created) return;
-          if (check.checked) selectedIssueLinks.set(item.key,item);
+          const edited = {...item,kind:type.value};
+          linkEdits.set(item.key,edited);
+          if (check.checked) selectedIssueLinks.set(item.key,edited);
           else selectedIssueLinks.delete(item.key);
         });
-        row.append(check,text);
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.textContent = 'Удалить';
+        remove.className = 'ozon-ext-btn ozon-ext-btn-surface';
+        remove.setAttribute('aria-label','Удалить связь с ' + item.key);
+        remove.onclick = () => {
+          if (busy || pendingWrite || created) return;
+          hiddenIssueLinks.add(item.key);
+          linkEdits.delete(item.key);
+          selectedIssueLinks.delete(item.key);
+          renderDraftLinks();
+          focus(linkField);
+        };
+        row.append(check,text,type,remove);
         issueProposals.appendChild(row);
       }
+      if (!issueProposals.childElementCount) {
+        const note = document.createElement('p');
+        note.textContent = 'Добавьте связь по ключу или ссылке на задачу Jira.';
+        issueProposals.appendChild(note);
+      }
+      updateControls();
+    }
+
+    function stageLink(item) {
+      if (selectedTheme?.key === item.key) {
+        linkStatus.textContent = 'Эта задача уже выбрана тематикой.';
+        return false;
+      }
+      if (linkEdits.size >= 10 && !linkEdits.has(item.key)) {
+        linkStatus.textContent = 'Можно подготовить до 10 дополнительных связей.';
+        return false;
+      }
+      hiddenIssueLinks.delete(item.key);
+      const entry = linkEdits.get(item.key) || {...item,kind:'related'};
+      linkEdits.set(item.key,entry);
+      selectedIssueLinks.set(item.key,entry);
+      linkStatus.textContent = item.key + ' добавлена в список связей.';
+      renderDraftLinks();
+      return true;
+    }
+
+    async function addIssueLink() {
+      if (busy || pendingWrite || created || loadingLink || !draft) return;
+      let key = linkField.value.trim().toUpperCase();
+      if (key.startsWith('HTTPS://')) {
+        try {
+          const url = new URL(linkField.value.trim());
+          key = url.origin === 'https://jit.o3.ru' && !url.username && !url.password
+            ? (url.pathname.match(/^\\/browse\\/([A-Z]+-\\d+)\\/?$/i)?.[1] || '').toUpperCase() : '';
+        } catch (_) { key = ''; }
+      }
+      if (!/^(FCRM|OB|OBFRONT|FTD|FACS)-\\d+$/.test(key)) {
+        linkStatus.textContent = 'Введите ключ Jira, например FCRM-1234, или ссылку на задачу.';
+        return;
+      }
+      const currentDraft = draft;
+      loadingLink = true;
+      linkStatus.textContent = 'Проверяю задачу ' + key + '…';
+      updateControls();
+      try {
+        const target = await threadWriter.resolveLinkTarget(key);
+        if (draft === currentDraft && !busy && !pendingWrite && stageLink(target)) linkField.value = '';
+      } catch (error) {
+        if (draft === currentDraft) linkStatus.textContent = error.status === 403 || error.status === 404
+          ? 'Задача ' + key + ' недоступна или не найдена.' : 'Jira не подтвердила задачу ' + key + '. Повторите поиск.';
+      } finally {
+        loadingLink = false;
+        updateControls();
+      }
+    }
+
+    function clearEarlyDuplicates() {
+      earlySerial += 1;
+      window.clearTimeout(earlyTimer);
+      if (earlyDuplicates) earlyDuplicates.hidden = true;
+    }
+
+    function queueEarlyDuplicates(result = draft, wait = false) {
+      if (!earlyDuplicates || !result || !requestSnapshot) return;
+      clearEarlyDuplicates();
+      const serial = earlySerial;
+      earlyDuplicates.hidden = false;
+      earlyStatus.textContent = 'Проверяю совпадения в Jira…';
+      earlyMatches.replaceChildren();
+      earlyTimer = window.setTimeout(async () => {
+        try {
+          const input = {urls:result.urls,mentionedIssueKeys:result.mentionedIssueKeys,summary:result.summary ? normalizedSummary(summary.value) : ''};
+          const checked = await threadWriter.inspect(input);
+          if (serial !== earlySerial || step !== 2) return;
+          earlyStatus.textContent = ({
+            ready:'Совпадений по треду, упоминаниям и названию не найдено.',
+            existing:'По этому треду уже есть задача. Откройте её в Jira.',
+            'possible-duplicate':'Проверьте совпадения. Их можно включить в связи новой задачи.',
+            uncertain:'Jira ещё проверяет результат предыдущей записи.'
+          })[checked.state] || 'Jira не подтвердила проверку.';
+          for (const match of checked.issues || []) {
+            if (!/^FCRM-\\d+$/.test(match.key)) continue;
+            const row = document.createElement('li');
+            const link = linkFor(match.key,match.title ? match.title + ' · ' + match.key : match.key);
+            row.appendChild(link);
+            if (match.reason) {
+              const reason = document.createElement('small');
+              reason.textContent = match.reason;
+              row.appendChild(reason);
+            }
+            if (checked.state === 'possible-duplicate' && result.summary) {
+              const move = document.createElement('button');
+              move.type = 'button';
+              move.className = 'ozon-ext-btn ozon-ext-btn-surface';
+              move.textContent = 'В список связей';
+              move.onclick = () => {
+                if (busy || pendingWrite || created) return;
+                if (stageLink({...match,title:match.title || match.key})) move.textContent = 'В списке связей';
+              };
+              row.appendChild(move);
+            }
+            earlyMatches.appendChild(row);
+          }
+        } catch (_) {
+          if (serial === earlySerial && step === 2) earlyStatus.textContent = 'Jira недоступна. Повторная проверка пройдёт перед созданием.';
+        }
+      }, wait ? 340 : 0);
     }
 
 
@@ -3083,9 +3382,11 @@ export function generateContentScriptJs(
       try { result = JSON.parse(text); } catch (_) { throw new Error('DeepSeek вернул черновик в неожиданном формате. Повторите запрос.'); }
       const questionReason = typeof result?.questionReason === 'string' ? result.questionReason.trim().slice(0,180) : '';
       const themeReason = typeof result?.themeReason === 'string' ? result.themeReason.trim().slice(0,240) : '';
+      const sourceUrls = Array.isArray(result?.urls) && result.urls.length > 0 && result.urls.length <= requestSnapshot.urls.length && result.urls.every(url => typeof url === 'string') ? result.urls : requestSnapshot.urls;
+      const mentions = Array.isArray(result?.mentionedIssueKeys) ? result.mentionedIssueKeys.filter(key => /^FCRM-\\d+$/.test(key)).slice(0,12) : [];
       if (result?.status === 'clarification') {
         const detail = typeof result.message === 'string' ? result.message.trim().slice(0,500) : '';
-        return {question:detail || 'Какие детали нужно учесть в черновике?', questionReason, sources:result.sources};
+        return {question:detail || 'Какие детали нужно учесть в черновике?', questionReason, sources:result.sources, urls:sourceUrls, mentionedIssueKeys:mentions};
       }
       if (result?.status !== 'draft' || typeof result.summary !== 'string' || !result.summary.trim() || typeof result.description !== 'string' || !result.description.trim()) {
         throw new Error('DeepSeek вернул неполный черновик. Повторите запрос.');
@@ -3099,8 +3400,8 @@ export function generateContentScriptJs(
         themeReason,
         sources:result.sources,
         links:parseProposals(result.links),
-        mentionedIssueKeys:Array.isArray(result.mentionedIssueKeys) ? result.mentionedIssueKeys.filter(key => /^FCRM-\\d+$/.test(key)).slice(0,12) : [],
-        urls:Array.isArray(result.urls) && result.urls.length > 0 && result.urls.length <= requestSnapshot.urls.length && result.urls.every(url => typeof url === 'string') ? result.urls : requestSnapshot.urls
+        mentionedIssueKeys:mentions,
+        urls:sourceUrls
       };
     }
     function modelFailure(response) {
@@ -3119,6 +3420,7 @@ export function generateContentScriptJs(
       const clarificationWithQuestion = clarification && !question.hidden && questionText.textContent
         ? questionText.textContent + '\\nОтвет: ' + clarification : clarification;
       busy = true;
+      if (!created) clearEarlyDuplicates();
       confirmDuplicate.hidden = true;
       duplicateLinks.hidden = true;
       updateControls();
@@ -3156,7 +3458,7 @@ export function generateContentScriptJs(
           if (result.summary) {
             draft = result;
             suggestion.querySelector('[data-thread-suggestion-title]').textContent = result.summary;
-            suggestion.querySelector('[data-thread-suggestion-body]').textContent = result.description;
+            renderDescription(suggestion.querySelector('[data-thread-suggestion-body]'), result.description);
             suggestion.hidden = false;
             say('Предложение готово. Проверьте его перед изменением задачи в Jira.', 'success');
             nextFocus = suggestion.querySelector('h3');
@@ -3175,6 +3477,7 @@ export function generateContentScriptJs(
             draft = result;
             summary.value = keepSummary ? previousDraft.summary : result.summary;
             description.value = keepDescription ? previousDraft.description : result.description;
+            if (description.hidden) renderDescription(descriptionView, description.value);
             if (!themeOverridden) setTheme(themes.find(item => item.key === result.themeKey) || null, false, result.themeReason);
             review.hidden = false;
             fitSummary();
@@ -3182,6 +3485,7 @@ export function generateContentScriptJs(
             say(keepSummary || keepDescription ? 'Черновик уточнён. Ваши правки сохранены.' : 'Черновик готов. Проверьте поля и перейдите к проверке Jira.', 'success');
             nextFocus = steps[1].querySelector('h3');
           }
+          queueEarlyDuplicates(result);
         }
       } catch (error) {
         say(error.message, 'error');
@@ -3207,7 +3511,7 @@ export function generateContentScriptJs(
         ['Название',checkedInput.summary], ['Тип',requestSnapshot.issueTypeName],
         ['Компонент',requestSnapshot.componentName], ['Тематика',selectedTheme ? themeLabel(selectedTheme) : 'Не выбрана'],
         ['Треды chatZone',String(checkedInput.urls.length)],
-        ['Связи с задачами',checkedInput.issueLinks.map(item => item.key).join(', ') || 'Не выбраны']
+        ['Связи с задачами',checkedInput.issueLinks.map(item => item.key + ' · ' + issueLinkKind(item.kind)).join(', ') || 'Не выбраны']
       ];
       for (const [label,value] of fields) {
         const name = document.createElement('dt');
@@ -3216,7 +3520,8 @@ export function generateContentScriptJs(
         detail.textContent = value;
         finalFields.append(name,detail);
       }
-      finalDescription.querySelector('p').textContent = checkedInput.description;
+      renderDescription(finalDescription.querySelector('.ozon-thread-final-description'), checkedInput.description);
+      finalDescription.open = true;
     }
     function showDuplicates(result) {
       const note = {
@@ -3319,7 +3624,7 @@ export function generateContentScriptJs(
         for (const item of outcomes) {
           if (!item || item.confirmed !== confirmed || typeof item.key !== 'string') continue;
           const row = document.createElement('li');
-          const type = {source:'Тред chatZone',theme:'Тематика',development:'В проекте',related:'Связанная задача'}[item.kind];
+          const type = {source:'Тред chatZone',theme:'Тематика',development:'В проекте',related:'Связанная задача',duplicate:'Дубликат'}[item.kind];
           row.append(document.createTextNode((type || 'Связь') + ' · '),linkFor(item.key,item.key));
           row.dataset.confirmed = String(confirmed);
           list.appendChild(row);
@@ -3421,6 +3726,10 @@ export function generateContentScriptJs(
       if (clarification) requestDraft(clarification);
     };
     summary.addEventListener('input', fitSummary);
+    summary.addEventListener('input', () => { if (!busy && !pendingWrite && !created && step === 2) queueEarlyDuplicates(draft, true); });
+    if (linkAdd) linkAdd.onclick = addIssueLink;
+    linkField?.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); void addIssueLink(); } });
+    description.addEventListener('input', () => renderDescription(descriptionView, description.value));
     [summary, description, reply].forEach(field => field.addEventListener('input', () => { confirmDuplicate.hidden = true; duplicateLinks.hidden = true; updateControls(); }));
     async function loadFields() {
       retryFields.hidden = true;

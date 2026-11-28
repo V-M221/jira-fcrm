@@ -12,6 +12,145 @@ const globals = {exports:moduleExports,URL,URLSearchParams,TextEncoder,AbortSign
 vm.runInNewContext(writer, globals);
 const {createFcrmThreadWriter} = moduleExports;
 
+async function checkDraftPanel() {
+  const compiled = fs.readFileSync('FCRM-Chrome-3.3/content.js','utf8');
+  function section(start, end) {
+    const from = compiled.indexOf(start);
+    const to = compiled.indexOf(end,from + start.length);
+    assert.ok(from >= 0 && to > from,start);
+    return compiled.slice(from,to);
+  }
+  const element = tag => ({
+    tag,children:[],attributes:{},events:{},hidden:false,textContent:'',
+    append(...items){this.children.push(...items);},
+    appendChild(item){this.append(item);},
+    replaceChildren(...items){this.children=items;},
+    setAttribute(key,value){this.attributes[key]=value;},
+    addEventListener(key,fn){this.events[key]=fn;},
+    focus(){this.focused=true;},
+    get childElementCount(){return this.children.length;},
+  });
+  const draft = {urls:['https://chatzone.o3t.ru/o3/pl/'+'a'.repeat(26)],summary:'Название черновика',mentionedIssueKeys:['FCRM-42'],
+    links:new Map([['OB-45',{key:'OB-45',title:'Реализация',kind:'development'}]])};
+  let checked = {state:'ready',issues:[]};
+  const inspections = [], lookups = [], timer = [];
+  const context = vm.createContext({
+    URL,document:{createElement:element,createTextNode:text=>({textContent:text})},
+    draft,requestSnapshot:{issueTypeId:'10',componentId:'20'},step:2,summary:{value:draft.summary},normalizedSummary:text=>text.trim(),
+    selectedTheme:null,loadingLink:false,busy:false,pendingWrite:null,created:false,
+    selectedIssueLinks:new Map(),linkEdits:new Map(),hiddenIssueLinks:new Set(),issueProposals:element('div'),
+    linkedSources:element('div'),linkStatus:element('small'),linkField:element('input'),earlyDuplicates:element('section'),
+    earlyStatus:element('p'),earlyMatches:element('ul'),earlySerial:0,earlyTimer:0,
+    description:{...element('textarea'),hidden:true,value:'h2. Цель\n* <img src=x onerror=alert(1)>\n# Уточнить [условие|https://example.invalid/a]'},
+    descriptionView:element('div'),descriptionEdit:element('button'),descriptionRead:element('button'),
+    readDraft:()=>({summary:draft.summary,description:'Черновик'}),
+    focus:node=>node.focus(),updateControls(){},window:{innerWidth:1000,clearTimeout(){},setTimeout(fn){timer.push(fn);return timer.length;}},
+    localStorage:{getItem:()=>null,setItem(_key,value){context.savedWidth=value;}},
+    widthControl:element('div'),width:700,panel:{style:{setProperty(_key,value){context.width=parseInt(value,10);}},
+      getBoundingClientRect(){return {width:context.width};}},
+    threadWriter:{
+      inspect:input=>{inspections.push(input);return Promise.resolve(checked);},
+      resolveLinkTarget:async key=>{
+        lookups.push(key);
+        if (key === 'FCRM-43') throw Object.assign(new Error('forbidden'),{status:403});
+        return {key,title:'Подтверждённая задача'};
+      },
+    }
+  });
+  vm.runInContext(
+    section('  const renderAnswerMarkup =','  function isTargetBoardPage()') +
+    section('    function renderDescription(', '    function say(') +
+    section('    function safeSourceUrl(', '    function renderContextSources(') +
+    section('    function writeInput(', '    function showFinalFields('),
+    context
+  );
+  assert.match(compiled,/data-thread-description-read aria-pressed="true"/);
+  assert.match(compiled,/<textarea name="draftDescription"[^>]* hidden>/);
+  context.descriptionEdit.onclick();
+  assert.equal(context.description.hidden,false);
+  assert.equal(context.description.focused,true);
+  context.descriptionRead.onclick();
+  assert.equal(context.description.hidden,true);
+  assert.equal(context.descriptionRead.attributes['aria-pressed'],'true');
+  assert.match(context.descriptionView.innerHTML,/<h3>Цель<\/h3><ul><li>&lt;img/);
+  assert.match(context.descriptionView.innerHTML,/<ol><li>Уточнить <a [^>]*href="https:\/\/example\.invalid\/a"/);
+  assert.doesNotMatch(context.descriptionView.innerHTML,/<img/);
+
+  vm.runInContext('bindPanelWidth()',context);
+  const key = value => context.widthControl.events.keydown({key:value,preventDefault(){}});
+  context.widthControl.events.focus();
+  assert.equal(context.widthControl.attributes['aria-valuenow'],'700');
+  key('ArrowLeft');
+  assert.equal(context.width,732);
+  assert.equal(context.savedWidth,'732');
+  key('Home');
+  assert.equal(context.width,560);
+  key('End');
+  assert.equal(context.width,1000);
+  context.window.innerWidth=420;
+  key('Home');
+  assert.equal(context.width,420);
+  assert.equal(context.widthControl.attributes['aria-valuemax'],'420');
+  assert.match(compiled,/@media \(max-width:760px\).*100vw.*data-thread-width.*display:none/);
+
+  const selected = () => JSON.parse(vm.runInContext('JSON.stringify(writeInput().issueLinks)',context));
+  vm.runInContext('renderDraftLinks()',context);
+  const proposed = context.issueProposals.children[0];
+  assert.equal(proposed.children[0].checked,false);
+  assert.equal(context.linkedSources.children[0].tag,'details');
+  assert.deepEqual(selected(),[]);
+  proposed.children[0].checked=true;
+  proposed.children[0].events.change();
+  proposed.children[2].value='related';
+  proposed.children[2].events.change();
+  assert.deepEqual(selected(),[{key:'OB-45',kind:'related'}]);
+  proposed.children[3].onclick();
+  assert.deepEqual(selected(),[]);
+  assert.equal(context.linkField.focused,true);
+
+  context.linkField.value='https://jit.o3.ru/browse/FTD-99';
+  await vm.runInContext('addIssueLink()',context);
+  assert.deepEqual(lookups,['FTD-99']);
+  assert.deepEqual(selected(),[{key:'FTD-99',kind:'related'}]);
+  context.linkField.value='FCRM-43';
+  await vm.runInContext('addIssueLink()',context);
+  assert.match(context.linkStatus.textContent,/недоступна/);
+  assert.deepEqual(selected(),[{key:'FTD-99',kind:'related'}]);
+
+  vm.runInContext('queueEarlyDuplicates()',context);
+  checked={state:'existing',issues:[{key:'FCRM-40',title:'Тот же источник'}]};
+  await timer.shift()();
+  assert.equal(context.earlyMatches.children[0].children.length,1);
+  assert.equal(context.earlyMatches.children[0].children[0].href,'/browse/FCRM-40');
+  assert.equal(inspections.length,1);
+  assert.deepEqual(selected(),[{key:'FTD-99',kind:'related'}]);
+
+  let finishOld;
+  checked=new Promise(resolve=>{finishOld=resolve;});
+  vm.runInContext('queueEarlyDuplicates()',context);
+  const old=timer.shift()();
+  context.summary.value='Исправленное название';
+  vm.runInContext('queueEarlyDuplicates(undefined, true)',context);
+  checked={state:'possible-duplicate',issues:[{key:'FCRM-42',title:'Похожая задача'}]};
+  await timer.shift()();
+  finishOld({state:'possible-duplicate',issues:[{key:'FCRM-8',title:'Устаревший результат'}]});
+  await old;
+  assert.equal(inspections.at(-1).summary,context.summary.value);
+  const matches=context.earlyMatches.children;
+  assert.equal(matches.length,1);
+  assert.equal(matches[0].children[0].href,'/browse/FCRM-42');
+  assert.deepEqual(selected(),[{key:'FTD-99',kind:'related'}]);
+  matches[0].children[1].onclick();
+  assert.deepEqual(selected(),[{key:'FTD-99',kind:'related'},{key:'FCRM-42',kind:'related'}]);
+  assert.match(matches[0].children[1].textContent,/В списке связей/);
+  const candidate=context.issueProposals.children.find(row=>row.children[0]?.attributes['aria-label'] === 'Добавить связь с FCRM-42');
+  const kindPicker=candidate.children[2];
+  assert.deepEqual(kindPicker.children.map(option=>option.textContent),['Связанная задача','Дубликат']);
+  kindPicker.value='duplicate';
+  kindPicker.events.change();
+  assert.deepEqual(selected(),[{key:'FTD-99',kind:'related'},{key:'FCRM-42',kind:'duplicate'}]);
+}
+
 async function checkStepper() {
   const url = 'https://chatzone.o3t.ru/example/pl/' + 'r'.repeat(26);
   const draft = {urls:[url], issueTypeId:'10',componentId:'20',summary:'Проверить отображение карточки',description:'Описание',mentionedIssueKeys:['FCRM-812','FCRM-813']};
@@ -99,7 +238,8 @@ async function checkStepper() {
     assert.equal(context.summary.value,'Ручное название');
     assert.equal(status.parent,controlsForStep[number-1].pane);
   }
-  console.log('Stepper regression PASS: single open step, read-only inspection, exact match, updated duplicate set, and uncertain response.');
+  await checkDraftPanel();
+  console.log('Stepper regression PASS: single open step, read-only inspection, exact match, updated duplicate set, uncertain response, preview, resize, manual links and early duplicate actions.');
 }
 
 checkStepper().catch(error => { console.error(error); process.exitCode = 1; });

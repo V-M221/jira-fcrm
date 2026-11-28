@@ -525,7 +525,8 @@ export async function completeDeepseekChat(
       const questionReason = question && reason.length <= 180 && !/[<>]|https?:\/\//i.test(reason) ? reason : '';
       // Only application-defined statuses and fields feed the UI.
       if (data?.status === 'clarification' && question && question.length <= 220) {
-        return JSON.stringify({status:'clarification', message:question, questionReason, sources:threadVisibleSources});
+        return JSON.stringify({status:'clarification', message:question, questionReason, sources:threadVisibleSources,
+          urls:threadSourceUrls, mentionedIssueKeys:threadMentionedKeys});
       }
       if (data?.status !== 'draft') continue;
       const summary = cleanLine(data.summary);
