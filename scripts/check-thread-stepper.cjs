@@ -300,6 +300,88 @@ async function checkDraftPanel() {
   await checkPreflight(section,element);
 }
 
+function checkPanelDismissal(content) {
+  const label = content.indexOf('      const panels = [');
+  const start = content.lastIndexOf("    document.addEventListener('pointerdown'", label);
+  const end = content.indexOf("    if (activeDashboardView === 'product')", label);
+  assert.ok(start >= 0 && end > label,'Outside panel pointerdown handler');
+
+  class Element {
+    constructor(id, owner = null) {this.id=id;this.owner=owner;this.isConnected=true;this.hidden=false;}
+    closest() {return null;}
+    contains(target) {return target.owner === this;}
+    matches(selector) {return selector === '.ozon-dev-settings' && this.id === 'settings';}
+    querySelector() {return {click:()=>{this.hidden=true;this.closed=(this.closed || 0)+1;}};}
+  }
+  const panels = new Map();
+  const opened = (selector,id) => {
+    const panel = new Element(id);
+    panels.set(selector,panel);
+    return panel;
+  };
+  let pointerdown;
+  let assistantCloses = 0, cardCloses = 0;
+  const context = vm.createContext({
+    Element,CustomEvent:class {constructor(type){this.type=type;}},
+    isStructureVisible:true,createInProjectMenuOpen:false,otherLinkMenuOpen:false,selectedTaskKey:'FCRM-91',
+    document:{
+      addEventListener(type,handler,capture){assert.equal(type,'pointerdown');assert.equal(capture,true);pointerdown=handler;},
+      querySelector:selector=>panels.get(selector) || (selector.startsWith('#ozon-thread-sidebar') ? panels.get('#ozon-thread-sidebar') : undefined),
+      dispatchEvent(event){assert.equal(event.type,'ozon-close-assistant');assistantCloses++;},
+      getElementById(key){assert.equal(key,'ozon-ext-sidebar-close');return {click(){cardCloses++;}};},
+    },
+    setTimeout:fn=>fn(),
+  });
+  vm.runInContext(content.slice(start,end),context);
+  const outside = new Element('board');
+  const wizard = opened('#ozon-thread-sidebar','ozon-thread-sidebar');
+  pointerdown({target:outside});
+  assert.equal(wizard.hidden,false,'Outside clicks must leave the creation panel open');
+  assert.equal(wizard.closed,undefined);
+  panels.clear();
+
+  const assistant=opened('#o3ds-layer','o3ds-layer');
+  pointerdown({target:new Element('assistant-control',assistant)});
+  assert.equal(assistantCloses,0);
+  pointerdown({target:outside});
+  assert.equal(assistantCloses,1);
+  panels.clear();
+
+  for (const [selector,id] of [['.ozon-dev-settings','settings'],['#ozon-dev-editor-panel','ozon-dev-editor-panel']]) {
+    const editor=opened(selector,id);
+    pointerdown({target:outside});
+    assert.equal(editor.closed,1);
+    panels.clear();
+  }
+  const card=opened('#ozon-ext-sidebar-panel','ozon-ext-sidebar-panel');
+  pointerdown({target:new Element('card-control',card)});
+  assert.equal(cardCloses,0);
+  pointerdown({target:outside});
+  assert.equal(cardCloses,1);
+
+  const closeStart=content.indexOf('    function closePanel()');
+  const closeEnd=content.indexOf('    function clearInspection()',closeStart);
+  assert.ok(closeStart>=0&&closeEnd>closeStart,'Explicit close and Escape handlers');
+  let keydown;
+  let focusCount=0;
+  const explicit=vm.createContext({
+    panel:{hidden:false,addEventListener(type,handler){assert.equal(type,'keydown');keydown=handler;}},
+    close:{},returnToBoard:{},busy:false,pendingWrite:null,created:null,requestSnapshot:{urls:['fixture']},
+    launcher:{isConnected:true,focus(){focusCount++;}},
+  });
+  vm.runInContext(content.slice(closeStart,closeEnd),explicit);
+  explicit.close.onclick();
+  assert.equal(explicit.panel.hidden,true);
+  assert.equal(focusCount,1);
+  explicit.panel.hidden=false;
+  keydown({key:'Escape',defaultPrevented:true});
+  assert.equal(explicit.panel.hidden,false);
+  keydown({key:'Escape',defaultPrevented:false,preventDefault(){}});
+  assert.equal(explicit.panel.hidden,true);
+  assert.equal(focusCount,2);
+  assert.deepEqual(explicit.requestSnapshot,{urls:['fixture']});
+}
+
 async function checkStepper() {
   const url = 'https://chatzone.o3t.ru/example/pl/' + 'r'.repeat(26);
   const draft = {urls:[url], issueTypeId:'10',componentId:'20',summary:'Проверить отображение карточки',description:'Описание',mentionedIssueKeys:['FCRM-812','FCRM-813']};
@@ -387,8 +469,9 @@ async function checkStepper() {
     assert.equal(context.summary.value,'Ручное название');
     assert.equal(status.parent,controlsForStep[number-1].pane);
   }
+  checkPanelDismissal(content);
   await checkDraftPanel();
-  console.log('Stepper regression PASS: single open step, read-only inspection, exact match, updated duplicate set, uncertain response, preview, resize, manual links, initial duplicate gate and early duplicate actions.');
+  console.log('Stepper regression PASS: single open step, read-only inspection, exact match, updated duplicate set, uncertain response, preview, resize, manual links, initial duplicate gate, early duplicate actions and panel dismissal.');
 }
 
 checkStepper().catch(error => { console.error(error); process.exitCode = 1; });

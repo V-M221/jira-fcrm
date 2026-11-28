@@ -15,7 +15,7 @@ import { createExtensionUpdateNotice, EXTENSION_UPDATE_INTERVAL, EXTENSION_UPDAT
 import { createJiraDraftLinkClient } from '../services/deepseek';
 import { createFcrmThreadWriter } from '../services/fcrmThreadWriter';
 
-export const EXTENSION_VERSION = '3.5.197';
+export const EXTENSION_VERSION = '3.5.198';
 
 export function fcrmReviewRowClass(key:string, status:string):string {
   if (!/^FCRM-\d+$/i.test(key)) return '';
@@ -12960,7 +12960,7 @@ export function generateContentScriptJs(
       }
       if (otherLinkMenuOpen && target instanceof Element && !target.closest('.ozon-ext-other-link-menu, [data-action="toggle-other-link-menu"]')) { otherLinkMenuOpen = false; document.querySelector('.ozon-ext-other-link-menu')?.remove(); }
       if (!(target instanceof Element) || target.closest('.ozon-ext-combo-popover, [role="dialog"]:not(#ozon-dev-editor-panel):not(#o3ds-layer), #ozon-ext-sidebar-resizer')) return;
-      const panels = ['#o3ds-layer', '#ozon-thread-sidebar:not([hidden])', '.ozon-dev-settings', '#ozon-dev-editor-panel', '#ozon-ext-sidebar-panel'];
+      const panels = ['#o3ds-layer', '.ozon-dev-settings', '#ozon-dev-editor-panel', '#ozon-ext-sidebar-panel'];
       const panel = panels.map(selector => document.querySelector(selector)).find(Boolean);
       if (panel?.id === 'o3ds-layer' && target.closest('#ozon-ext-sidebar-panel, #ozon-ext-sidebar-resizer')) return;
       if (!panel || panel.contains(target)) return;
@@ -12968,7 +12968,6 @@ export function generateContentScriptJs(
       setTimeout(() => {
         if (!panel.isConnected) return;
         if (panel.id === 'o3ds-layer') { document.dispatchEvent(new CustomEvent('ozon-close-assistant')); return; }
-        if (panel.id === 'ozon-thread-sidebar') { panel.querySelector('[data-thread-close]')?.click(); return; }
         if (panel.matches('.ozon-dev-settings')) { panel.querySelector('[data-dev-action="settings-cancel"]')?.click(); return; }
         if (panel.id === 'ozon-dev-editor-panel') { panel.querySelector('[data-dev-action="close-editor"]')?.click(); return; }
         if (selectedTaskKey === selectedKey) document.getElementById('ozon-ext-sidebar-close')?.click();
