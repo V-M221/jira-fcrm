@@ -488,7 +488,11 @@ export function installPreviewApi(fixture: { tasks: any[]; catalog: any[]; confi
                   (input.clarification ? '\n* Уточнение: ' + String(input.clarification).trim().replace(/[\r\n]+/g, ' ') : ''),
                 themeKey:input.themes?.[0]?.key || '',message:input.clarification ? '' : 'На какой странице карточки должна быть кнопка?',
                 questionReason:input.clarification ? '' : 'Это уточнит место кнопки в описании.'};
-          callback({ok:true,text:JSON.stringify(text)});
+          const mentionedIssueKeys = input.additionalInfo?.includes('Демо: похожая задача') ? ['FCRM-99990'] : [];
+          if (mentionedIssueKeys.length && !issues.has(mentionedIssueKeys[0])) {
+            toIssue({key:mentionedIssueKeys[0],summary:'[Демо] Копировать данные из карточки клиента',issueTypeName:'Задача'});
+          }
+          callback({ok:true,text:JSON.stringify({...text,mentionedIssueKeys})});
           return;
         }
         if (message.type === 'o3ds:thread-status') {callback({phase:'model'});return;}

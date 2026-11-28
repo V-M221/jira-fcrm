@@ -10,10 +10,12 @@ export function createFcrmThreadWriter(applyTheme?: (key: string, themeKey: stri
     summary: string;
     description: string;
     themeKey?: string;
-    allowPossibleDuplicate?: boolean;
+    confirmedDuplicateKeys?: string[];
     mentionedIssueKeys?: string[];
   };
   type Source = {id: string; url: string; marker: string};
+  type Candidate = {key: string; title: string; reason: string};
+  type Inspection = {state: 'ready' | 'existing' | 'possible-duplicate' | 'uncertain'; issues: Candidate[]};
   type Fields = {
     summary?: string;
     description?: string;
@@ -184,56 +186,105 @@ export function createFcrmThreadWriter(applyTheme?: (key: string, themeKey: stri
     return data.fields;
   }
 
-  async function locateIssue(journal: Journal, sources: Source[]) {
-    const keys = [...new Set(sources.map(source => journal[source.marker]?.key).filter(isIssueKey))];
-    if (keys.length === 1) {
-      const fields = await readIssue(keys[0], 'project,labels,description');
-      if (fields.project?.key !== project || !sources.some(source => matchesSource(fields, source))) throw unknown();
-      return keys[0];
+  function candidate(issue: Issue, reason: string): Candidate {
+    const title = issue.fields?.summary;
+    if (typeof title !== 'string' || !title.trim()) {
+      throw failure('Jira не подтвердила название задачи ' + issue.key + '.', 'THREAD_ISSUE_UNCONFIRMED');
     }
-    if (keys.length > 1) {
-      throw failure('Треды уже связаны с разными задачами FCRM. Проверьте их в Jira.', 'THREAD_DUPLICATE');
-    }
+    return {key: issue.key, title: title.trim(), reason};
+  }
 
-    const found = new Set<string>();
-    for (let start = 0; start < sources.length; start += 8) {
-      const batch = sources.slice(start, start + 8);
+  function hasPendingCreation(journal: Journal, sources: Source[]) {
+    return sources.some(({marker}) => marker in journal && !journal[marker].verified);
+  }
+
+  async function findExistingIssues(journal: Journal, sources: Source[]) {
+    const reason = 'Совпадает исходный тред chatZone';
+    const keys = [...new Set(sources.map(source => journal[source.marker]?.key).filter(isIssueKey))];
+    const found = new Map<string, Candidate>();
+    const confirmed = await Promise.all(keys.map(async key => {
+      const fields = await readIssue(key, 'project,labels,description,summary');
+      if (fields.project?.key !== project || !sources.some(source => matchesSource(fields, source))) throw unknown();
+      return candidate({key, fields}, reason);
+    }));
+    for (const issue of confirmed) found.set(issue.key, issue);
+
+    const untracked = sources.filter(source => !isIssueKey(journal[source.marker]?.key));
+    for (let start = 0; start < untracked.length; start += 8) {
+      const batch = untracked.slice(start, start + 8);
       const labels = 'labels in (' + batch.map(source => quoteJql(source.marker)).join(',') + ')';
       const legacyDescriptions = batch.map(source => 'description ~ ' + quoteJql(source.id));
-      const issues = await search([labels, ...legacyDescriptions].join(' OR '), 'labels,description');
+      const issues = await search([labels, ...legacyDescriptions].join(' OR '), 'labels,description,summary');
       for (const issue of issues) {
         if (isIssueKey(issue?.key) && issue.fields && batch.some(source => matchesSource(issue.fields, source))) {
-          found.add(issue.key);
+          found.set(issue.key, candidate(issue, reason));
         }
       }
     }
-    if (found.size > 1) {
+    return [...found.values()];
+  }
+
+  async function locateIssue(journal: Journal, sources: Source[]) {
+    const found = await findExistingIssues(journal, sources);
+    if (found.length > 1) {
       throw failure('Найдено несколько задач с исходными тредами. Выберите существующую задачу в Jira.', 'THREAD_DUPLICATE');
     }
-    return [...found][0];
+    return found[0]?.key;
   }
 
-  async function checkMentionedIssues(inputKeys: string[] | undefined) {
+  async function findMentionedIssues(inputKeys: string[] | undefined) {
     const keys = [...new Set((inputKeys || []).filter(isIssueKey))].slice(0, 12);
-    if (!keys.length) return;
-    const confirmed = (await search('key in (' + keys.join(',') + ')', 'summary,project,issuetype'))
-      .filter(issue => keys.includes(issue.key) && issue.fields?.project?.key === project);
-    if (confirmed.length) {
-      const issueKeys = confirmed.map(issue => issue.key);
-      throw Object.assign(failure('В обсуждении упоминаются задачи FCRM. Проверьте их перед созданием отдельной задачи.', 'THREAD_POSSIBLE_DUPLICATE'), {issueKeys});
-    }
+    if (!keys.length) return [];
+    const confirmed = await search('key in (' + keys.join(',') + ')', 'summary,project');
+    return confirmed.filter(issue => keys.includes(issue?.key) && issue.fields?.project?.key === project);
   }
 
-  async function checkSummaryDuplicate(summary: string) {
+  async function findIssuesWithSameSummary(summary: string) {
     const words = summary.match(/[\p{L}\p{N}]+/gu)?.slice(0, 8) || [];
-    if (!words.length) return;
+    if (!words.length) return [];
     const query = 'summary ~ ' + quoteJql('"' + words.join(' ') + '"');
     const candidates = await search(query, 'summary');
     const normalize = (value: string) => value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('ru');
-    const match = candidates.find(issue => isIssueKey(issue?.key) &&
+    return candidates.filter(issue => isIssueKey(issue?.key) &&
       typeof issue.fields?.summary === 'string' && normalize(issue.fields.summary) === normalize(summary));
-    if (match) {
-      throw Object.assign(failure('Найдена задача с таким же названием. Проверьте её перед созданием отдельной задачи.', 'THREAD_POSSIBLE_DUPLICATE'), {issueKeys:[match.key]});
+  }
+
+  async function findPossibleDuplicates(input: Input): Promise<Candidate[]> {
+    const [mentions, sameSummary] = await Promise.all([
+      findMentionedIssues(input.mentionedIssueKeys),
+      findIssuesWithSameSummary(input.summary)
+    ]);
+    const found = new Map<string, Candidate>();
+    for (const issue of mentions) found.set(issue.key, candidate(issue, 'Упоминается в треде chatZone'));
+    for (const issue of sameSummary) {
+      const previous = found.get(issue.key);
+      const reason = previous ? previous.reason + ', совпадает название' : 'Совпадает название задачи';
+      found.set(issue.key, candidate(issue, reason));
+    }
+    return [...found.values()].sort((a, b) => a.key.localeCompare(b.key));
+  }
+
+  async function inspect(input: Input): Promise<Inspection> {
+    const sources = await normalizeSources(input.urls);
+    const journal = readJournal();
+    if (hasPendingCreation(journal, sources)) {
+      const issues = await findExistingIssues(journal, sources).catch(() => []);
+      return {state: 'uncertain', issues};
+    }
+    const existing = await findExistingIssues(journal, sources);
+    if (existing.length) return {state: 'existing', issues: existing};
+    const possible = await findPossibleDuplicates(input);
+    return {state: possible.length ? 'possible-duplicate' : 'ready', issues: possible};
+  }
+
+  async function verifyDuplicateConfirmation(input: Input) {
+    const issues = await findPossibleDuplicates(input);
+    const confirmed = new Set(input.confirmedDuplicateKeys || []);
+    if (confirmed.size !== issues.length || issues.some(issue => !confirmed.has(issue.key))) {
+      throw Object.assign(
+        failure('Проверьте текущий список возможных дублей перед созданием отдельной задачи.', 'THREAD_POSSIBLE_DUPLICATE'),
+        {issueKeys: issues.map(issue => issue.key), issues}
+      );
     }
   }
 
@@ -431,17 +482,14 @@ export function createFcrmThreadWriter(applyTheme?: (key: string, themeKey: stri
     const themeKey = normalizeThemeKey(input.themeKey);
     return withWriteLock(async () => {
       const journal = readJournal();
-      if (sources.some(({marker}) => marker in journal && !journal[marker].verified)) {
+      if (hasPendingCreation(journal, sources)) {
         return recoverCreation(journal, input, sources, themeKey);
       }
       const existing = await locateIssue(journal, sources);
       if (existing) return finish(existing, sources, themeKey, false);
 
       const fields = await buildFields(input, sources);
-      if (!input.allowPossibleDuplicate) {
-        await checkMentionedIssues(input.mentionedIssueKeys);
-        await checkSummaryDuplicate(input.summary);
-      }
+      await verifyDuplicateConfirmation(input);
       writeJournal(journal, sources, {});
       let receipt: {key?: string};
       try {
@@ -483,5 +531,5 @@ export function createFcrmThreadWriter(applyTheme?: (key: string, themeKey: stri
     });
   }
 
-  return {create, recover, retryLinks};
+  return {inspect, create, recover, retryLinks};
 }
