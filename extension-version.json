@@ -1,3 +1,5 @@
 {
-  "version": "3.5.209"
+  "version": "3.5.210",
+  "archive": "releases/FCRM-Chrome-3.5.210.zip",
+  "sha256": "a3418912bf191e6f70e2d5cc234e8be5003f3d221cb48d970b0b2c24e98b0b7e"
 }
